@@ -1,0 +1,17 @@
+run:
+  version: "1"
+  timeout: 5m
+  issues-exit-code: 1
+
+linters:
+  disable-all: true  # 기본 활성 린터를 끄고 enable에서 선택한 린터만 활성화.
+  enable:
+    - errcheck    # 에러 핸들링 체크
+    - gosimple    # 코드 단순화 제안
+    - govet       # 정적 분석 (잠재적 버그)
+    - ineffassign # 미사용 변수 할당 체크
+    - staticcheck # 범용적인 스타일 체크
+    - unused      # 사용하지 않는 코드 체크
+
+issues:
+  exclude-use-default: false
