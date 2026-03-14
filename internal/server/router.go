@@ -5,7 +5,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 )
 
-func NewRouter(computeHandler *compute.Handler) *gin.Engine {
+func NewRouter(app *App) *gin.Engine {
 	r := gin.Default()
 
 	v1 := r.Group("/api/v1")
