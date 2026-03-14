@@ -24,3 +24,11 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, flavors)
 }
+
+// InitRoutes는 전달받은 RouterGroup에 Compute 관련 엔드포인트들을 등록합니다.
+func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
+	computeGroup := rg.Group("/compute") // /api/v1/compute
+	{
+		computeGroup.GET("/flavors", h.GetFlavors)
+	}
+}

@@ -2,7 +2,6 @@ package server
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 )
 
 func NewRouter(app *App) *gin.Engine {
@@ -10,7 +9,7 @@ func NewRouter(app *App) *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 	{
-		v1.GET("/flavors", computeHandler.GetFlavors)
+		app.Compute.InitRoutes(v1)
 	}
 
 	return r
