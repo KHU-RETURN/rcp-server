@@ -2,6 +2,7 @@ package compute
 
 import (
 	"net/http"
+	"os"
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,7 +18,7 @@ func NewHandler(svc *Service) *Handler {
 
 // GetFlavors 핸들러 함수
 func (h *Handler) GetFlavors(c *gin.Context) {
-	flavors, err := h.Svc.GetAvailableFlavors()
+	flavors, err := h.Svc.GetFlavors()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "사양 조회를 실패했습니다: " + err.Error()})
 		return
@@ -29,6 +30,27 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	computeGroup := rg.Group("/compute") // /api/v1/compute
 	{
-		computeGroup.GET("/flavors", h.GetFlavors)
+		// 전체 flavors 조회
+		computeGroup.GET("/flavors/all", h.GetFlavors)
+		// 남은 자원량 기반 가용 flavors 조회
+		computeGroup.GET("/flavors/available", h.GetAvailableFlavors)
 	}
+}
+
+func (h *Handler) GetAvailableFlavors(c *gin.Context) {
+    // 인프라 레이어를 직접 안 부르고 Service(또는 Repo)를 거칩니다.
+    client, err := h.Svc.GetComputeClient() 
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Cloud connection failed"})
+        return
+    }
+
+    projectID := os.Getenv("OS_PROJECT_ID")
+
+    flavors, err := h.Svc.GetAvailableFlavorsWithLimit(client, projectID)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, flavors)
 }
