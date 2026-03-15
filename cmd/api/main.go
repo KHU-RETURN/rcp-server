@@ -1,18 +1,26 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
+	"log"
+	"os"
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
+	"github.com/KHU-RETURN/rcp-server/internal/server"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	r := gin.Default()
+	godotenv.Load()
 
-	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status": "success",
-			"info":   "RCP Project Skeleton is Ready",
-		})
-	})
+	provider, err := openstack.NewProviderClient()
+	if err != nil {
+		log.Fatalf("OpenStack 인증 실패: %v", err)
+	}
 
-	r.Run(":8080")
+	myApp := server.NewApp(provider)
+	r := server.NewRouter(myApp)
+
+	
+	port := os.Getenv("PORT")
+	if port == "" { port = "8080" }
+	r.Run(":" + port)
 }
