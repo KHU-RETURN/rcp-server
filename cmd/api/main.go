@@ -1,11 +1,11 @@
 package main
 
 import (
-	"log"
-	"os"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/KHU-RETURN/rcp-server/internal/server"
 	"github.com/joho/godotenv"
+	"log"
+	"os"
 )
 
 func main() {
@@ -19,8 +19,9 @@ func main() {
 	myApp := server.NewApp(provider)
 	r := server.NewRouter(myApp)
 
-	
 	port := os.Getenv("PORT")
-	if port == "" { port = "8080" }
+	if port == "" {
+		port = "8080"
+	}
 	r.Run(":" + port)
 }
