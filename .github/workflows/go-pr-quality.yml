@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  GOLANGCI_LINT_VERSION: v2.11.3
+
 jobs:
   format:
     name: Format and Modules
@@ -37,8 +40,8 @@ jobs:
       - name: Verify go.mod / go.sum
         run: go mod tidy -diff
 
-  vet-and-test:
-    name: Vet and Test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
@@ -51,8 +54,24 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: Run go vet
-        run: go vet ./...
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
 
       - name: Run tests
         run: go test ./...
@@ -79,26 +98,3 @@ jobs:
 
       - name: Run govulncheck
         run: govulncheck ./...
-
-  code-security:
-    name: Code Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: true
-
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
-
-      - name: Run gosec
-        run: gosec ./...
