@@ -31,7 +31,9 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	computeGroup := rg.Group("/compute") // /api/v1/compute
 	{
-		// 전체 flavors 조회
+		// 기존 클라이언트 호환을 위해 /flavors 경로를 유지합니다.
+		computeGroup.GET("/flavors", h.GetFlavors)
+		// 전체 flavors 조회 별칭
 		computeGroup.GET("/flavors/all", h.GetFlavors)
 		// 남은 자원량 기반 가용 flavors 조회
 		computeGroup.GET("/flavors/available", h.GetAvailableFlavors)
