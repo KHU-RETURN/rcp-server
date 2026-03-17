@@ -6,11 +6,11 @@ import (
 )
 
 type App struct {
-	Compute *compute.Handler
+    Compute *compute.Handler
 }
 
 func NewApp(p *gophercloud.ProviderClient) *App {
-	return &App{
-		Compute: compute.Init(p),
-	}
+    return &App{
+        Compute: compute.Init(p),
+    }
 }

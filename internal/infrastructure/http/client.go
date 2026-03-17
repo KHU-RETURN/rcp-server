@@ -1,11 +1,6 @@
 package http
 
-import (
-	"net/http"
-	"time"
-)
-
-const defaultTimeout = 10 * time.Second
+import "net/http"
 
 type cloudflareTransport struct {
 	rt           http.RoundTripper
@@ -14,15 +9,13 @@ type cloudflareTransport struct {
 }
 
 func (t *cloudflareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	clonedReq := req.Clone(req.Context())
-	clonedReq.Header.Set("CF-Access-Client-Id", t.clientID)
-	clonedReq.Header.Set("CF-Access-Client-Secret", t.clientSecret)
-	return t.rt.RoundTrip(clonedReq)
+	req.Header.Set("CF-Access-Client-Id", t.clientID)
+	req.Header.Set("CF-Access-Client-Secret", t.clientSecret)
+	return t.rt.RoundTrip(req)
 }
 
 func NewCloudflareClient(id, secret string) *http.Client {
 	return &http.Client{
-		Timeout: defaultTimeout,
 		Transport: &cloudflareTransport{
 			rt:           http.DefaultTransport,
 			clientID:     id,

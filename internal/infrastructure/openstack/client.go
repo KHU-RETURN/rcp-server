@@ -1,10 +1,10 @@
 package openstack
 
 import (
+	"os"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/http"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
-	"os"
 )
 
 func NewProviderClient() (*gophercloud.ProviderClient, error) {
