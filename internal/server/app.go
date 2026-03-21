@@ -7,13 +7,13 @@ import (
 )
 
 type App struct {
-	Access  *access.Handler
 	Compute *compute.Handler
+	Access  *access.Handler
 }
 
 func NewApp(p *gophercloud.ProviderClient) *App {
 	return &App{
-		Access:  access.Init(p),
 		Compute: compute.Init(p),
+		Access:  access.Init(p),
 	}
 }
