@@ -10,8 +10,13 @@ type Repository struct {
 	db *sql.DB
 }
 
+type UserRepository interface {
+    UpsertUser(ctx context.Context, user *User) error
+    FindByEmail(ctx context.Context, email string) (*User, error)
+}
+
 // NewRepository는 DB 연결을 주입받고 초기 테이블을 생성합니다.
-func NewRepository(db *sql.DB) *Repository {
+func NewRepository(db *sql.DB) UserRepository {
 	// 메모리 DB이므로 실행 시마다 테이블 생성 필요
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (

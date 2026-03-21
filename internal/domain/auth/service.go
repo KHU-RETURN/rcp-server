@@ -13,12 +13,12 @@ import (
 
 // Service는 인증 비즈니스 로직을 담당합니다.
 type Service struct {
-	Repo        *Repository
+	Repo        UserRepository
 	OauthConfig *oauth2.Config
 }
 
 // NewService는 새로운 서비스를 생성합니다.
-func NewService(repo *Repository, config *oauth2.Config) *Service {
+func NewService(repo UserRepository, config *oauth2.Config) *Service {
 	return &Service{
 		Repo:        repo,
 		OauthConfig: config,
@@ -69,41 +69,6 @@ func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User
 
     return user, nil
 }
-// func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User, error) {
-// 	// 1. 승인 코드를 액세스 토큰으로 교환 (Google 가이드 2단계)
-// 	token, err := s.OauthConfig.Exchange(ctx, code)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("token exchange failed: %w", err)
-// 	}
-
-// 	// 2. ID 토큰 검증 및 유저 정보 추출 (Google 가이드 3단계)
-// 	// 가이드에서 언급된 보안 처리를 위해 idtoken 패키지를 사용합니다.
-// 	rawIDToken, ok := token.Extra("id_token").(string)
-// 	if !ok {
-// 		return nil, fmt.Errorf("no id_token in token response")
-// 	}
-
-// 	payload, err := idtoken.Validate(ctx, rawIDToken, s.OauthConfig.ClientID)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("invalid id_token: %w", err)
-// 	}
-
-// 	// 3. 도메인 모델(User) 생성
-// 	user := &User{
-// 		Email:        payload.Claims["email"].(string) ,
-// 		Name:         payload.Claims["name"].(string),
-// 		AccessToken:  token.AccessToken,
-// 		RefreshToken: token.RefreshToken, // 나중에 토큰 갱신을 위해 저장 (Google 가이드 5단계)
-// 		Expiry:       token.Expiry,
-// 	}
-
-// 	// 4. DB에 유저 정보 및 토큰 저장/업데이트 (Repository 호출)
-// 	if err := s.Repo.UpsertUser(ctx, user); err != nil {
-// 		return nil, fmt.Errorf("failed to save user: %w", err)
-// 	}
-
-// 	return user, nil
-// }
 
 // generateState는 CSRF 공격 방지를 위한 임의의 문자열을 생성합니다.
 func (s *Service) generateState(n int) string {
