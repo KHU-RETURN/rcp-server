@@ -76,10 +76,7 @@ func (s *Service) GetAvailableFlavorsWithLimit(client *gophercloud.ServiceClient
 		}
 
 		// 4. 세 가지 제약(CPU, RAM, 총 Instance 개수) 중 가장 작은 값이 진짜 한도
-		maxPossible := min(countByRAM, countByCPU)
-		if remInstances < maxPossible {
-			maxPossible = remInstances
-		}
+		maxPossible := min(remInstances, min(countByRAM, countByCPU))
 
 		// 결과가 마이너스면 0으로 세팅
 		if maxPossible < 0 {
