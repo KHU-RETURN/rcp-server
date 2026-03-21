@@ -11,6 +11,7 @@ func NewRouter(app *App) *gin.Engine {
 	{
 		app.Access.InitRoutes(v1)
 		app.Compute.InitRoutes(v1)
+		app.Auth.InitRoutes(v1)
 	}
 
 	return r
