@@ -10,9 +10,6 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/KHU-RETURN/rcp-server/internal/server"
 
-	"log"
-	"os"
-
 	"github.com/joho/godotenv"
 	_ "modernc.org/sqlite"
 )

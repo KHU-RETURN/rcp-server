@@ -14,8 +14,6 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
 
-
-
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	authGroup := rg.Group("/auth")
 	{

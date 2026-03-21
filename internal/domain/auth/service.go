@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
-	"strings"
-    "errors"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/idtoken"
+	"strings"
 )
 
 // Service는 인증 비즈니스 로직을 담당합니다.
@@ -35,39 +35,39 @@ func (s *Service) GetGoogleLoginURL() string {
 // ProcessGoogleCallback은 구글로부터 받은 code를 토큰으로 교환하고 유저 정보를 처리합니다.
 
 func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User, error) {
-    // 1. 토큰 교환 로직 (기존 코드)
-    token, err := s.OauthConfig.Exchange(ctx, code)
-    if err != nil {
-        return nil, fmt.Errorf("token exchange failed: %w", err)
-    }
+	// 1. 토큰 교환 로직 (기존 코드)
+	token, err := s.OauthConfig.Exchange(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("token exchange failed: %w", err)
+	}
 
-    // 2. ID 토큰 검증 및 페이로드 추출 (기존 코드)
-    rawIDToken, _ := token.Extra("id_token").(string)
-    payload, err := idtoken.Validate(ctx, rawIDToken, s.OauthConfig.ClientID)
-    if err != nil {
-        return nil, fmt.Errorf("no id_token in token response")
-    }
+	// 2. ID 토큰 검증 및 페이로드 추출 (기존 코드)
+	rawIDToken, _ := token.Extra("id_token").(string)
+	payload, err := idtoken.Validate(ctx, rawIDToken, s.OauthConfig.ClientID)
+	if err != nil {
+		return nil, fmt.Errorf("no id_token in token response")
+	}
 
-    // 🔒 2.5 이메일 도메인 검증 로직 추가
-    email := payload.Claims["email"].(string)
-    if !strings.HasSuffix(email, "@khu.ac.kr") {
-        return nil, errors.New("경희대학교 계정(@khu.ac.kr)으로만 로그인할 수 있습니다")
-    }
+	// 🔒 2.5 이메일 도메인 검증 로직 추가
+	email := payload.Claims["email"].(string)
+	if !strings.HasSuffix(email, "@khu.ac.kr") {
+		return nil, errors.New("경희대학교 계정(@khu.ac.kr)으로만 로그인할 수 있습니다")
+	}
 
-    // 3. User 객체 생성 및 DB 저장 (기존 코드)
-    user := &User{
-        Email:        email,
-        Name:         payload.Claims["name"].(string),
-        AccessToken:  token.AccessToken,
-        RefreshToken: token.RefreshToken,
-        Expiry:       token.Expiry,
-    }
+	// 3. User 객체 생성 및 DB 저장 (기존 코드)
+	user := &User{
+		Email:        email,
+		Name:         payload.Claims["name"].(string),
+		AccessToken:  token.AccessToken,
+		RefreshToken: token.RefreshToken,
+		Expiry:       token.Expiry,
+	}
 
-    if err := s.Repo.UpsertUser(ctx, user); err != nil {
-        return nil, fmt.Errorf("failed to save user: %w", err)
-    }
+	if err := s.Repo.UpsertUser(ctx, user); err != nil {
+		return nil, fmt.Errorf("failed to save user: %w", err)
+	}
 
-    return user, nil
+	return user, nil
 }
 
 // generateState는 CSRF 공격 방지를 위한 임의의 문자열을 생성합니다.

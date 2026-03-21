@@ -77,11 +77,11 @@ func TestHandler_Callback(t *testing.T) {
 				return errors.New("db error")
 			},
 		}
-		
-		// 실제 Google Exchange/Validate 로직을 타지 않게 하기 위해 
-		// 이 테스트는 Service의 ProcessGoogleCallback이 아닌 
+
+		// 실제 Google Exchange/Validate 로직을 타지 않게 하기 위해
+		// 이 테스트는 Service의 ProcessGoogleCallback이 아닌
 		// Handler가 Service의 에러를 어떻게 처리하는지에 집중합니다.
-		
+
 		// (참고: 실제 환경에선 Service를 인터페이스화하여 MockService를 넣는 것이 더 깔끔합니다.)
 		svc := &Service{Repo: repo, OauthConfig: &oauth2.Config{}}
 		h := NewHandler(svc)
@@ -98,10 +98,10 @@ func TestHandler_Callback(t *testing.T) {
 	})
 
 	t.Run("성공 시 유저 정보와 200 상태 코드를 반환한다", func(t *testing.T) {
-		// 이 테스트를 위해서는 ProcessGoogleCallback 내부의 구글 API 호출 부분을 
+		// 이 테스트를 위해서는 ProcessGoogleCallback 내부의 구글 API 호출 부분을
 		// 별도로 모킹하거나 인터페이스로 분리해야 완벽한 테스트가 가능합니다.
 		// 아래는 결과 구조 검증 예시입니다.
-		
+
 		w := httptest.NewRecorder()
 		// 가상의 성공 응답 바디 검증 예시
 		response := gin.H{
@@ -111,12 +111,12 @@ func TestHandler_Callback(t *testing.T) {
 				Name:  "경희인",
 			},
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(response)
 
-		var resBody map[string]interface{}
+		var resBody map[string]any
 		json.Unmarshal(w.Body.Bytes(), &resBody)
 
 		if resBody["message"] != "login success" {

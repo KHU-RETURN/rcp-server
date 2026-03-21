@@ -20,7 +20,7 @@ func NewGoogleConfig() (*oauth2.Config, error) {
 	config := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		RedirectURL: "http://localhost:8080/api/v1/auth/google/callback", // 하드코딩 대신 환경 변수 추천
+		RedirectURL:  "http://localhost:8080/api/v1/auth/google/callback", // 하드코딩 대신 환경 변수 추천
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.email",
 			"https://www.googleapis.com/auth/userinfo.profile",
