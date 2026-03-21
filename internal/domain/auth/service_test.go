@@ -114,10 +114,14 @@ func TestHandler_Callback(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 
 		var resBody map[string]any
-		json.Unmarshal(w.Body.Bytes(), &resBody)
+		if err := json.Unmarshal(w.Body.Bytes(), &resBody); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
 
 		if resBody["message"] != "login success" {
 			t.Errorf("expected success message, got %v", resBody["message"])

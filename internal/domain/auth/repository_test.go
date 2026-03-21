@@ -15,7 +15,11 @@ func TestRepository_UpsertUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("failed to close database: %v", err)
+		}
+	}()
 
 	repo := NewRepository(db)
 	ctx := context.Background()
@@ -47,7 +51,9 @@ func TestRepository_UpsertUser(t *testing.T) {
 		email := "upsert-test@khu.ac.kr"
 
 		u1 := &User{Email: email, Name: "이름1"}
-		repo.UpsertUser(ctx, u1)
+		if err := repo.UpsertUser(ctx, u1); err != nil {
+			t.Fatalf("failed to seed user: %v", err)
+		}
 
 		u2 := &User{Email: email, Name: "이름2"}
 		err := repo.UpsertUser(ctx, u2)
@@ -68,7 +74,11 @@ func TestRepository_FindByEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("failed to close database: %v", err)
+		}
+	}()
 
 	repo := NewRepository(db)
 	ctx := context.Background()
