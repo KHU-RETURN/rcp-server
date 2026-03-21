@@ -2,7 +2,9 @@ package compute
 
 import (
 	"fmt"
+
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
 // Service는 비즈니스 로직을 담당합니다.
@@ -74,10 +76,7 @@ func (s *Service) GetAvailableFlavorsWithLimit(client *gophercloud.ServiceClient
 		}
 
 		// 4. 세 가지 제약(CPU, RAM, 총 Instance 개수) 중 가장 작은 값이 진짜 한도
-		maxPossible := countByCPU
-		if countByRAM < maxPossible {
-			maxPossible = countByRAM
-		}
+		maxPossible := min(countByRAM, countByCPU)
 		if remInstances < maxPossible {
 			maxPossible = remInstances
 		}
@@ -103,4 +102,9 @@ func (s *Service) GetAvailableFlavorsWithLimit(client *gophercloud.ServiceClient
 
 func (s *Service) GetComputeClient() (*gophercloud.ServiceClient, error) {
 	return s.Repo.GetComputeClient()
+}
+
+func (s *Service) CreateInstance(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+	// 방어 로직 추가 예정
+	return s.Repo.CreateServer(client, opts)
 }

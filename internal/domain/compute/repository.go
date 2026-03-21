@@ -5,10 +5,18 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
 type Repository struct {
 	Client *gophercloud.ProviderClient
+}
+
+type CreateServerOpts struct {
+	Name      string
+	ImageRef  string
+	FlavorRef string
+	Networks  []servers.Network // 네트워크 정보가 없으면 생성이 안 될 수 있습니다.
 }
 
 func NewRepository(client *gophercloud.ProviderClient) *Repository {
@@ -45,4 +53,21 @@ func (r *Repository) GetComputeQuota(client *gophercloud.ServiceClient, projectI
 		return nil, err
 	}
 	return &detail, nil
+}
+
+func (r *Repository) CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+	// 오픈스택 SDK 규격에 맞게 옵션 설정
+	createOpts := servers.CreateOpts{
+		Name:      opts.Name,
+		ImageRef:  opts.ImageRef,
+		FlavorRef: opts.FlavorRef,
+		Networks:  opts.Networks,
+	}
+
+	// 실제 생성 요청 보내기
+	server, err := servers.Create(client, createOpts).Extract()
+	if err != nil {
+		return nil, err
+	}
+	return server, nil
 }
