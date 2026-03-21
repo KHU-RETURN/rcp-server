@@ -1,16 +1,19 @@
 package server
 
 import (
-	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
+	"database/sql"
+
+	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/gophercloud/gophercloud"
-    "golang.org/x/oauth2"
-    "database/sql"
+	"golang.org/x/oauth2"
 )
 
 type App struct {
-    Compute *compute.Handler
-    Auth *auth.Handler
+	Compute *compute.Handler
+	Access  *access.Handler
+	Auth    *auth.Handler
 }
 
 func NewApp(
@@ -20,6 +23,7 @@ func NewApp(
 ) *App {
 	return &App{
 		Compute: compute.Init(p),
+		Access:  access.Init(p),
 		Auth:    auth.Init(db, oauthConfig),
 	}
 }

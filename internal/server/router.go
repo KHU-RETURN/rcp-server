@@ -9,6 +9,7 @@ func NewRouter(app *App) *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 	{
+		app.Access.InitRoutes(v1)
 		app.Compute.InitRoutes(v1)
 		app.Auth.InitRoutes(v1)
 	}
