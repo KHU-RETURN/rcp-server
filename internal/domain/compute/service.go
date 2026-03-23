@@ -175,3 +175,19 @@ func (s *Service) checkDuplicateName(client *gophercloud.ServiceClient, name str
 
 	return nil
 }
+
+func (s *Service) DeleteInstance(client *gophercloud.ServiceClient, id string) error {
+	// [Guard] 삭제 전 서버가 존재하는지 확인
+	_, err := servers.Get(client, id).Extract()
+	if err != nil {
+		return fmt.Errorf("삭제하려는 서버를 찾을 수 없습니다 (ID: %s)", id)
+	}
+
+	// 삭제 실행
+	err = s.Repo.DeleteServer(client, id)
+	if err != nil {
+		return fmt.Errorf("서ver 삭제 실패: %v", err)
+	}
+
+	return nil
+}
