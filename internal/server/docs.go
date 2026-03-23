@@ -33,8 +33,8 @@ func registerDocsRoutes(r *gin.Engine) {
 func openAPISpecPath() string {
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {
-		return "openapi.yaml"
+		return filepath.Clean(filepath.Join("docs", "generated", "swagger.yaml"))
 	}
 
-	return filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", "..", "openapi.yaml"))
+	return filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", "..", "docs", "generated", "swagger.yaml"))
 }

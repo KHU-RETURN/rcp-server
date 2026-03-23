@@ -19,7 +19,15 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
 
-// GetFlavors 핸들러 함수
+// GetFlavors godoc
+// @Summary List compute flavors
+// @Description Returns the currently available flavor catalog.
+// @Tags compute
+// @Produce json
+// @Success 200 {array} FlavorResponse
+// @Failure 500 {object} api.ErrorResponse
+// @Router /api/v1/compute/flavors [get]
+// @Router /api/v1/compute/flavors/all [get]
 func (h *Handler) GetFlavors(c *gin.Context) {
 	flavors, err := h.Svc.GetFlavors()
 	if err != nil {
@@ -45,6 +53,14 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 
 }
 
+// GetAvailableFlavors godoc
+// @Summary List flavors with remaining capacity
+// @Description Calculates how many instances can still be created for each flavor based on quota.
+// @Tags compute
+// @Produce json
+// @Success 200 {array} AvailableFlavorResponse
+// @Failure 500 {object} api.ErrorResponse
+// @Router /api/v1/compute/flavors/available [get]
 func (h *Handler) GetAvailableFlavors(c *gin.Context) {
 	// 인프라 레이어를 직접 안 부르고 Service(또는 Repo)를 거칩니다.
 	client, err := h.Svc.GetComputeClient()
@@ -63,6 +79,17 @@ func (h *Handler) GetAvailableFlavors(c *gin.Context) {
 	c.JSON(http.StatusOK, flavors)
 }
 
+// CreateServer godoc
+// @Summary Create a compute instance
+// @Description Creates a new OpenStack server instance.
+// @Tags compute
+// @Accept json
+// @Produce json
+// @Param request body CreateInstanceRequest true "Instance creation request"
+// @Success 201 {object} CreateInstanceResponse
+// @Failure 400 {object} api.ErrorResponse
+// @Failure 500 {object} api.ErrorResponse
+// @Router /api/v1/compute/instances [post]
 func (h *Handler) CreateServer(c *gin.Context) {
 	var req CreateInstanceRequest
 

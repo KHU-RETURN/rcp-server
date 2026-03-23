@@ -23,6 +23,19 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	}
 }
 
+// CreateKeyPair godoc
+// @Summary Create an OpenStack key pair
+// @Description Creates a key pair after validating the request body and SSH public key format.
+// @Tags access
+// @Accept json
+// @Produce json
+// @Param request body CreateKeyPairRequest true "Key pair request"
+// @Success 201 {object} KeyPairResponse
+// @Failure 400 {object} api.ErrorResponse
+// @Failure 403 {object} api.ErrorResponse
+// @Failure 409 {object} api.ErrorResponse
+// @Failure 500 {object} api.ErrorResponse
+// @Router /api/v1/access/keypairs [post]
 func (h *Handler) CreateKeyPair(c *gin.Context) {
 	var req CreateKeyPairRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

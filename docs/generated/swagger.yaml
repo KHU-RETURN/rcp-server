@@ -1,0 +1,303 @@
+basePath: /
+definitions:
+  access.CreateKeyPairRequest:
+    properties:
+      name:
+        description: OpenStack key pair name.
+        type: string
+      public_key:
+        description: SSH public key in authorized_keys format.
+        type: string
+    required:
+    - name
+    - public_key
+    type: object
+  access.KeyPairResponse:
+    properties:
+      fingerprint:
+        description: OpenStack-generated fingerprint.
+        type: string
+      name:
+        description: Key pair name.
+        type: string
+      public_key:
+        description: Public key stored in OpenStack.
+        type: string
+    type: object
+  api.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  compute.AvailableFlavorResponse:
+    properties:
+      disk:
+        description: Disk size in GB.
+        type: integer
+      id:
+        description: Flavor UUID.
+        type: string
+      max_configurable:
+        description: Maximum number of instances that can still be configured with
+          this flavor.
+        type: integer
+      name:
+        description: Human-readable flavor name.
+        type: string
+      ram:
+        description: Memory in MB.
+        type: integer
+      vcpus:
+        description: Number of virtual CPUs.
+        type: integer
+    type: object
+  compute.CreateInstanceRequest:
+    properties:
+      flavor_id:
+        description: OpenStack flavor UUID.
+        type: string
+      image_id:
+        description: OpenStack image UUID.
+        type: string
+      name:
+        description: Instance name.
+        type: string
+      network_id:
+        description: Optional OpenStack network UUID.
+        type: string
+    required:
+    - flavor_id
+    - image_id
+    - name
+    type: object
+  compute.CreateInstanceResponse:
+    properties:
+      accessIPv4:
+        type: string
+      accessIPv6:
+        type: string
+      addresses:
+        additionalProperties: true
+        type: object
+      adminPass:
+        type: string
+      created:
+        type: string
+      fault:
+        $ref: '#/definitions/compute.InstanceFault'
+      flavor:
+        additionalProperties: true
+        type: object
+      hostid:
+        type: string
+      id:
+        type: string
+      key_name:
+        type: string
+      links:
+        items: {}
+        type: array
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      name:
+        type: string
+      os-extended-volumes:volumes_attached:
+        items:
+          $ref: '#/definitions/compute.InstanceAttachedVolume'
+        type: array
+      progress:
+        type: integer
+      security_groups:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      server_groups:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      tenant_id:
+        type: string
+      updated:
+        type: string
+      user_id:
+        type: string
+    type: object
+  compute.FlavorResponse:
+    properties:
+      disk:
+        description: Disk size in GB.
+        type: integer
+      id:
+        description: Flavor UUID.
+        type: string
+      name:
+        description: Human-readable flavor name.
+        type: string
+      ram:
+        description: Memory in MB.
+        type: integer
+      vcpus:
+        description: Number of virtual CPUs.
+        type: integer
+    type: object
+  compute.InstanceAttachedVolume:
+    properties:
+      id:
+        type: string
+    type: object
+  compute.InstanceFault:
+    properties:
+      code:
+        type: integer
+      created:
+        type: string
+      details:
+        type: string
+      message:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Local development reference for the RCP server.
+  title: RCP Server API
+  version: 0.1.0
+paths:
+  /api/v1/access/keypairs:
+    post:
+      consumes:
+      - application/json
+      description: Creates a key pair after validating the request body and SSH public
+        key format.
+      parameters:
+      - description: Key pair request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.CreateKeyPairRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/access.KeyPairResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create an OpenStack key pair
+      tags:
+      - access
+  /api/v1/compute/flavors:
+    get:
+      description: Returns the currently available flavor catalog.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/compute.FlavorResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List compute flavors
+      tags:
+      - compute
+  /api/v1/compute/flavors/all:
+    get:
+      description: Returns the currently available flavor catalog.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/compute.FlavorResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List compute flavors
+      tags:
+      - compute
+  /api/v1/compute/flavors/available:
+    get:
+      description: Calculates how many instances can still be created for each flavor
+        based on quota.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/compute.AvailableFlavorResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List flavors with remaining capacity
+      tags:
+      - compute
+  /api/v1/compute/instances:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new OpenStack server instance.
+      parameters:
+      - description: Instance creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/compute.CreateInstanceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/compute.CreateInstanceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create a compute instance
+      tags:
+      - compute
+schemes:
+- http
+swagger: "2.0"

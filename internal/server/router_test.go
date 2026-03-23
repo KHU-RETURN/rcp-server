@@ -70,8 +70,12 @@ func TestNewRouterServesDocsOutsideReleaseMode(t *testing.T) {
 		if got := w.Header().Get("Content-Type"); !strings.Contains(got, "application/yaml") {
 			t.Fatalf("expected yaml content type, got %q", got)
 		}
-		if !strings.Contains(w.Body.String(), "openapi: 3.0.3") {
+		body := w.Body.String()
+		if !strings.Contains(body, "swagger:") {
 			t.Fatalf("unexpected openapi body: %s", w.Body.String())
+		}
+		if !strings.Contains(body, "/api/v1/access/keypairs:") {
+			t.Fatalf("generated swagger is missing expected path definitions: %s", body)
 		}
 	})
 }

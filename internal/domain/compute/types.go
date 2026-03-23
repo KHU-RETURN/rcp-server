@@ -4,23 +4,33 @@ import "time"
 
 // 기본 정보 (all 용)
 type FlavorResponse struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	VCPUs int    `json:"vcpus"`
-	RAM   int    `json:"ram"`  // MB 단위
-	Disk  int    `json:"disk"` // GB 단위
+	// Flavor UUID.
+	ID string `json:"id"`
+	// Human-readable flavor name.
+	Name string `json:"name"`
+	// Number of virtual CPUs.
+	VCPUs int `json:"vcpus"`
+	// Memory in MB.
+	RAM int `json:"ram"` // MB 단위
+	// Disk size in GB.
+	Disk int `json:"disk"` // GB 단위
 }
 
 // 계산 정보 포함 (available 용) - 상속(Embedding) 활용
 type AvailableFlavorResponse struct {
 	FlavorResponse
+	// Maximum number of instances that can still be configured with this flavor.
 	MaxConfigurable int `json:"max_configurable"`
 }
 
 type CreateInstanceRequest struct {
-	Name      string `json:"name" binding:"required"`
-	ImageRef  string `json:"image_id" binding:"required"`
+	// Instance name.
+	Name string `json:"name" binding:"required"`
+	// OpenStack image UUID.
+	ImageRef string `json:"image_id" binding:"required"`
+	// OpenStack flavor UUID.
 	FlavorRef string `json:"flavor_id" binding:"required"`
+	// Optional OpenStack network UUID.
 	NetworkID string `json:"network_id"`
 }
 
@@ -36,13 +46,13 @@ type CreateInstanceResponse struct {
 	Progress        int                      `json:"progress"`
 	AccessIPv4      string                   `json:"accessIPv4"`
 	AccessIPv6      string                   `json:"accessIPv6"`
-	Flavor          map[string]any           `json:"flavor"`
-	Addresses       map[string]any           `json:"addresses"`
+	Flavor          map[string]interface{}   `json:"flavor"`
+	Addresses       map[string]interface{}   `json:"addresses"`
 	Metadata        map[string]string        `json:"metadata"`
-	Links           []any                    `json:"links"`
+	Links           []interface{}            `json:"links"`
 	KeyName         string                   `json:"key_name"`
 	AdminPass       string                   `json:"adminPass"`
-	SecurityGroups  []map[string]any         `json:"security_groups"`
+	SecurityGroups  []map[string]interface{} `json:"security_groups"`
 	AttachedVolumes []InstanceAttachedVolume `json:"os-extended-volumes:volumes_attached"`
 	Fault           InstanceFault            `json:"fault"`
 	Tags            *[]string                `json:"tags"`
