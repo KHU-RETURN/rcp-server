@@ -49,15 +49,22 @@ func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User
 	}
 
 	// 🔒 2.5 이메일 도메인 검증 로직 추가
-	email := payload.Claims["email"].(string)
-	if !strings.HasSuffix(email, "@khu.ac.kr") {
+	email, ok := payload.Claims["email"].(string)
+    if !ok || email == "" {
+        return nil, errors.New("email claim not found in id_token")
+    }
+	
+    name, ok := payload.Claims["name"].(string)
+    if !ok || name == "" {
+	return nil, errors.New("name claim not found in id_token")
+    }
+    if !strings.HasSuffix(email, "@khu.ac.kr") {
 		return nil, errors.New("경희대학교 계정(@khu.ac.kr)으로만 로그인할 수 있습니다")
 	}
-
 	// 3. User 객체 생성 및 DB 저장 (기존 코드)
 	user := &User{
 		Email:        email,
-		Name:         payload.Claims["name"].(string),
+		Name:         name,
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 		Expiry:       token.Expiry,
