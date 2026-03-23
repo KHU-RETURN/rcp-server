@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
@@ -18,11 +19,19 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
 
-// GetFlavors 핸들러 함수
+// GetFlavors godoc
+// @Summary List compute flavors
+// @Description Returns the currently available flavor catalog.
+// @Tags compute
+// @Produce json
+// @Success 200 {array} FlavorResponse
+// @Failure 500 {object} api.ErrorResponse
+// @Router /api/v1/compute/flavors [get]
+// @Router /api/v1/compute/flavors/all [get]
 func (h *Handler) GetFlavors(c *gin.Context) {
 	flavors, err := h.Svc.GetFlavors()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "사양 조회를 실패했습니다: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "사양 조회를 실패했습니다: " + err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, flavors)
@@ -44,11 +53,19 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 
 }
 
+// GetAvailableFlavors godoc
+// @Summary List flavors with remaining capacity
+// @Description Calculates how many instances can still be created for each flavor based on quota.
+// @Tags compute
+// @Produce json
+// @Success 200 {array} AvailableFlavorResponse
+// @Failure 500 {object} api.ErrorResponse
+// @Router /api/v1/compute/flavors/available [get]
 func (h *Handler) GetAvailableFlavors(c *gin.Context) {
 	// 인프라 레이어를 직접 안 부르고 Service(또는 Repo)를 거칩니다.
 	client, err := h.Svc.GetComputeClient()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cloud connection failed"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Cloud connection failed"})
 		return
 	}
 
@@ -56,32 +73,36 @@ func (h *Handler) GetAvailableFlavors(c *gin.Context) {
 
 	flavors, err := h.Svc.GetAvailableFlavorsWithLimit(client, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, flavors)
 }
 
+// CreateServer godoc
+// @Summary Create a compute instance
+// @Description Creates a new OpenStack server instance.
+// @Tags compute
+// @Accept json
+// @Produce json
+// @Param request body CreateInstanceRequest true "Instance creation request"
+// @Success 201 {object} CreateInstanceResponse
+// @Failure 400 {object} api.ErrorResponse
+// @Failure 500 {object} api.ErrorResponse
+// @Router /api/v1/compute/instances [post]
 func (h *Handler) CreateServer(c *gin.Context) {
-	// 1. 요청 바디를 담을 구조체 정의
-	var req struct {
-		Name      string `json:"name" binding:"required"`
-		ImageRef  string `json:"image_id" binding:"required"`
-		FlavorRef string `json:"flavor_id" binding:"required"`
-		// 네트워크 ID가 필요한 경우를 대비해 추가 (선택사항)
-		NetworkID string `json:"network_id"`
-	}
+	var req CreateInstanceRequest
 
 	// 2. JSON 바인딩 및 유효성 검사
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
 		return
 	}
 
 	// 3. 서비스 호출을 위한 클라이언트 준비
 	client, err := h.Svc.GetComputeClient()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to connect to cloud"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to connect to cloud"})
 		return
 	}
 
@@ -100,7 +121,7 @@ func (h *Handler) CreateServer(c *gin.Context) {
 	// 5. 서버 생성 실행
 	server, err := h.Svc.CreateInstance(client, opts)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 

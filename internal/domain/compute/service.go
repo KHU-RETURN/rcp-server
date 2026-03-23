@@ -4,16 +4,25 @@ import (
 	"fmt"
 
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
+type computeRepository interface {
+	FetchFlavors() ([]flavors.Flavor, error)
+	GetComputeQuota(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
+	GetComputeClient() (*gophercloud.ServiceClient, error)
+	CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+}
+
 // Service는 비즈니스 로직을 담당합니다.
 type Service struct {
-	Repo *Repository
+	Repo computeRepository
 }
 
 // NewService는 새로운 서비스를 생성합니다.
-func NewService(repo *Repository) *Service {
+func NewService(repo computeRepository) *Service {
 	return &Service{Repo: repo}
 }
 
@@ -104,7 +113,66 @@ func (s *Service) GetComputeClient() (*gophercloud.ServiceClient, error) {
 	return s.Repo.GetComputeClient()
 }
 
-func (s *Service) CreateInstance(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
-	// 방어 로직 추가 예정
-	return s.Repo.CreateServer(client, opts)
+func (s *Service) CreateInstance(client *gophercloud.ServiceClient, opts CreateServerOpts) (*CreateInstanceResponse, error) {
+	server, err := s.Repo.CreateServer(client, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return mapCreateInstanceResponse(server), nil
+}
+
+func mapCreateInstanceResponse(server *servers.Server) *CreateInstanceResponse {
+	if server == nil {
+		return nil
+	}
+
+	return &CreateInstanceResponse{
+		ID:              server.ID,
+		TenantID:        server.TenantID,
+		UserID:          server.UserID,
+		Name:            server.Name,
+		Updated:         server.Updated,
+		Created:         server.Created,
+		HostID:          server.HostID,
+		Status:          server.Status,
+		Progress:        server.Progress,
+		AccessIPv4:      server.AccessIPv4,
+		AccessIPv6:      server.AccessIPv6,
+		Flavor:          server.Flavor,
+		Addresses:       server.Addresses,
+		Metadata:        server.Metadata,
+		Links:           server.Links,
+		KeyName:         server.KeyName,
+		AdminPass:       server.AdminPass,
+		SecurityGroups:  server.SecurityGroups,
+		AttachedVolumes: mapAttachedVolumes(server.AttachedVolumes),
+		Fault:           mapFault(server.Fault),
+		Tags:            server.Tags,
+		ServerGroups:    server.ServerGroups,
+	}
+}
+
+func mapAttachedVolumes(volumes []servers.AttachedVolume) []InstanceAttachedVolume {
+	if volumes == nil {
+		return nil
+	}
+
+	res := make([]InstanceAttachedVolume, 0, len(volumes))
+	for _, volume := range volumes {
+		res = append(res, InstanceAttachedVolume{
+			ID: volume.ID,
+		})
+	}
+
+	return res
+}
+
+func mapFault(fault servers.Fault) InstanceFault {
+	return InstanceFault{
+		Code:    fault.Code,
+		Created: fault.Created,
+		Details: fault.Details,
+		Message: fault.Message,
+	}
 }

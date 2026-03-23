@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
@@ -70,6 +71,14 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("expected status 400, got %d", w.Code)
 		}
+
+		var res api.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal error response: %v", err)
+		}
+		if res.Error != "Invalid request body" {
+			t.Fatalf("unexpected error response: %+v", res)
+		}
 	})
 
 	t.Run("returns 409 for duplicate name", func(t *testing.T) {
@@ -97,6 +106,14 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 
 		if w.Code != http.StatusConflict {
 			t.Fatalf("expected status 409, got %d", w.Code)
+		}
+
+		var res api.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal error response: %v", err)
+		}
+		if res.Error != "name already exists" {
+			t.Fatalf("unexpected error response: %+v", res)
 		}
 	})
 
@@ -132,6 +149,14 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		if strings.Contains(w.Body.String(), "provider-secret") {
 			t.Fatalf("response leaked provider details: %s", w.Body.String())
 		}
+
+		var res api.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal error response: %v", err)
+		}
+		if res.Error != "keypair access denied" {
+			t.Fatalf("unexpected error response: %+v", res)
+		}
 	})
 
 	t.Run("returns 500 with sanitized message for internal failures", func(t *testing.T) {
@@ -156,6 +181,14 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 		if strings.Contains(w.Body.String(), "provider bootstrap leaked") {
 			t.Fatalf("response leaked provider details: %s", w.Body.String())
+		}
+
+		var res api.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal error response: %v", err)
+		}
+		if res.Error != "failed to create keypair" {
+			t.Fatalf("unexpected error response: %+v", res)
 		}
 	})
 }

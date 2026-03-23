@@ -7,6 +7,10 @@ import (
 func NewRouter(app *App) *gin.Engine {
 	r := gin.Default()
 
+	if gin.Mode() != gin.ReleaseMode {
+		registerDocsRoutes(r)
+	}
+
 	v1 := r.Group("/api/v1")
 	{
 		app.Access.InitRoutes(v1)

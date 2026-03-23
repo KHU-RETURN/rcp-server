@@ -14,6 +14,26 @@ env:
   GOLANGCI_LINT_VERSION: v2.11.3
 
 jobs:
+  docs:
+    name: Generated Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+
+      - name: Regenerate Swagger docs
+        run: go generate ./cmd/api
+
+      - name: Verify generated docs are committed
+        run: git diff --exit-code
+
   format:
     name: Format and Modules
     runs-on: ubuntu-latest
