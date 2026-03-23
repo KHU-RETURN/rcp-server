@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,7 +22,7 @@ func registerDocsRoutes(r *gin.Engine) {
 	r.GET("/openapi.yaml", func(c *gin.Context) {
 		spec, err := os.ReadFile(openAPISpecPath())
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load local OpenAPI spec"})
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to load local OpenAPI spec"})
 			return
 		}
 
