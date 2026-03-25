@@ -22,6 +22,9 @@ func TestRepository_UpsertUser(t *testing.T) {
 	}()
 
 	repo, err := NewRepository(db)
+	if err != nil {
+		t.Fatalf("failed to create repository: %v", err)
+	}
 	ctx := context.Background()
 
 	t.Run("새로운 유저를 정상적으로 저장한다", func(t *testing.T) {
