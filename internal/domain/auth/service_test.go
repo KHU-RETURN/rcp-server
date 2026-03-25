@@ -2,8 +2,8 @@ package auth
 
 import (
 	"context"
-	"testing"
 	"golang.org/x/oauth2"
+	"testing"
 )
 
 // 1. Mock 객체 정의: UserRepository 인터페이스의 모든 메서드를 구현해야 합니다.
@@ -39,7 +39,7 @@ func TestService_Initialization(t *testing.T) {
 	if authSvc == nil {
 		t.Fatal("authSvc should not be nil")
 	}
-	
+
 	if authSvc.TokenService == nil {
 		t.Error("TokenService was not properly injected")
 	}

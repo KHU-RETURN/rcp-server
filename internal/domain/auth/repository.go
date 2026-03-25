@@ -16,7 +16,7 @@ type UserRepository interface {
 
 // NewRepository는 DB 연결을 주입받고 초기 테이블을 생성합니다.
 func NewRepository(db *sql.DB) UserRepository {
-    schema := `
+	schema := `
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE,
@@ -28,13 +28,13 @@ func NewRepository(db *sql.DB) UserRepository {
         google_refresh_token TEXT,-- 구글 API용
         google_expiry DATETIME    -- 구글 토큰 만료
     );`
-    db.Exec(schema)
-    return &Repository{db: db}
+	db.Exec(schema)
+	return &Repository{db: db}
 }
 
 // UpsertUser는 Google에서 받은 정보를 DB에 저장하거나 업데이트합니다.
 func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
-    query := `
+	query := `
     INSERT INTO users (
         email, name, access_token, refresh_token, expiry, 
         google_access_token, google_refresh_token, google_expiry
@@ -52,26 +52,27 @@ func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 	var googleExpiry sql.NullTime
 
 	if user.GoogleAuth != nil {
-	googleExpiry = sql.NullTime{
-		Time:  user.GoogleAuth.Expiry,
-		Valid: true,
-	}
+		googleExpiry = sql.NullTime{
+			Time:  user.GoogleAuth.Expiry,
+			Valid: true,
+		}
 	} else {
 		googleExpiry = sql.NullTime{
 			Valid: false,
 		}
 	}
-    _, err := r.db.ExecContext(ctx, query,
-        user.Email,
-        user.Name,
-        user.AccessToken,
-        user.RefreshToken,
-        user.Expiry,
+	_, err := r.db.ExecContext(ctx, query,
+		user.Email,
+		user.Name,
+		user.AccessToken,
+		user.RefreshToken,
+		user.Expiry,
 		googleAccessToken,
 		googleRefreshToken,
-		googleExpiry,    )
-    return err
+		googleExpiry)
+	return err
 }
+
 // FindByEmail은 이메일로 기존 유저를 조회합니다.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	query := `SELECT id, email, name, access_token, refresh_token, expiry FROM users WHERE email = ?`

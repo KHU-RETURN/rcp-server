@@ -2,9 +2,9 @@ package google
 
 import (
 	"fmt"
-	"os"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	"os"
 )
 
 func NewGoogleConfig() (*oauth2.Config, error) {
