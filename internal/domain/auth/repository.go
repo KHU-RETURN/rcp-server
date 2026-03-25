@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 type Repository struct {
@@ -15,7 +16,7 @@ type UserRepository interface {
 }
 
 // NewRepository는 DB 연결을 주입받고 초기 테이블을 생성합니다.
-func NewRepository(db *sql.DB) UserRepository {
+func NewRepository(db *sql.DB) (UserRepository, error) {
 	schema := `
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,8 +29,10 @@ func NewRepository(db *sql.DB) UserRepository {
         google_refresh_token TEXT,-- 구글 API용
         google_expiry DATETIME    -- 구글 토큰 만료
     );`
-	db.Exec(schema)
-	return &Repository{db: db}
+	if _, err := db.Exec(schema); err != nil {
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+	return &Repository{db: db}, nil
 }
 
 // UpsertUser는 Google에서 받은 정보를 DB에 저장하거나 업데이트합니다.

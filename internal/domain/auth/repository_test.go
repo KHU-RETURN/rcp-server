@@ -21,7 +21,7 @@ func TestRepository_UpsertUser(t *testing.T) {
 		}
 	}()
 
-	repo := NewRepository(db)
+	repo, err := NewRepository(db)
 	ctx := context.Background()
 
 	t.Run("새로운 유저를 정상적으로 저장한다", func(t *testing.T) {
@@ -80,7 +80,7 @@ func TestRepository_FindByEmail(t *testing.T) {
 		}
 	}()
 
-	repo := NewRepository(db)
+	repo, err := NewRepository(db)
 	ctx := context.Background()
 
 	t.Run("존재하지 않는 이메일 조회 시 nil을 반환한다", func(t *testing.T) {
