@@ -8,7 +8,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-
 // TokenService는 JWT 토큰의 생성 및 검증을 담당합니다.
 type TokenService struct {
 	SecretKey []byte
@@ -58,7 +57,7 @@ func (s *TokenService) createToken(email, tokenType string, expiry time.Time) (s
 
 // ValidateToken은 전달받은 토큰의 유효성을 검사하고 클레임을 반환합니다.
 func (s *TokenService) ValidateToken(tokenString string) (*MyClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &MyClaims{}, func(t *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &MyClaims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
