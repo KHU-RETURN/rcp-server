@@ -15,13 +15,15 @@ import (
 type Service struct {
 	Repo        UserRepository
 	OauthConfig *oauth2.Config
+	TokenService *TokenService // JWT 발급을 위해 주입받음
 }
 
 // NewService는 새로운 서비스를 생성합니다.
-func NewService(repo UserRepository, config *oauth2.Config) *Service {
+func NewService(repo UserRepository, config *oauth2.Config,svc *TokenService) *Service {
 	return &Service{
 		Repo:        repo,
 		OauthConfig: config,
+		TokenService: svc,
 	}
 }
 
@@ -61,13 +63,25 @@ func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User
     if !strings.HasSuffix(email, "@khu.ac.kr") {
 		return nil, errors.New("경희대학교 계정(@khu.ac.kr)으로만 로그인할 수 있습니다")
 	}
+	// 3. 우리 서비스 토큰 발급 (TokenService 활용)
+    accessToken, refreshToken, expiry, err := s.TokenService.GenerateAuthTokens(email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate service tokens: %w", err)
+	}
+  
 	// 3. User 객체 생성 및 DB 저장 (기존 코드)
 	user := &User{
-		Email:        email,
-		Name:         name,
-		AccessToken:  token.AccessToken,
-		RefreshToken: token.RefreshToken,
-		Expiry:       token.Expiry,
+		Email: email,
+		Name:  name,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		Expiry:      expiry,
+		// 👉 Google 전용 토큰은 여기 넣어야 함
+		GoogleAuth: &GoogleInfo{
+			AccessToken:  token.AccessToken,
+			RefreshToken: token.RefreshToken,
+			Expiry:       token.Expiry,
+		},
 	}
 
 	if err := s.Repo.UpsertUser(ctx, user); err != nil {
