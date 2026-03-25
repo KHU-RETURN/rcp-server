@@ -32,7 +32,10 @@ func main() {
 		log.Fatalf("google oauth 연결 실패: %v", err)
 	}
 
-	myApp := server.NewApp(provider, db, oauth)
+	myApp,err := server.NewApp(provider, db, oauth)
+	if err != nil {
+        log.Fatalf("App 초기화 실패: %v", err)
+    }
 	r := server.NewRouter(myApp)
 
 	port := os.Getenv("PORT")
