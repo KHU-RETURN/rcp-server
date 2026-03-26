@@ -94,6 +94,8 @@ func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User
 // generateState는 CSRF 공격 방지를 위한 임의의 문자열을 생성합니다.
 func (s *Service) generateState(n int) string {
 	b := make([]byte, n)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("failed to generate random state: %v", err))
+	}
 	return base64.URLEncoding.EncodeToString(b)
 }
