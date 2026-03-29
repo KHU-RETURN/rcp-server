@@ -3,6 +3,7 @@ package compute
 import (
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
@@ -38,10 +39,11 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		computeGroup.GET("/flavors/all", h.GetFlavors)
 		// 남은 자원량 기반 가용 flavors 조회
 		computeGroup.GET("/flavors/available", h.GetAvailableFlavors)
-		// 서버 생성 엔드포인트
+		// 인스턴스 서버 생성 엔드포인트
 		computeGroup.POST("/instances", h.CreateServer)
+		// 인스턴스 서버 삭제 엔드포인트
+		computeGroup.DELETE("/instances/:id", h.DeleteServer)
 	}
-
 }
 
 func (h *Handler) GetAvailableFlavors(c *gin.Context) {
@@ -106,4 +108,33 @@ func (h *Handler) CreateServer(c *gin.Context) {
 
 	// 6. 생성 요청 성공 (201 Created)
 	c.JSON(http.StatusCreated, server)
+}
+
+func (h *Handler) DeleteServer(c *gin.Context) {
+	// URL 파라미터에서 ID 추출
+	serverID := c.Param("id")
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	client, err := h.Svc.GetComputeClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cloud connection failed"})
+		return
+	}
+
+	// 삭제 서비스 호출
+	if err := h.Svc.DeleteInstance(client, serverID); err != nil {
+		// 아까 배운 대로! 없는 서버면 404, 아니면 500
+		if strings.Contains(err.Error(), "찾을 수 없습니다") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	// 204 No Content: 성공했지만 돌려줄 본문은 없음 (삭제 시 표준)
+	c.Status(http.StatusNoContent)
 }

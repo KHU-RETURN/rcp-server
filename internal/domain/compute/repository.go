@@ -3,6 +3,7 @@ package compute
 import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
@@ -70,4 +71,25 @@ func (r *Repository) CreateServer(client *gophercloud.ServiceClient, opts Create
 		return nil, err
 	}
 	return server, nil
+}
+
+// GetHypervisorList - 모든 하이퍼바이저의 상세 정보 조회
+func (r *Repository) GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error) {
+	// 두 번째 인자로 nil을 넘겨서 기본 리스트 옵션을 사용합니다.
+	allPages, err := hypervisors.List(client, nil).AllPages()
+	if err != nil {
+		return nil, err
+	}
+
+	allHypervisors, err := hypervisors.ExtractHypervisors(allPages)
+	if err != nil {
+		return nil, err
+	}
+
+	return allHypervisors, nil
+}
+
+func (r *Repository) DeleteServer(client *gophercloud.ServiceClient, id string) error {
+	// ID를 받아서 해당 서버를 삭제 요청합니다.
+	return servers.Delete(client, id).ExtractErr()
 }
