@@ -2,9 +2,10 @@ package compute
 
 import (
 	"fmt"
-
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+	"log"
 )
 
 // Service는 비즈니스 로직을 담당합니다.
@@ -99,6 +100,72 @@ func (s *Service) GetComputeClient() (*gophercloud.ServiceClient, error) {
 }
 
 func (s *Service) CreateInstance(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
-	// 방어 로직 추가 예정
+	// [Guard 1] 자원 체크 (CPU, RAM)
+	if err := s.checkQuota(client, opts.FlavorRef); err != nil {
+		return nil, err
+	}
+
+	// [Guard 2] 이름 중복 체크
+	if err := s.checkDuplicateName(client, opts.Name); err != nil {
+		return nil, err
+	}
+
+	// 모든 관문을 통과하면 생성 진행
 	return s.Repo.CreateServer(client, opts)
+}
+
+func (s *Service) checkQuota(client *gophercloud.ServiceClient, flavorID string) error {
+	// 1. Flavor 정보 가져오기
+	flavor, err := flavors.Get(client, flavorID).Extract()
+	if err != nil {
+		return fmt.Errorf("flavor 정보를 확인할 수 없습니다: %v", err)
+	}
+
+	// 2. [Guard B] 물리 자원(Hypervisor) 실점유율 체크
+	hvs, err := s.Repo.GetHypervisorList(client)
+	if err != nil {
+		return fmt.Errorf("하이퍼바이저 정보를 가져올 수 없습니다: %v", err)
+	}
+
+	var totalFreeVCPUs int
+	var totalFreeRAM int
+
+	// 모든 하이퍼바이저의 남은 자원을 합산합니다 (멀티 노드 대응)
+	for _, hv := range hvs {
+		totalFreeVCPUs += (hv.VCPUs - hv.VCPUsUsed)
+		totalFreeRAM += hv.FreeRamMB
+	}
+
+	log.Printf("[DEBUG] 가용 물리 자원 합계 - CPU: %d, RAM: %dMB", totalFreeVCPUs, totalFreeRAM)
+
+	if flavor.VCPUs > totalFreeVCPUs {
+		return fmt.Errorf("물리 서버 CPU 부족 (필요: %d, 가용: %d)", flavor.VCPUs, totalFreeVCPUs)
+	}
+	if flavor.RAM > totalFreeRAM {
+		return fmt.Errorf("물리 서버 RAM 부족 (필요: %dMB, 가용: %dMB)", flavor.RAM, totalFreeRAM)
+	}
+
+	return nil
+}
+
+// checkDuplicateName: 동일한 이름의 서버가 이미 존재하는지 확인
+func (s *Service) checkDuplicateName(client *gophercloud.ServiceClient, name string) error {
+	allPages, err := servers.List(client, servers.ListOpts{Name: name}).AllPages()
+	if err != nil {
+		return fmt.Errorf("서버 목록 조회 실패: %v", err)
+	}
+
+	allServers, err := servers.ExtractServers(allPages)
+	if err != nil {
+		return err
+	}
+
+	// 이름이 완전히 일치하는 서버가 있는지 체크
+	for _, srv := range allServers {
+		if srv.Name == name {
+			return fmt.Errorf("이미 '%s'라는 이름의 서버가 존재합니다", name)
+		}
+	}
+
+	return nil
 }
