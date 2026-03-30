@@ -3,20 +3,30 @@ package compute
 import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
+
+type computeRepository interface {
+	FetchFlavors() ([]flavors.Flavor, error)
+	GetComputeQuota(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
+	GetComputeClient() (*gophercloud.ServiceClient, error)
+	CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+}
 
 type Repository struct {
 	Client *gophercloud.ProviderClient
 }
 
 type CreateServerOpts struct {
-	Name      string
-	ImageRef  string
-	FlavorRef string
-	Networks  []servers.Network // 네트워크 정보가 없으면 생성이 안 될 수 있습니다.
+	Name           string
+	ImageRef       string
+	FlavorRef      string
+	KeyName        string
+	SecurityGroups []string
+	Networks       []servers.Network // 네트워크 정보가 없으면 생성이 안 될 수 있습니다.
 }
 
 func NewRepository(client *gophercloud.ProviderClient) *Repository {
@@ -57,11 +67,17 @@ func (r *Repository) GetComputeQuota(client *gophercloud.ServiceClient, projectI
 
 func (r *Repository) CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
 	// 오픈스택 SDK 규격에 맞게 옵션 설정
-	createOpts := servers.CreateOpts{
-		Name:      opts.Name,
-		ImageRef:  opts.ImageRef,
-		FlavorRef: opts.FlavorRef,
-		Networks:  opts.Networks,
+	baseOpts := servers.CreateOpts{
+		Name:           opts.Name,
+		ImageRef:       opts.ImageRef,
+		FlavorRef:      opts.FlavorRef,
+		SecurityGroups: opts.SecurityGroups,
+		Networks:       opts.Networks,
+	}
+
+	createOpts := keypairs.CreateOptsExt{
+		CreateOptsBuilder: baseOpts,
+		KeyName:           opts.KeyName,
 	}
 
 	// 실제 생성 요청 보내기
