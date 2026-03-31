@@ -58,6 +58,9 @@ func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 			ID:     srv.ID,
 			Name:   srv.Name,
 			Status: srv.Status,
+			Created: srv.Created,
+			Image:  extractResourceID(srv.Image),
+			
 			})
 	}
 	return res, nil
@@ -170,6 +173,8 @@ func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) 
         Addresses: addrMap,
         Flavor:    targetFlavor,
         Usage:     usage,
+		Created:   server.Created,
+    	Image:     extractResourceID(server.Image),
     }, nil
 }
 

@@ -1,5 +1,6 @@
 package compute
 
+import "time"
 // 기본 정보 (all 용)
 type FlavorResponse struct {
 	ID    string `json:"id"`
@@ -48,6 +49,8 @@ type InstanceDetailResponse struct {
 	Addresses map[string]string  `json:"addresses"` // 네트워크 정보
 	Flavor    FlavorResponse     `json:"flavor"`    // 할당된 전체 사양
 	Usage     UsageStats         `json:"usage"`     // 실시간 사용량
+	Created  time.Time 			 	 `json:"created"`	
+	Image string 			     `json:"image"`
 }
 
 //현재 사용중인 자원량
