@@ -1,8 +1,6 @@
 package compute
 
 import (
-	"fmt"
-	"encoding/json"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
@@ -75,21 +73,10 @@ func (r *Repository) FetchInstances() ([]servers.Server, error) {
     if err != nil {
         return nil, err
     }
-
-    // 🔥 1. 진짜 API raw 출력
-    b, _ := json.MarshalIndent(allPages, "", "  ")
-    fmt.Println("===== RAW PAGES =====")
-    fmt.Println(string(b))
-
-    // 🔥 2. Extract 이후도 출력
     result, err := servers.ExtractServers(allPages)
     if err != nil {
         return nil, err
     }
-
-    b2, _ := json.MarshalIndent(result, "", "  ")
-    fmt.Println("===== EXTRACTED =====")
-    fmt.Println(string(b2))
 
     return result, nil
 }
