@@ -54,7 +54,7 @@ type InstanceDetailResponse struct {
 	Image     string            `json:"image"`
 }
 
-//현재 사용중인 자원량
+// 현재 사용중인 자원량
 type UsageStats struct {
 	CPUUsage    float64 `json:"cpu_usage"`    // % 단위 또는 vCPU 시간
 	MemoryUsage int     `json:"memory_usage"` // MB 단위
