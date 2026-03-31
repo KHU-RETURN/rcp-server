@@ -1,6 +1,7 @@
 package compute
 
 import "time"
+
 // 기본 정보 (all 용)
 type FlavorResponse struct {
 	ID    string `json:"id"`
@@ -43,14 +44,14 @@ type CreateInstanceResponse struct {
 
 // InstanceDetailResponse는 VM의 상세 정보와 실시간 사용량을 담습니다.
 type InstanceDetailResponse struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	Status    string             `json:"status"`
-	Addresses map[string]string  `json:"addresses"` // 네트워크 정보
-	Flavor    FlavorResponse     `json:"flavor"`    // 할당된 전체 사양
-	Usage     UsageStats         `json:"usage"`     // 실시간 사용량
-	Created  time.Time 			 	 `json:"created"`	
-	Image string 			     `json:"image"`
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Status    string            `json:"status"`
+	Addresses map[string]string `json:"addresses"` // 네트워크 정보
+	Flavor    FlavorResponse    `json:"flavor"`    // 할당된 전체 사양
+	Usage     UsageStats        `json:"usage"`     // 실시간 사용량
+	Created   time.Time         `json:"created"`
+	Image     string            `json:"image"`
 }
 
 //현재 사용중인 자원량

@@ -27,6 +27,7 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, flavors)
 }
+
 // GetInstanceDetail 핸들러
 func (h *Handler) GetInstanceDetail(c *gin.Context) {
 	id := c.Param("id")
@@ -66,8 +67,8 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		// 서버 생성 엔드포인트
 		computeGroup.POST("/instances", h.CreateServer)
 		// 조회 추가!
-		computeGroup.GET("/instances", h.GetInstances) 
-        computeGroup.GET("/instances/detail/:id", h.GetInstanceDetail)
+		computeGroup.GET("/instances", h.GetInstances)
+		computeGroup.GET("/instances/detail/:id", h.GetInstanceDetail)
 	}
 
 }
