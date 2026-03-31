@@ -15,6 +15,8 @@ type fakeRepository struct {
 	getComputeQuotaFn  func(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
 	getComputeClientFn func() (*gophercloud.ServiceClient, error)
 	createServerFn     func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+	fetchInstancesFn      func() ([]servers.Server, error)
+	fetchInstanceDetailFn func(serverID string) (*servers.Server, map[string]interface{}, error)
 }
 
 func (f *fakeRepository) FetchFlavors() ([]flavors.Flavor, error) {
@@ -43,6 +45,21 @@ func (f *fakeRepository) CreateServer(client *gophercloud.ServiceClient, opts Cr
 		return f.createServerFn(client, opts)
 	}
 	return nil, nil
+}
+// FetchInstances 구현 추가
+func (f *fakeRepository) FetchInstances() ([]servers.Server, error) {
+	if f.fetchInstancesFn != nil {
+		return f.fetchInstancesFn()
+	}
+	return nil, nil
+}
+
+// FetchInstanceDetail 구현 추가
+func (f *fakeRepository) FetchInstanceDetail(serverID string) (*servers.Server, map[string]interface{}, error) {
+	if f.fetchInstanceDetailFn != nil {
+		return f.fetchInstanceDetailFn(serverID)
+	}
+	return nil, nil, nil
 }
 
 func TestServiceCreateInstance(t *testing.T) {

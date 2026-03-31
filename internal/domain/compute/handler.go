@@ -65,6 +65,9 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		computeGroup.GET("/flavors/available", h.GetAvailableFlavors)
 		// 서버 생성 엔드포인트
 		computeGroup.POST("/instances", h.CreateServer)
+		// 조회 추가!
+		computeGroup.GET("/instances", h.GetInstances) 
+        computeGroup.GET("/instances/detail/:id", h.GetInstanceDetail)
 	}
 
 }

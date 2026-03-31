@@ -49,6 +49,9 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 // GetInstances는 VM 전체 목록을 가져와 변환합니다.
 func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 	rawServers, err := s.Repo.FetchInstances()
+		if err != nil {
+		return nil, err
+	}
 	var res []InstanceDetailResponse
 	for _, srv := range rawServers {
 		res = append(res, InstanceDetailResponse{
