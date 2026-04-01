@@ -46,25 +46,55 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 	return res, nil
 }
 
-// GetInstances는 VM 전체 목록을 가져와 변환합니다.
+// GetInstances는 VM 전체 목록을 가져와 변환하며, 각 VM의 Flavor 상세 정보도 포함합니다.
 func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
+	// 1. 모든 인스턴스 목록 가져오기
 	rawServers, err := s.Repo.FetchInstances()
 	if err != nil {
 		return nil, err
 	}
+
+	// 2. [최적화] 모든 Flavor 정보를 미리 한 번만 가져와서 Map으로 변환
+	// 루프 안에서 API를 계속 호출하는 것을 방지합니다.
+	allFlavors, err := s.Repo.FetchFlavors()
+	if err != nil {
+		return nil, err
+	}
+	flavorMap := make(map[string]FlavorResponse)
+	for _, f := range allFlavors {
+		flavorMap[f.ID] = FlavorResponse{
+			ID:    f.ID,
+			Name:  f.Name,
+			VCPUs: f.VCPUs,
+			RAM:   f.RAM,
+			Disk:  f.Disk,
+		}
+	}
+
 	var res []InstanceDetailResponse
 
 	for _, srv := range rawServers {
-
+		// 3. IP 주소 파싱 (Helper 함수로 분리하면 더 깔끔합니다)
 		addrMap := make(map[string]string)
-
 		for netName, addrs := range srv.Addresses {
 			if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
 				if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
-					addrMap[netName] = firstAddr["addr"].(string)
+					if addr, ok := firstAddr["addr"].(string); ok {
+						addrMap[netName] = addr
+					}
 				}
 			}
 		}
+
+		// 4. 미리 만들어둔 flavorMap에서 해당 인스턴스의 Flavor 정보 찾기
+		var targetFlavor FlavorResponse
+		if srvFlavorID, ok := srv.Flavor["id"].(string); ok {
+			if f, exists := flavorMap[srvFlavorID]; exists {
+				targetFlavor = f
+			}
+		}
+
+		// 5. 결과 리스트에 추가
 		res = append(res, InstanceDetailResponse{
 			ID:        srv.ID,
 			Name:      srv.Name,
@@ -72,8 +102,10 @@ func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 			Created:   srv.Created,
 			Image:     extractResourceID(srv.Image),
 			Addresses: addrMap,
+			Flavor:    targetFlavor, // 이제 목록 조회에서도 Flavor 상세 정보가 포함됩니다.
 		})
 	}
+
 	return res, nil
 }
 
