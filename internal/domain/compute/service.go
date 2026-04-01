@@ -53,13 +53,25 @@ func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 		return nil, err
 	}
 	var res []InstanceDetailResponse
+
 	for _, srv := range rawServers {
+
+		addrMap := make(map[string]string)
+
+		for netName, addrs := range srv.Addresses {
+			if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
+				if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
+					addrMap[netName] = firstAddr["addr"].(string)
+				}
+			}
+		}
 		res = append(res, InstanceDetailResponse{
-			ID:      srv.ID,
-			Name:    srv.Name,
-			Status:  srv.Status,
-			Created: srv.Created,
-			Image:   extractResourceID(srv.Image),
+			ID:        srv.ID,
+			Name:      srv.Name,
+			Status:    srv.Status,
+			Created:   srv.Created,
+			Image:     extractResourceID(srv.Image),
+			Addresses: addrMap,
 		})
 	}
 	return res, nil
