@@ -1,25 +1,25 @@
 package compute
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
-
-type computeRepository interface {
-	FetchFlavors() ([]flavors.Flavor, error)
-	GetComputeQuota(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
-	GetComputeClient() (*gophercloud.ServiceClient, error)
-	CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
-}
 
 // Service는 비즈니스 로직을 담당합니다.
 type Service struct {
 	Repo computeRepository
 }
+
+var (
+	ErrCreateInstanceNameRequired   = errors.New("name is required")
+	ErrCreateInstanceImageRequired  = errors.New("image_id is required")
+	ErrCreateInstanceFlavorRequired = errors.New("flavor_id is required")
+)
 
 // NewService는 새로운 서비스를 생성합니다.
 func NewService(repo computeRepository) *Service {
@@ -85,15 +85,9 @@ func (s *Service) GetAvailableFlavorsWithLimit(client *gophercloud.ServiceClient
 		}
 
 		// 4. 세 가지 제약(CPU, RAM, 총 Instance 개수) 중 가장 작은 값이 진짜 한도
-		maxPossible := min(countByRAM, countByCPU)
-		if remInstances < maxPossible {
-			maxPossible = remInstances
-		}
-
-		// 결과가 마이너스면 0으로 세팅
-		if maxPossible < 0 {
-			maxPossible = 0
-		}
+		maxPossible := max(
+			// 결과가 마이너스면 0으로 세팅
+			min(remInstances, min(countByRAM, countByCPU)), 0)
 
 		res = append(res, AvailableFlavorResponse{
 			FlavorResponse: FlavorResponse{
@@ -114,65 +108,224 @@ func (s *Service) GetComputeClient() (*gophercloud.ServiceClient, error) {
 }
 
 func (s *Service) CreateInstance(client *gophercloud.ServiceClient, opts CreateServerOpts) (*CreateInstanceResponse, error) {
-	server, err := s.Repo.CreateServer(client, opts)
+	normalizedOpts := normalizeCreateServerOpts(opts)
+	if err := validateCreateServerOpts(normalizedOpts); err != nil {
+		return nil, err
+	}
+
+	server, err := s.Repo.CreateServer(client, normalizedOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	return mapCreateInstanceResponse(server), nil
+	return buildCreateInstanceResponse(server, normalizedOpts), nil
 }
 
-func mapCreateInstanceResponse(server *servers.Server) *CreateInstanceResponse {
-	if server == nil {
+type serverAddress struct {
+	Address string `json:"addr"`
+	Type    string `json:"OS-EXT-IPS:type"`
+}
+
+func buildCreateServerOpts(req CreateInstanceRequest) (CreateServerOpts, error) {
+	req = normalizeCreateInstanceRequest(req)
+
+	opts := CreateServerOpts{
+		Name:           req.Name,
+		ImageRef:       req.ImageID,
+		FlavorRef:      req.FlavorID,
+		KeyName:        req.KeyName,
+		SecurityGroups: req.SecurityGroups,
+	}
+
+	if req.NetworkID != "" {
+		opts.Networks = []servers.Network{{UUID: req.NetworkID}}
+	}
+
+	if err := validateCreateServerOpts(opts); err != nil {
+		return CreateServerOpts{}, err
+	}
+
+	return opts, nil
+}
+
+func normalizeCreateInstanceRequest(req CreateInstanceRequest) CreateInstanceRequest {
+	req.Name = strings.TrimSpace(req.Name)
+	req.ImageID = strings.TrimSpace(req.ImageID)
+	req.FlavorID = strings.TrimSpace(req.FlavorID)
+	req.NetworkID = strings.TrimSpace(req.NetworkID)
+	req.KeyName = strings.TrimSpace(req.KeyName)
+	req.SecurityGroups = normalizeStringSlice(req.SecurityGroups)
+	return req
+}
+
+func normalizeCreateServerOpts(opts CreateServerOpts) CreateServerOpts {
+	opts.Name = strings.TrimSpace(opts.Name)
+	opts.ImageRef = strings.TrimSpace(opts.ImageRef)
+	opts.FlavorRef = strings.TrimSpace(opts.FlavorRef)
+	opts.KeyName = strings.TrimSpace(opts.KeyName)
+	opts.SecurityGroups = normalizeStringSlice(opts.SecurityGroups)
+
+	networks := make([]servers.Network, 0, len(opts.Networks))
+	for _, network := range opts.Networks {
+		network.UUID = strings.TrimSpace(network.UUID)
+		network.Port = strings.TrimSpace(network.Port)
+		network.FixedIP = strings.TrimSpace(network.FixedIP)
+		network.Tag = strings.TrimSpace(network.Tag)
+		if network.UUID == "" && network.Port == "" && network.FixedIP == "" && network.Tag == "" {
+			continue
+		}
+		networks = append(networks, network)
+	}
+	opts.Networks = networks
+
+	return opts
+}
+
+func validateCreateServerOpts(opts CreateServerOpts) error {
+	switch {
+	case strings.TrimSpace(opts.Name) == "":
+		return ErrCreateInstanceNameRequired
+	case strings.TrimSpace(opts.ImageRef) == "":
+		return ErrCreateInstanceImageRequired
+	case strings.TrimSpace(opts.FlavorRef) == "":
+		return ErrCreateInstanceFlavorRequired
+	default:
 		return nil
 	}
+}
+
+func normalizeStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		normalized = append(normalized, trimmed)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
+}
+
+func buildCreateInstanceResponse(server *servers.Server, opts CreateServerOpts) *CreateInstanceResponse {
+	fixedIP, floatingIP := extractServerIPs(server)
+	keyName := firstNonEmpty(strings.TrimSpace(server.KeyName), opts.KeyName)
+	securityGroups := extractSecurityGroupNames(server.SecurityGroups, opts.SecurityGroups)
 
 	return &CreateInstanceResponse{
-		ID:              server.ID,
-		TenantID:        server.TenantID,
-		UserID:          server.UserID,
-		Name:            server.Name,
-		Updated:         server.Updated,
-		Created:         server.Created,
-		HostID:          server.HostID,
-		Status:          server.Status,
-		Progress:        server.Progress,
-		AccessIPv4:      server.AccessIPv4,
-		AccessIPv6:      server.AccessIPv6,
-		Flavor:          server.Flavor,
-		Addresses:       server.Addresses,
-		Metadata:        server.Metadata,
-		Links:           server.Links,
-		KeyName:         server.KeyName,
-		AdminPass:       server.AdminPass,
-		SecurityGroups:  server.SecurityGroups,
-		AttachedVolumes: mapAttachedVolumes(server.AttachedVolumes),
-		Fault:           mapFault(server.Fault),
-		Tags:            server.Tags,
-		ServerGroups:    server.ServerGroups,
+		ID:             server.ID,
+		Name:           firstNonEmpty(strings.TrimSpace(server.Name), opts.Name),
+		Status:         strings.TrimSpace(server.Status),
+		ImageID:        firstNonEmpty(extractResourceID(server.Image), opts.ImageRef),
+		FlavorID:       firstNonEmpty(extractResourceID(server.Flavor), opts.FlavorRef),
+		KeyName:        keyName,
+		SecurityGroups: securityGroups,
+		FixedIP:        fixedIP,
+		FloatingIP:     floatingIP,
 	}
 }
 
-func mapAttachedVolumes(volumes []servers.AttachedVolume) []InstanceAttachedVolume {
-	if volumes == nil {
+func extractServerIPs(server *servers.Server) (string, string) {
+	var fixedIP string
+	var floatingIP string
+
+	for _, rawAddresses := range server.Addresses {
+		addresses := decodeServerAddresses(rawAddresses)
+		for _, address := range addresses {
+			ip := strings.TrimSpace(address.Address)
+			if ip == "" {
+				continue
+			}
+
+			switch strings.TrimSpace(address.Type) {
+			case "floating":
+				if floatingIP == "" {
+					floatingIP = ip
+				}
+			case "fixed":
+				if fixedIP == "" {
+					fixedIP = ip
+				}
+			}
+		}
+	}
+
+	if floatingIP == "" {
+		floatingIP = strings.TrimSpace(server.AccessIPv4)
+	}
+
+	return fixedIP, floatingIP
+}
+
+func decodeServerAddresses(rawAddresses any) []serverAddress {
+	if rawAddresses == nil {
 		return nil
 	}
 
-	res := make([]InstanceAttachedVolume, 0, len(volumes))
-	for _, volume := range volumes {
-		res = append(res, InstanceAttachedVolume{
-			ID: volume.ID,
-		})
+	payload, err := json.Marshal(rawAddresses)
+	if err != nil {
+		return nil
 	}
 
-	return res
+	var addresses []serverAddress
+	if err := json.Unmarshal(payload, &addresses); err != nil {
+		return nil
+	}
+
+	return addresses
 }
 
-func mapFault(fault servers.Fault) InstanceFault {
-	return InstanceFault{
-		Code:    fault.Code,
-		Created: fault.Created,
-		Details: fault.Details,
-		Message: fault.Message,
+func extractResourceID(resource map[string]any) string {
+	if resource == nil {
+		return ""
 	}
+
+	if id, ok := resource["id"].(string); ok {
+		return strings.TrimSpace(id)
+	}
+
+	return ""
+}
+
+func extractSecurityGroupNames(groups []map[string]any, fallback []string) []string {
+	names := make([]string, 0, len(groups))
+	for _, group := range groups {
+		name, _ := group["name"].(string)
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		names = append(names, trimmed)
+	}
+
+	if len(names) > 0 {
+		return names
+	}
+
+	if len(fallback) == 0 {
+		return nil
+	}
+
+	cloned := make([]string, len(fallback))
+	copy(cloned, fallback)
+	return cloned
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+
+	return ""
 }

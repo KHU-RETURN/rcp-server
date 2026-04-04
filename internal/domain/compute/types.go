@@ -1,7 +1,5 @@
 package compute
 
-import "time"
-
 // 기본 정보 (all 용)
 type FlavorResponse struct {
 	// Flavor UUID.
@@ -23,49 +21,25 @@ type AvailableFlavorResponse struct {
 	MaxConfigurable int `json:"max_configurable"`
 }
 
+// CreateInstanceRequest는 VM 생성 요청 본문입니다.
 type CreateInstanceRequest struct {
-	// Instance name.
-	Name string `json:"name" binding:"required"`
-	// OpenStack image UUID.
-	ImageRef string `json:"image_id" binding:"required"`
-	// OpenStack flavor UUID.
-	FlavorRef string `json:"flavor_id" binding:"required"`
-	// Optional OpenStack network UUID.
-	NetworkID string `json:"network_id"`
+	Name           string   `json:"name" binding:"required"`
+	ImageID        string   `json:"image_id" binding:"required"`
+	FlavorID       string   `json:"flavor_id" binding:"required"`
+	NetworkID      string   `json:"network_id"`
+	KeyName        string   `json:"key_name"`
+	SecurityGroups []string `json:"security_groups"`
 }
 
+// CreateInstanceResponse는 VM 생성 성공 응답 규격입니다.
 type CreateInstanceResponse struct {
-	ID              string                   `json:"id"`
-	TenantID        string                   `json:"tenant_id"`
-	UserID          string                   `json:"user_id"`
-	Name            string                   `json:"name"`
-	Updated         time.Time                `json:"updated"`
-	Created         time.Time                `json:"created"`
-	HostID          string                   `json:"hostid"`
-	Status          string                   `json:"status"`
-	Progress        int                      `json:"progress"`
-	AccessIPv4      string                   `json:"accessIPv4"`
-	AccessIPv6      string                   `json:"accessIPv6"`
-	Flavor          map[string]interface{}   `json:"flavor"`
-	Addresses       map[string]interface{}   `json:"addresses"`
-	Metadata        map[string]string        `json:"metadata"`
-	Links           []interface{}            `json:"links"`
-	KeyName         string                   `json:"key_name"`
-	AdminPass       string                   `json:"adminPass"`
-	SecurityGroups  []map[string]interface{} `json:"security_groups"`
-	AttachedVolumes []InstanceAttachedVolume `json:"os-extended-volumes:volumes_attached"`
-	Fault           InstanceFault            `json:"fault"`
-	Tags            *[]string                `json:"tags"`
-	ServerGroups    *[]string                `json:"server_groups"`
-}
-
-type InstanceAttachedVolume struct {
-	ID string `json:"id"`
-}
-
-type InstanceFault struct {
-	Code    int       `json:"code"`
-	Created time.Time `json:"created"`
-	Details string    `json:"details"`
-	Message string    `json:"message"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Status         string   `json:"status"`
+	ImageID        string   `json:"image_id"`
+	FlavorID       string   `json:"flavor_id"`
+	KeyName        string   `json:"key_name"`
+	SecurityGroups []string `json:"security_groups"`
+	FixedIP        string   `json:"fixed_ip"`
+	FloatingIP     string   `json:"floating_ip"`
 }
