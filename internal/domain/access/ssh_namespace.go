@@ -17,7 +17,7 @@ type NamespaceDialer struct {
 // DialVM opens a TCP connection to vmIP:22 via `ip netns exec <ns> nc -w 10 <vmIP> 22`.
 // The returned net.Conn wraps the subprocess stdin/stdout as a bidirectional stream.
 func (d *NamespaceDialer) DialVM(ctx context.Context, vmIP string) (net.Conn, error) {
-	cmd := exec.CommandContext(ctx, "ip", "netns", "exec", d.Namespace, "nc", "-w", "10", vmIP, "22")
+	cmd := exec.CommandContext(ctx, "ip", "netns", "exec", d.Namespace, "nc", "-w", "10", vmIP, "22") //nolint:gosec // namespace and vmIP come from trusted DB
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

@@ -26,7 +26,7 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 		sendSSHExitStatus(clientChan, 1)
 		return
 	}
-	defer nsConn.Close()
+	defer func() { _ = nsConn.Close() }()
 
 	// 2. Establish full SSH client connection to VM using RCP service key
 	sshClientConn, chans, reqs, err := gossh.NewClientConn(nsConn, vmIP+":22", &gossh.ClientConfig{
@@ -34,17 +34,17 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 		Auth: []gossh.AuthMethod{
 			gossh.PublicKeys(h.svc.GetServiceKey()),
 		},
-		HostKeyCallback: gossh.InsecureIgnoreHostKey(), // internal network, no TOFU needed
+		HostKeyCallback: gossh.InsecureIgnoreHostKey(), //nolint:gosec // internal network, no TOFU needed
 	})
 	if err != nil {
 		log.Printf("relay: ssh client conn to %s: %v", vmIP, err)
 		sendSSHExitStatus(clientChan, 1)
 		return
 	}
-	defer sshClientConn.Close()
+	defer func() { _ = sshClientConn.Close() }()
 
 	client := gossh.NewClient(sshClientConn, chans, reqs)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// 3. Open a "session" channel on the VM connection
 	vmSession, err := client.NewSession()
@@ -53,7 +53,7 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 		sendSSHExitStatus(clientChan, 1)
 		return
 	}
-	defer vmSession.Close()
+	defer func() { _ = vmSession.Close() }()
 
 	// 4. Bridge stdin/stdout/stderr
 	vmStdin, err := vmSession.StdinPipe()

@@ -74,7 +74,7 @@ func buildSSHServerConfig(hostKey gossh.Signer, cfCAKey gossh.PublicKey, verifie
 
 // loadSSHHostKey reads and parses the SSH host private key from the given path.
 func loadSSHHostKey(path string) (gossh.Signer, error) {
-	keyBytes, err := os.ReadFile(path)
+	keyBytes, err := os.ReadFile(path) //nolint:gosec // path comes from trusted config
 	if err != nil {
 		return nil, fmt.Errorf("loadSSHHostKey: read %s: %w", path, err)
 	}
@@ -87,7 +87,7 @@ func loadSSHHostKey(path string) (gossh.Signer, error) {
 
 // loadCFCAKey reads and parses the Cloudflare CA public key from the given path.
 func loadCFCAKey(path string) (gossh.PublicKey, error) {
-	keyBytes, err := os.ReadFile(path)
+	keyBytes, err := os.ReadFile(path) //nolint:gosec // path comes from trusted config
 	if err != nil {
 		return nil, fmt.Errorf("loadCFCAKey: read %s: %w", path, err)
 	}
@@ -100,7 +100,7 @@ func loadCFCAKey(path string) (gossh.PublicKey, error) {
 
 // loadSSHServiceKey reads and parses the RCP service private key used to authenticate to VMs.
 func loadSSHServiceKey(path string) (gossh.Signer, error) {
-	keyBytes, err := os.ReadFile(path)
+	keyBytes, err := os.ReadFile(path) //nolint:gosec // path comes from trusted config
 	if err != nil {
 		return nil, fmt.Errorf("loadSSHServiceKey: read %s: %w", path, err)
 	}

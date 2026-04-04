@@ -35,7 +35,7 @@ func (s *SSHServer) ListenAndServe() error {
 	if err != nil {
 		return fmt.Errorf("ssh server listen %s: %w", s.listenAddr, err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	log.Printf("SSH relay server listening on %s", s.listenAddr)
 
@@ -54,10 +54,10 @@ func (s *SSHServer) handleTCPConn(conn net.Conn) {
 	sshConn, chans, reqs, err := gossh.NewServerConn(conn, s.config)
 	if err != nil {
 		log.Printf("SSH handshake failed from %s: %v", conn.RemoteAddr(), err)
-		conn.Close()
+		_ = conn.Close()
 		return
 	}
-	defer sshConn.Close()
+	defer func() { _ = sshConn.Close() }()
 
 	email, ok := sshConn.Permissions.Extensions["email"]
 	if !ok {

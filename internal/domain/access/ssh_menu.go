@@ -43,7 +43,7 @@ func (h *ConnectionHandler) runMenuSession(
 	reqs <-chan *gossh.Request,
 	email string,
 ) {
-	defer ch.Close()
+	defer func() { _ = ch.Close() }()
 
 	var hasPTY bool
 	for req := range reqs {
@@ -143,7 +143,7 @@ func renderSSHMenu(ch gossh.Channel, vms []UserVM, page, pageSize int) {
 	var b strings.Builder
 	b.WriteString("\r\n")
 	b.WriteString("┌─────────────────────────────────────────────┐\r\n")
-	b.WriteString(fmt.Sprintf("│  접속 가능한 VM 목록  (%s)%s│\r\n", header, strings.Repeat(" ", pad)))
+	fmt.Fprintf(&b, "│  접속 가능한 VM 목록  (%s)%s│\r\n", header, strings.Repeat(" ", pad))
 	b.WriteString("├─────────────────────────────────────────────┤\r\n")
 
 	for i := start; i < end; i++ {
@@ -170,11 +170,11 @@ func sshReadLine(ch gossh.Channel) (string, error) {
 			return "", err
 		}
 		c := buf[0]
-		switch {
-		case c == '\r' || c == '\n':
+		switch c {
+		case '\r', '\n':
 			sshWriteString(ch, "\r\n")
 			return string(line), nil
-		case c == 127 || c == '\b': // backspace
+		case 127, '\b': // backspace
 			if len(line) > 0 {
 				line = line[:len(line)-1]
 				sshWriteString(ch, "\b \b")

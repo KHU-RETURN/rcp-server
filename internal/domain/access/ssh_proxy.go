@@ -46,7 +46,7 @@ func (h *ConnectionHandler) handleDirectRelay(
 		nsConn, err := h.svc.DialVM(ctx, vm.FixedIP)
 		if err != nil {
 			log.Printf("direct relay: dial vm %s: %v", vm.FixedIP, err)
-			ch.Close()
+			_ = ch.Close()
 			return
 		}
 
@@ -68,8 +68,8 @@ func bridgeSSHStreams(a io.ReadWriteCloser, b io.ReadWriteCloser) {
 	}()
 
 	<-done
-	a.Close()
-	b.Close()
+	_ = a.Close()
+	_ = b.Close()
 }
 
 // drainSSHChannels rejects all pending channel requests with the given reason.

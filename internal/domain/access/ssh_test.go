@@ -103,7 +103,7 @@ func newTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 
@@ -633,8 +633,8 @@ func signTestCertWithPrincipals(t *testing.T, ca gossh.Signer, user string, prin
 		Key:             userKey.PublicKey(),
 		KeyId:           "test-cert",
 		ValidPrincipals: principals,
-		ValidAfter:      uint64(time.Now().Add(-time.Hour).Unix()),
-		ValidBefore:     uint64(time.Now().Add(time.Hour).Unix()),
+		ValidAfter:      uint64(time.Now().Add(-time.Hour).Unix()), //nolint:gosec // test-only, time is always positive
+		ValidBefore:     uint64(time.Now().Add(time.Hour).Unix()),  //nolint:gosec // test-only, time is always positive
 	}
 	if err := cert.SignCert(rand.Reader, ca); err != nil {
 		t.Fatalf("sign cert: %v", err)
@@ -712,7 +712,7 @@ func TestLoadCFCAKey(t *testing.T) {
 		authKey := gossh.MarshalAuthorizedKey(signer.PublicKey())
 
 		tmpFile := t.TempDir() + "/cf_ca.pub"
-		if err := os.WriteFile(tmpFile, authKey, 0644); err != nil {
+		if err := os.WriteFile(tmpFile, authKey, 0600); err != nil {
 			t.Fatalf("write temp key: %v", err)
 		}
 
@@ -886,7 +886,7 @@ func TestBridgeSSHStreams(t *testing.T) {
 		// b reads it and copies to a. Let's just verify the bridge closes properly.
 
 		// Close one side to trigger bridge shutdown
-		aWrite.Close()
+		_ = aWrite.Close()
 
 		select {
 		case <-done:
@@ -906,10 +906,10 @@ type testRWC struct {
 func (t *testRWC) Close() error {
 	t.closed = true
 	if c, ok := t.Reader.(io.Closer); ok {
-		c.Close()
+		_ = c.Close()
 	}
 	if c, ok := t.Writer.(io.Closer); ok {
-		c.Close()
+		_ = c.Close()
 	}
 	return nil
 }

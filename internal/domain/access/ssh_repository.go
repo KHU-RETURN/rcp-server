@@ -59,7 +59,7 @@ func (r *SSHRepository) ListVMsByEmail(ctx context.Context, email string) ([]Use
 	if err != nil {
 		return nil, fmt.Errorf("ListVMsByEmail: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var vms []UserVM
 	for rows.Next() {
