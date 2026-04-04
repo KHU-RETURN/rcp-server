@@ -3,7 +3,6 @@ package server
 import (
 	"database/sql"
 	"fmt"
-	"os"
 
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
@@ -22,13 +21,13 @@ func NewApp(
 	p *gophercloud.ProviderClient,
 	db *sql.DB,
 	oauthConfig *oauth2.Config,
+	projectID string,
+	jwtSecret string,
 ) (*App, error) {
-	authHandler, err := auth.Init(db, oauthConfig)
+	authHandler, err := auth.Init(db, oauthConfig, jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
-
-	projectID := os.Getenv("OS_PROJECT_ID")
 
 	return &App{
 		Compute: compute.Init(p, projectID),

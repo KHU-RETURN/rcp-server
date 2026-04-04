@@ -4,16 +4,25 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/http"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
-	"os"
 )
 
-func NewProviderClient() (*gophercloud.ProviderClient, error) {
+type ProviderConfig struct {
+	AuthURL    string
+	Username   string
+	Password   string
+	ProjectName string
+	DomainName string
+	CFClientID string
+	CFSecret   string
+}
+
+func NewProviderClient(cfg ProviderConfig) (*gophercloud.ProviderClient, error) {
 	opts := gophercloud.AuthOptions{
-		IdentityEndpoint: os.Getenv("OS_AUTH_URL"),
-		Username:         os.Getenv("OS_USERNAME"),
-		Password:         os.Getenv("OS_PASSWORD"),
-		TenantName:       os.Getenv("OS_PROJECT_NAME"),
-		DomainName:       os.Getenv("OS_USER_DOMAIN_NAME"),
+		IdentityEndpoint: cfg.AuthURL,
+		Username:         cfg.Username,
+		Password:         cfg.Password,
+		TenantName:       cfg.ProjectName,
+		DomainName:       cfg.DomainName,
 	}
 
 	provider, err := openstack.NewClient(opts.IdentityEndpoint)
@@ -21,11 +30,7 @@ func NewProviderClient() (*gophercloud.ProviderClient, error) {
 		return nil, err
 	}
 
-	// Cloudflare 클라이언트 주입
-	provider.HTTPClient = *http.NewCloudflareClient(
-		os.Getenv("CF_ACCESS_CLIENT_ID"),
-		os.Getenv("CF_ACCESS_CLIENT_SECRET"),
-	)
+	provider.HTTPClient = *http.NewCloudflareClient(cfg.CFClientID, cfg.CFSecret)
 
 	err = openstack.Authenticate(provider, opts)
 	return provider, err
