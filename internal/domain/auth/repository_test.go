@@ -71,6 +71,82 @@ func TestRepository_UpsertUser(t *testing.T) {
 	})
 }
 
+func TestRepository_UpsertUserWithGoogleAuth(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("failed to close database: %v", err)
+		}
+	}()
+
+	repo, err := NewRepository(db)
+	if err != nil {
+		t.Fatalf("failed to create repository: %v", err)
+	}
+	ctx := context.Background()
+
+	t.Run("google tokens are stored correctly", func(t *testing.T) {
+		googleExpiry := time.Now().Add(1 * time.Hour).UTC().Truncate(time.Second)
+		user := &User{
+			Email:        "google@khu.ac.kr",
+			Name:         "구글 유저",
+			AccessToken:  "svc-access",
+			RefreshToken: "svc-refresh",
+			Expiry:       time.Now().Add(1 * time.Hour),
+			GoogleAuth: &GoogleInfo{
+				AccessToken:  "google-access-token",
+				RefreshToken: "google-refresh-token",
+				Expiry:       googleExpiry,
+			},
+		}
+
+		if err := repo.UpsertUser(ctx, user); err != nil {
+			t.Fatalf("UpsertUser failed: %v", err)
+		}
+
+		row := db.QueryRowContext(ctx,
+			`SELECT google_access_token, google_refresh_token FROM users WHERE email = ?`,
+			user.Email,
+		)
+		var gotAccess, gotRefresh string
+		if err := row.Scan(&gotAccess, &gotRefresh); err != nil {
+			t.Fatalf("failed to scan row: %v", err)
+		}
+		if gotAccess != "google-access-token" {
+			t.Fatalf("expected google_access_token=%q, got %q", "google-access-token", gotAccess)
+		}
+		if gotRefresh != "google-refresh-token" {
+			t.Fatalf("expected google_refresh_token=%q, got %q", "google-refresh-token", gotRefresh)
+		}
+	})
+
+	t.Run("google tokens are empty when GoogleAuth is nil", func(t *testing.T) {
+		user := &User{
+			Email: "nogoogle@khu.ac.kr",
+			Name:  "노구글",
+		}
+
+		if err := repo.UpsertUser(ctx, user); err != nil {
+			t.Fatalf("UpsertUser failed: %v", err)
+		}
+
+		row := db.QueryRowContext(ctx,
+			`SELECT google_access_token, google_refresh_token FROM users WHERE email = ?`,
+			user.Email,
+		)
+		var gotAccess, gotRefresh string
+		if err := row.Scan(&gotAccess, &gotRefresh); err != nil {
+			t.Fatalf("failed to scan row: %v", err)
+		}
+		if gotAccess != "" || gotRefresh != "" {
+			t.Fatalf("expected empty google tokens, got access=%q refresh=%q", gotAccess, gotRefresh)
+		}
+	})
+}
+
 func TestRepository_FindByEmail(t *testing.T) {
 	// 여기도 "sqlite"로 변경하고 에러 체크 추가
 	db, err := sql.Open("sqlite", ":memory:")

@@ -146,6 +146,65 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 400 for invalid keypair request", func(t *testing.T) {
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusNotFound)
+			},
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusBadRequest)
+			},
+		}
+
+		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", w.Code)
+		}
+		var res api.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal error response: %v", err)
+		}
+		if res.Error != "invalid keypair request" {
+			t.Fatalf("unexpected error message: %q", res.Error)
+		}
+	})
+
+	t.Run("returns 500 default for unclassified error", func(t *testing.T) {
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusNotFound)
+			},
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				// Return a raw error that doesn't match any classified error
+				return nil, errors.New("unclassified internal error")
+			},
+		}
+
+		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		// Non-StatusError wraps as ErrKeyPairOperationFailed → 500
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", w.Code)
+		}
+	})
+
 	t.Run("returns 500 with sanitized message for internal failures", func(t *testing.T) {
 		repo := &fakeClient{
 			getKeyPairFn: func(name string) (*KeyPair, error) {

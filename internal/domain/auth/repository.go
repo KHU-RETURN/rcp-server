@@ -51,6 +51,8 @@ func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 	var googleExpiry sql.NullTime
 
 	if user.GoogleAuth != nil {
+		googleAccessToken = user.GoogleAuth.AccessToken
+		googleRefreshToken = user.GoogleAuth.RefreshToken
 		googleExpiry = sql.NullTime{
 			Time:  user.GoogleAuth.Expiry,
 			Valid: true,

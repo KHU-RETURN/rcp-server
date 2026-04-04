@@ -1,6 +1,7 @@
 package compute
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -30,6 +31,219 @@ func (f *fakeClient) CreateServer(opts CreateServerOpts) (*Server, error) {
 		return f.createServerFn(opts)
 	}
 	return nil, nil
+}
+
+func TestServiceGetFlavors(t *testing.T) {
+	t.Run("returns converted flavors", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "1", Name: "m1.small", VCPUs: 1, RAM: 2048, Disk: 20},
+					{ID: "2", Name: "m1.medium", VCPUs: 2, RAM: 4096, Disk: 40},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetFlavors()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 2 {
+			t.Fatalf("expected 2 flavors, got %d", len(res))
+		}
+		if res[0].ID != "1" || res[0].VCPUs != 1 || res[0].RAM != 2048 {
+			t.Fatalf("unexpected first flavor: %+v", res[0])
+		}
+		if res[1].ID != "2" || res[1].Name != "m1.medium" {
+			t.Fatalf("unexpected second flavor: %+v", res[1])
+		}
+	})
+
+	t.Run("returns empty slice when no flavors", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetFlavors()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 0 {
+			t.Fatalf("expected empty slice, got %v", res)
+		}
+	})
+
+	t.Run("propagates client error", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return nil, errors.New("upstream error")
+			},
+		}
+		svc := NewService(client, "project-1")
+		_, err := svc.GetFlavors()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+}
+
+func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
+	flavors := []Flavor{
+		{ID: "1", Name: "m1.small", VCPUs: 2, RAM: 1024, Disk: 10},
+		{ID: "2", Name: "m1.medium", VCPUs: 4, RAM: 2048, Disk: 20},
+	}
+
+	t.Run("calculates max based on cpu constraint", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 8, InUse: 2}, // 6 remaining
+					RAM:       QuotaDetail{Limit: 99999, InUse: 0},
+					Instances: QuotaDetail{Limit: 100, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 2 {
+			t.Fatalf("expected 2 flavors, got %d", len(res))
+		}
+		// 6 cores / 2 vcpus = 3 for m1.small
+		if res[0].MaxConfigurable != 3 {
+			t.Fatalf("expected MaxConfigurable=3 for m1.small, got %d", res[0].MaxConfigurable)
+		}
+		// 6 cores / 4 vcpus = 1 for m1.medium
+		if res[1].MaxConfigurable != 1 {
+			t.Fatalf("expected MaxConfigurable=1 for m1.medium, got %d", res[1].MaxConfigurable)
+		}
+	})
+
+	t.Run("calculates max based on ram constraint", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 99999, InUse: 0},
+					RAM:       QuotaDetail{Limit: 3000, InUse: 0}, // 3000 MB remaining
+					Instances: QuotaDetail{Limit: 100, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// 3000 / 1024 = 2 for m1.small
+		if res[0].MaxConfigurable != 2 {
+			t.Fatalf("expected MaxConfigurable=2 for m1.small, got %d", res[0].MaxConfigurable)
+		}
+		// 3000 / 2048 = 1 for m1.medium
+		if res[1].MaxConfigurable != 1 {
+			t.Fatalf("expected MaxConfigurable=1 for m1.medium, got %d", res[1].MaxConfigurable)
+		}
+	})
+
+	t.Run("calculates max based on instance count constraint", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 99999, InUse: 0},
+					RAM:       QuotaDetail{Limit: 99999, InUse: 0},
+					Instances: QuotaDetail{Limit: 3, InUse: 2}, // 1 remaining
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, f := range res {
+			if f.MaxConfigurable != 1 {
+				t.Fatalf("expected MaxConfigurable=1 for %s, got %d", f.Name, f.MaxConfigurable)
+			}
+		}
+	})
+
+	t.Run("returns 0 when quota is exhausted", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 10, InUse: 10},
+					RAM:       QuotaDetail{Limit: 10000, InUse: 0},
+					Instances: QuotaDetail{Limit: 10, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, f := range res {
+			if f.MaxConfigurable != 0 {
+				t.Fatalf("expected MaxConfigurable=0, got %d for %s", f.MaxConfigurable, f.Name)
+			}
+		}
+	})
+
+	t.Run("uses 999 fallback when flavor has zero vcpus", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{{ID: "z", Name: "zero-cpu", VCPUs: 0, RAM: 1024, Disk: 0}}, nil
+			},
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 10, InUse: 5},
+					RAM:       QuotaDetail{Limit: 10000, InUse: 0},
+					Instances: QuotaDetail{Limit: 5, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// min(instances=5, min(ram-based, 999)) = 5
+		if res[0].MaxConfigurable != 5 {
+			t.Fatalf("expected MaxConfigurable=5 (instance limit), got %d", res[0].MaxConfigurable)
+		}
+	})
+
+	t.Run("propagates fetch flavors error", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return nil, errors.New("flavors fetch failed")
+			},
+		}
+		svc := NewService(client, "project-1")
+		_, err := svc.GetAvailableFlavorsWithLimit()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("propagates quota error", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return nil, errors.New("quota fetch failed")
+			},
+		}
+		svc := NewService(client, "project-1")
+		_, err := svc.GetAvailableFlavorsWithLimit()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
 }
 
 func TestServiceCreateInstance(t *testing.T) {
