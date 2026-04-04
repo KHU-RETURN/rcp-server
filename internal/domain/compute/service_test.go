@@ -1,6 +1,7 @@
 package compute
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -46,6 +47,8 @@ func (f *fakeRepository) CreateServer(client *gophercloud.ServiceClient, opts Cr
 }
 
 func TestServiceCreateInstance(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("maps floating and fixed IPs into response", func(t *testing.T) {
 		var gotOpts CreateServerOpts
 		repo := &fakeRepository{
@@ -60,8 +63,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, nil)
+		res, err := svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:           " test-vm ",
 			ImageRef:       " image-1 ",
 			FlavorRef:      " flavor-1 ",
@@ -108,8 +111,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, nil)
+		res, err := svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -140,8 +143,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, nil)
+		res, err := svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -168,8 +171,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, nil)
+		res, err := svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:           "fallback-vm",
 			ImageRef:       "image-2",
 			FlavorRef:      "flavor-2",
@@ -192,9 +195,9 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("rejects whitespace-only required fields", func(t *testing.T) {
-		svc := NewService(&fakeRepository{})
+		svc := NewService(&fakeRepository{}, nil)
 
-		_, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err := svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:      "   ",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -203,7 +206,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceNameRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err = svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "   ",
 			FlavorRef: "flavor-1",
@@ -212,7 +215,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceImageRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err = svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "   ",
@@ -231,8 +234,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, nil)
+		_, err := svc.CreateInstance(ctx, &gophercloud.ServiceClient{}, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",

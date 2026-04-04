@@ -16,7 +16,7 @@ func TestHandlerCreateServer(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(repo *fakeRepository) *Handler {
-		return NewHandler(NewService(repo))
+		return NewHandler(NewService(repo, nil))
 	}
 
 	t.Run("returns 201 with expanded create response", func(t *testing.T) {
