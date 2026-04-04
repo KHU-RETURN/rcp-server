@@ -6,17 +6,13 @@ import (
 	"fmt"
 )
 
+// Repository는 *sql.DB를 통해 유저 데이터를 저장합니다.
 type Repository struct {
 	db *sql.DB
 }
 
-type UserRepository interface {
-	UpsertUser(ctx context.Context, user *User) error
-	FindByEmail(ctx context.Context, email string) (*User, error)
-}
-
 // NewRepository는 DB 연결을 주입받고 초기 테이블을 생성합니다.
-func NewRepository(db *sql.DB) (UserRepository, error) {
+func NewRepository(db *sql.DB) (*Repository, error) {
 	schema := `
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +35,7 @@ func NewRepository(db *sql.DB) (UserRepository, error) {
 func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 	query := `
     INSERT INTO users (
-        email, name, access_token, refresh_token, expiry, 
+        email, name, access_token, refresh_token, expiry,
         google_access_token, google_refresh_token, google_expiry
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -86,7 +82,7 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AccessToken, &u.RefreshToken, &u.Expiry)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil // 찾는 유저 없음
+			return nil, nil
 		}
 		return nil, err
 	}

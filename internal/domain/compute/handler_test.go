@@ -8,23 +8,18 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
 func TestHandlerCreateServer(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newHandler := func(repo *fakeRepository) *Handler {
-		return NewHandler(NewService(repo))
+	newHandler := func(repo *fakeClient) *Handler {
+		return NewHandler(NewService(repo, "project-1"))
 	}
 
 	t.Run("returns 201 with expanded create response", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				return &gophercloud.ServiceClient{}, nil
-			},
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				if opts.Name != "test-vm" {
 					t.Fatalf("expected name test-vm, got %q", opts.Name)
 				}
@@ -91,7 +86,7 @@ func TestHandlerCreateServer(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group("/api/v1")
-		newHandler(&fakeRepository{}).InitRoutes(v1)
+		newHandler(&fakeClient{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -100,9 +95,9 @@ func TestHandlerCreateServer(t *testing.T) {
 	})
 
 	t.Run("returns 400 for whitespace-only required fields without hitting cloud", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				t.Fatal("GetComputeClient should not be called for invalid input")
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				t.Fatal("CreateServer should not be called for invalid input")
 				return nil, nil
 			},
 		}
@@ -129,11 +124,8 @@ func TestHandlerCreateServer(t *testing.T) {
 	})
 
 	t.Run("treats whitespace-only network_id as omitted", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				return &gophercloud.ServiceClient{}, nil
-			},
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				if len(opts.Networks) != 0 {
 					t.Fatalf("expected whitespace-only network_id to be omitted, got %#v", opts.Networks)
 				}

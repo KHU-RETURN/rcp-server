@@ -1,17 +1,16 @@
 package main
 
 import (
-	"database/sql"
 	"errors"
 	"log"
 	"os"
 
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/database"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/KHU-RETURN/rcp-server/internal/server"
 
 	"github.com/joho/godotenv"
-	_ "modernc.org/sqlite"
 )
 
 //go:generate go run github.com/swaggo/swag/cmd/swag@v1.16.6 init --generalInfo main.go --dir .,../../internal/api,../../internal/domain/access,../../internal/domain/compute --output ../../docs/generated --outputTypes yaml --parseInternal
@@ -30,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("OpenStack 인증 실패: %v", err)
 	}
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := database.NewSQLiteConnection()
 	if err != nil {
 		log.Fatalf("DB 연결 실패: %v", err)
 	}

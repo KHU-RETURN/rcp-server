@@ -1,5 +1,60 @@
 package compute
 
+// --- Domain models (gophercloud 의존 없음) ---
+
+// Flavor는 OpenStack flavor의 도메인 표현입니다.
+type Flavor struct {
+	ID    string
+	Name  string
+	VCPUs int
+	RAM   int
+	Disk  int
+}
+
+// QuotaDetail은 단일 쿼터 항목의 상세 정보입니다.
+type QuotaDetail struct {
+	InUse    int
+	Limit    int
+	Reserved int
+}
+
+// QuotaDetailSet은 compute 쿼터 전체 정보입니다.
+type QuotaDetailSet struct {
+	Cores     QuotaDetail
+	RAM       QuotaDetail
+	Instances QuotaDetail
+}
+
+// Server는 생성된 서버의 도메인 표현입니다.
+type Server struct {
+	ID             string
+	Name           string
+	Status         string
+	Image          map[string]any
+	Flavor         map[string]any
+	Addresses      map[string]any
+	KeyName        string
+	SecurityGroups []map[string]any
+	AccessIPv4     string
+}
+
+// NetworkID는 서버 생성 시 사용할 네트워크 식별자입니다.
+type NetworkID struct {
+	UUID string
+}
+
+// CreateServerOpts는 서버 생성 요청 옵션입니다.
+type CreateServerOpts struct {
+	Name           string
+	ImageRef       string
+	FlavorRef      string
+	KeyName        string
+	SecurityGroups []string
+	Networks       []NetworkID
+}
+
+// --- Request/Response DTOs ---
+
 // 기본 정보 (all 용)
 type FlavorResponse struct {
 	// Flavor UUID.

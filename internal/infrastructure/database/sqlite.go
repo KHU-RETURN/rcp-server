@@ -2,12 +2,12 @@ package database
 
 import (
 	"database/sql"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func NewSQLiteConnection() (*sql.DB, error) {
 	// ":memory:"를 사용하면 서버 종료 시 데이터가 사라집니다.
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		return nil, err
 	}

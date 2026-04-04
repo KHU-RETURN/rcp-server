@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -21,18 +19,19 @@ var (
 	ErrKeyPairOperationFailed = errors.New("failed to create keypair")
 )
 
-type keyPairRepository interface {
-	GetComputeClient() (*gophercloud.ServiceClient, error)
-	GetKeyPair(client *gophercloud.ServiceClient, name string) (*keypairs.KeyPair, error)
-	CreateKeyPair(client *gophercloud.ServiceClient, name, publicKey string) (*keypairs.KeyPair, error)
+// keyPairClient는 OpenStack keypair API 접근 인터페이스입니다.
+// 구현체는 client.go의 Client입니다.
+type keyPairClient interface {
+	GetKeyPair(name string) (*KeyPair, error)
+	CreateKeyPair(name, publicKey string) (*KeyPair, error)
 }
 
 type Service struct {
-	Repo keyPairRepository
+	client keyPairClient
 }
 
-func NewService(repo keyPairRepository) *Service {
-	return &Service{Repo: repo}
+func NewService(client keyPairClient) *Service {
+	return &Service{client: client}
 }
 
 func (s *Service) CreateKeyPair(req CreateKeyPairRequest) (*KeyPairResponse, error) {
@@ -50,21 +49,17 @@ func (s *Service) CreateKeyPair(req CreateKeyPairRequest) (*KeyPairResponse, err
 		return nil, ErrInvalidSSHKeyFormat
 	}
 
-	client, err := s.Repo.GetComputeClient()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrKeyPairOperationFailed, err)
-	}
-
-	_, err = s.Repo.GetKeyPair(client, name)
+	_, err := s.client.GetKeyPair(name)
 	switch {
 	case err == nil:
 		return nil, ErrKeyPairAlreadyExists
 	case isNotFoundError(err):
+		// 존재하지 않음 → 생성 진행
 	default:
 		return nil, normalizeKeyPairError(err)
 	}
 
-	keyPair, err := s.Repo.CreateKeyPair(client, name, publicKey)
+	keyPair, err := s.client.CreateKeyPair(name, publicKey)
 	if err != nil {
 		if isConflictError(err) {
 			return nil, ErrKeyPairAlreadyExists
@@ -80,13 +75,7 @@ func (s *Service) CreateKeyPair(req CreateKeyPairRequest) (*KeyPairResponse, err
 }
 
 func isNotFoundError(err error) bool {
-	var statusErr gophercloud.ErrDefault404
-	if errors.As(err, &statusErr) {
-		return true
-	}
-
-	var codeErr gophercloud.StatusCodeError
-	return errors.As(err, &codeErr) && codeErr.GetStatusCode() == 404
+	return hasStatusCode(err, http.StatusNotFound)
 }
 
 func isConflictError(err error) bool {
@@ -105,29 +94,6 @@ func normalizeKeyPairError(err error) error {
 }
 
 func hasStatusCode(err error, expected int) bool {
-	switch expected {
-	case http.StatusBadRequest:
-		var statusErr gophercloud.ErrDefault400
-		if errors.As(err, &statusErr) {
-			return true
-		}
-	case http.StatusForbidden:
-		var statusErr gophercloud.ErrDefault403
-		if errors.As(err, &statusErr) {
-			return true
-		}
-	case http.StatusNotFound:
-		var statusErr gophercloud.ErrDefault404
-		if errors.As(err, &statusErr) {
-			return true
-		}
-	case http.StatusConflict:
-		var statusErr gophercloud.ErrDefault409
-		if errors.As(err, &statusErr) {
-			return true
-		}
-	}
-
-	var codeErr gophercloud.StatusCodeError
-	return errors.As(err, &codeErr) && codeErr.GetStatusCode() == expected
+	var se *StatusError
+	return errors.As(err, &se) && se.Code == expected
 }

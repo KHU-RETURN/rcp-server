@@ -3,44 +3,31 @@ package compute
 import (
 	"reflect"
 	"testing"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
-type fakeRepository struct {
-	fetchFlavorsFn     func() ([]flavors.Flavor, error)
-	getComputeQuotaFn  func(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
-	getComputeClientFn func() (*gophercloud.ServiceClient, error)
-	createServerFn     func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+type fakeClient struct {
+	fetchFlavorsFn    func() ([]Flavor, error)
+	getComputeQuotaFn func(projectID string) (*QuotaDetailSet, error)
+	createServerFn    func(opts CreateServerOpts) (*Server, error)
 }
 
-func (f *fakeRepository) FetchFlavors() ([]flavors.Flavor, error) {
+func (f *fakeClient) FetchFlavors() ([]Flavor, error) {
 	if f.fetchFlavorsFn != nil {
 		return f.fetchFlavorsFn()
 	}
 	return nil, nil
 }
 
-func (f *fakeRepository) GetComputeQuota(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error) {
+func (f *fakeClient) GetComputeQuota(projectID string) (*QuotaDetailSet, error) {
 	if f.getComputeQuotaFn != nil {
-		return f.getComputeQuotaFn(client, projectID)
+		return f.getComputeQuotaFn(projectID)
 	}
 	return nil, nil
 }
 
-func (f *fakeRepository) GetComputeClient() (*gophercloud.ServiceClient, error) {
-	if f.getComputeClientFn != nil {
-		return f.getComputeClientFn()
-	}
-	return nil, nil
-}
-
-func (f *fakeRepository) CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+func (f *fakeClient) CreateServer(opts CreateServerOpts) (*Server, error) {
 	if f.createServerFn != nil {
-		return f.createServerFn(client, opts)
+		return f.createServerFn(opts)
 	}
 	return nil, nil
 }
@@ -48,8 +35,8 @@ func (f *fakeRepository) CreateServer(client *gophercloud.ServiceClient, opts Cr
 func TestServiceCreateInstance(t *testing.T) {
 	t.Run("maps floating and fixed IPs into response", func(t *testing.T) {
 		var gotOpts CreateServerOpts
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				gotOpts = opts
 				return testServer(map[string]any{
 					"private": []any{
@@ -60,14 +47,14 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:           " test-vm ",
 			ImageRef:       " image-1 ",
 			FlavorRef:      " flavor-1 ",
 			KeyName:        " team-key ",
 			SecurityGroups: []string{" default ", " ", "ssh"},
-			Networks:       []servers.Network{{UUID: " network-1 "}},
+			Networks:       []NetworkID{{UUID: " network-1 "}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -98,8 +85,8 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("falls back to fixed IP when floating IP is missing", func(t *testing.T) {
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				return testServer(map[string]any{
 					"private": []any{
 						map[string]any{"addr": "10.0.0.9", "OS-EXT-IPS:type": "fixed"},
@@ -108,8 +95,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -128,8 +115,8 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("uses access ipv4 as floating IP fallback", func(t *testing.T) {
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				server := testServer(map[string]any{
 					"private": []any{
 						map[string]any{"addr": "10.0.0.10", "OS-EXT-IPS:type": "fixed"},
@@ -140,8 +127,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -157,9 +144,9 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("falls back to request values when server metadata is missing", func(t *testing.T) {
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
-				return &servers.Server{
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				return &Server{
 					ID:        "server-2",
 					Name:      "fallback-vm",
 					Status:    "BUILD",
@@ -168,8 +155,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:           "fallback-vm",
 			ImageRef:       "image-2",
 			FlavorRef:      "flavor-2",
@@ -192,9 +179,9 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("rejects whitespace-only required fields", func(t *testing.T) {
-		svc := NewService(&fakeRepository{})
+		svc := NewService(&fakeClient{}, "project-1")
 
-		_, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "   ",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -203,7 +190,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceNameRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err = svc.CreateInstance(CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "   ",
 			FlavorRef: "flavor-1",
@@ -212,7 +199,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceImageRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err = svc.CreateInstance(CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "   ",
@@ -224,19 +211,19 @@ func TestServiceCreateInstance(t *testing.T) {
 
 	t.Run("drops blank network entries after trimming", func(t *testing.T) {
 		var gotOpts CreateServerOpts
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				gotOpts = opts
 				return testServer(map[string]any{}), nil
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		_, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
-			Networks:  []servers.Network{{UUID: "   "}},
+			Networks:  []NetworkID{{UUID: "   "}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -247,8 +234,8 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 }
 
-func testServer(addresses map[string]any) *servers.Server {
-	return &servers.Server{
+func testServer(addresses map[string]any) *Server {
+	return &Server{
 		ID:     "server-1",
 		Name:   "test-vm",
 		Status: "BUILD",

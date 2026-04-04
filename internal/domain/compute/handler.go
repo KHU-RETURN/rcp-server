@@ -3,7 +3,6 @@ package compute
 import (
 	"errors"
 	"net/http"
-	"os"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
@@ -62,16 +61,7 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 // @Failure 500 {object} api.ErrorResponse
 // @Router /api/v1/compute/flavors/available [get]
 func (h *Handler) GetAvailableFlavors(c *gin.Context) {
-	// 인프라 레이어를 직접 안 부르고 Service(또는 Repo)를 거칩니다.
-	client, err := h.Svc.GetComputeClient()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Cloud connection failed"})
-		return
-	}
-
-	projectID := os.Getenv("OS_PROJECT_ID")
-
-	flavors, err := h.Svc.GetAvailableFlavorsWithLimit(client, projectID)
+	flavors, err := h.Svc.GetAvailableFlavorsWithLimit()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
@@ -111,13 +101,7 @@ func (h *Handler) CreateServer(c *gin.Context) {
 		return
 	}
 
-	client, err := h.Svc.GetComputeClient()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to connect to cloud"})
-		return
-	}
-
-	server, err := h.Svc.CreateInstance(client, opts)
+	server, err := h.Svc.CreateInstance(opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrCreateInstanceNameRequired),
