@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -166,14 +165,4 @@ func TestAuthRequired(t *testing.T) {
 			t.Fatalf("expected email to be propagated, got %q", body["email"])
 		}
 	})
-}
-
-type failingUserRepository struct{}
-
-func (f *failingUserRepository) UpsertUser(context.Context, *User) error {
-	return nil
-}
-
-func (f *failingUserRepository) FindByEmail(context.Context, string) (*User, error) {
-	return nil, errInvalidAuthorizationHeader
 }
