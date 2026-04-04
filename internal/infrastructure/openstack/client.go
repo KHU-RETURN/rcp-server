@@ -7,13 +7,13 @@ import (
 )
 
 type ProviderConfig struct {
-	AuthURL    string
-	Username   string
-	Password   string
+	AuthURL     string
+	Username    string
+	Password    string
 	ProjectName string
-	DomainName string
-	CFClientID string
-	CFSecret   string
+	DomainName  string
+	CFClientID  string
+	CFSecret    string
 }
 
 func NewProviderClient(cfg ProviderConfig) (*gophercloud.ProviderClient, error) {
