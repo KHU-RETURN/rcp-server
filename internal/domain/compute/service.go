@@ -41,13 +41,7 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 
 	var res []FlavorResponse
 	for _, f := range rawFlavors {
-		res = append(res, FlavorResponse{
-			ID:    f.ID,
-			Name:  f.Name,
-			VCPUs: f.VCPUs,
-			RAM:   f.RAM,
-			Disk:  f.Disk,
-		})
+		res = append(res, FlavorResponse(f))
 	}
 	return res, nil
 }
@@ -87,13 +81,7 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 		maxPossible := max(min(remInstances, min(countByRAM, countByCPU)), 0)
 
 		res = append(res, AvailableFlavorResponse{
-			FlavorResponse: FlavorResponse{
-				ID:    f.ID,
-				Name:  f.Name,
-				VCPUs: f.VCPUs,
-				RAM:   f.RAM,
-				Disk:  f.Disk,
-			},
+			FlavorResponse:  FlavorResponse(f),
 			MaxConfigurable: maxPossible,
 		})
 	}
