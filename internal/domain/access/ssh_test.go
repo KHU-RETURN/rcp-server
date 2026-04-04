@@ -6,8 +6,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"database/sql"
-	"errors"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -71,10 +71,10 @@ func newFakeChannel(input string) *fakeChannel {
 	return &fakeChannel{readBuf: bytes.NewBufferString(input)}
 }
 
-func (c *fakeChannel) Read(data []byte) (int, error)          { return c.readBuf.Read(data) }
-func (c *fakeChannel) Write(data []byte) (int, error)         { return c.written.Write(data) }
-func (c *fakeChannel) Close() error                           { return nil }
-func (c *fakeChannel) CloseWrite() error                      { return nil }
+func (c *fakeChannel) Read(data []byte) (int, error)  { return c.readBuf.Read(data) }
+func (c *fakeChannel) Write(data []byte) (int, error) { return c.written.Write(data) }
+func (c *fakeChannel) Close() error                   { return nil }
+func (c *fakeChannel) CloseWrite() error              { return nil }
 func (c *fakeChannel) SendRequest(_ string, _ bool, _ []byte) (bool, error) {
 	return false, nil
 }
@@ -649,8 +649,8 @@ func (f fakeConnMeta) User() string          { return string(f) }
 func (f fakeConnMeta) SessionID() []byte     { return []byte("test-session") }
 func (f fakeConnMeta) ClientVersion() []byte { return []byte("SSH-2.0-test") }
 func (f fakeConnMeta) ServerVersion() []byte { return []byte("SSH-2.0-test") }
-func (f fakeConnMeta) RemoteAddr() net.Addr { return fakeAddr("127.0.0.1:22") }
-func (f fakeConnMeta) LocalAddr() net.Addr  { return fakeAddr("127.0.0.1:2222") }
+func (f fakeConnMeta) RemoteAddr() net.Addr  { return fakeAddr("127.0.0.1:22") }
+func (f fakeConnMeta) LocalAddr() net.Addr   { return fakeAddr("127.0.0.1:2222") }
 
 type fakeAddr string
 
