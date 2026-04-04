@@ -226,6 +226,18 @@ func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) 
 	}, nil
 }
 
+func (s *Service) GetInstanceSerialURL(id string) (*InstanceSerialResponse, error) {
+	remoteConsole, err := s.Repo.FetchInstanceRemoteConsole(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &InstanceSerialResponse{
+		ID:  id,
+		URL: remoteConsole.URL,
+	}, nil
+}
+
 func (s *Service) GetComputeClient() (*gophercloud.ServiceClient, error) {
 	return s.Repo.GetComputeClient()
 }

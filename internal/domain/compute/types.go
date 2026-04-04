@@ -54,6 +54,11 @@ type InstanceDetailResponse struct {
 	Image     string            `json:"image"`
 }
 
+type InstanceSerialResponse struct {
+	ID  string `json:"id"`
+	URL string `json:"url"`
+}
+
 // 현재 사용중인 자원량
 type UsageStats struct {
 	CPUUsage    float64 `json:"cpu_usage"`    // % 단위 또는 vCPU 시간

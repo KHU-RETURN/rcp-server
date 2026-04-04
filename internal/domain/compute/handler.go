@@ -45,6 +45,22 @@ func (h *Handler) GetInstanceDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
+func (h *Handler) GetInstanceSerialURL(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "인스턴스 ID가 필요합니다."})
+		return
+	}
+
+	serialResult, err := h.Svc.GetInstanceSerialURL(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "상세 조회 실패: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, serialResult)
+}
+
 func (h *Handler) GetInstances(c *gin.Context) {
 	instances, err := h.Svc.GetInstances()
 	if err != nil {
@@ -69,6 +85,7 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		// 조회 추가!
 		computeGroup.GET("/instances", h.GetInstances)
 		computeGroup.GET("/instances/detail/:id", h.GetInstanceDetail)
+		computeGroup.GET("/instances/serial/:id", h.GetInstanceSerialURL)
 	}
 
 }

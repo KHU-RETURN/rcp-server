@@ -6,6 +6,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/remoteconsoles"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
@@ -18,6 +19,7 @@ type computeRepository interface {
 	// 추가된 메소드
 	FetchInstances() ([]servers.Server, error)
 	FetchInstanceDetail(serverID string) (*servers.Server, map[string]interface{}, error)
+	FetchInstanceRemoteConsole(serverID string) (*remoteconsoles.RemoteConsole, error)
 }
 
 type Repository struct {
@@ -104,6 +106,26 @@ func (r *Repository) FetchInstanceDetail(serverID string) (*servers.Server, map[
 	}
 
 	return server, diag, nil
+}
+
+func (r *Repository) FetchInstanceRemoteConsole(serverID string) (*remoteconsoles.RemoteConsole, error) {
+	client, err := r.GetComputeClient()
+	if err != nil {
+		return nil, err
+	}
+
+	client.Microversion = "2.6"
+	createOpts := remoteconsoles.CreateOpts{
+		Protocol: remoteconsoles.ConsoleProtocolSerial,
+		Type:     remoteconsoles.ConsoleTypeSerial,
+	}
+
+	remtoteConsole, err := remoteconsoles.Create(client, serverID, createOpts).Extract()
+	if err != nil {
+		return nil, err
+	}
+
+	return remtoteConsole, nil
 }
 
 // GetComputeQuota - 서비스 클라이언트를 인자로 받아서 쿼터 상세 정보 조회
