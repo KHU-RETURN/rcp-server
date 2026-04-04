@@ -19,7 +19,7 @@ func (h *ConnectionHandler) handleInteractiveSession(
 	ctx := context.Background()
 
 	for newChan := range chans {
-		if newChan.ChannelType() != "session" {
+		if newChan.ChannelType() != channelTypeSession {
 			_ = newChan.Reject(gossh.UnknownChannelType, "only session channels are supported")
 			continue
 		}
@@ -48,17 +48,17 @@ func (h *ConnectionHandler) runMenuSession(
 	var hasPTY bool
 	for req := range reqs {
 		switch req.Type {
-		case "pty-req":
+		case requestPTY:
 			hasPTY = true
 			if req.WantReply {
 				_ = req.Reply(true, nil)
 			}
-		case "shell":
+		case requestShell:
 			if req.WantReply {
 				_ = req.Reply(true, nil)
 			}
 			goto showMenu
-		case "exec":
+		case requestExec:
 			if req.WantReply {
 				_ = req.Reply(false, nil)
 			}

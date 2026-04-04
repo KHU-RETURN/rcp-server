@@ -19,7 +19,6 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 ) {
 	ctx := context.Background()
 
-	// 1. Dial VM through the qrouter network namespace
 	nsConn, err := h.svc.DialVM(ctx, vmIP)
 	if err != nil {
 		log.Printf("relay: dial vm %s: %v", vmIP, err)
@@ -28,9 +27,8 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 	}
 	defer func() { _ = nsConn.Close() }()
 
-	// 2. Establish full SSH client connection to VM using RCP service key
 	sshClientConn, chans, reqs, err := gossh.NewClientConn(nsConn, vmIP+":22", &gossh.ClientConfig{
-		User: "ubuntu",
+		User: vmDefaultUser,
 		Auth: []gossh.AuthMethod{
 			gossh.PublicKeys(h.svc.GetServiceKey()),
 		},
@@ -46,7 +44,6 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 	client := gossh.NewClient(sshClientConn, chans, reqs)
 	defer func() { _ = client.Close() }()
 
-	// 3. Open a "session" channel on the VM connection
 	vmSession, err := client.NewSession()
 	if err != nil {
 		log.Printf("relay: new session on %s: %v", vmIP, err)
@@ -55,7 +52,6 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 	}
 	defer func() { _ = vmSession.Close() }()
 
-	// 4. Bridge stdin/stdout/stderr
 	vmStdin, err := vmSession.StdinPipe()
 	if err != nil {
 		log.Printf("relay: vm stdin pipe: %v", err)
@@ -72,13 +68,10 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 		return
 	}
 
-	// Forward client → VM stdin
 	go func() { _, _ = io.Copy(vmStdin, clientChan) }()
-	// Forward VM stdout/stderr → client
 	go func() { _, _ = io.Copy(clientChan, vmStdout) }()
 	go func() { _, _ = io.Copy(clientChan.Stderr(), vmStderr) }()
 
-	// 5. Forward channel requests (pty-req, shell, window-change, etc.) from client to VM
 	if clientReqs != nil {
 		go forwardSSHSessionRequests(clientReqs, vmSession)
 	} else {
@@ -100,7 +93,7 @@ func (h *ConnectionHandler) handleInteractiveRelay(
 func forwardSSHSessionRequests(reqs <-chan *gossh.Request, session *gossh.Session) {
 	for req := range reqs {
 		switch req.Type {
-		case "pty-req":
+		case requestPTY:
 			var ptyReq struct {
 				Term     string
 				Width    uint32
@@ -116,7 +109,7 @@ func forwardSSHSessionRequests(reqs <-chan *gossh.Request, session *gossh.Sessio
 				_ = req.Reply(true, nil)
 			}
 
-		case "window-change":
+		case requestWindowChange:
 			var winch struct {
 				Width    uint32
 				Height   uint32
@@ -130,7 +123,7 @@ func forwardSSHSessionRequests(reqs <-chan *gossh.Request, session *gossh.Sessio
 				_ = req.Reply(true, nil)
 			}
 
-		case "shell":
+		case requestShell:
 			if err := session.Shell(); err != nil {
 				log.Printf("relay: start shell: %v", err)
 			}
@@ -138,7 +131,7 @@ func forwardSSHSessionRequests(reqs <-chan *gossh.Request, session *gossh.Sessio
 				_ = req.Reply(true, nil)
 			}
 
-		case "exec":
+		case requestExec:
 			var execReq struct{ Command string }
 			if err := gossh.Unmarshal(req.Payload, &execReq); err == nil {
 				if err := session.Start(execReq.Command); err != nil {
@@ -160,7 +153,7 @@ func forwardSSHSessionRequests(reqs <-chan *gossh.Request, session *gossh.Sessio
 // sendSSHExitStatus sends an exit-status request to the client channel.
 func sendSSHExitStatus(ch gossh.Channel, code uint32) {
 	payload := gossh.Marshal(struct{ Code uint32 }{Code: code})
-	_, _ = ch.SendRequest("exit-status", false, payload)
+	_, _ = ch.SendRequest(requestExitStatus, false, payload)
 	_ = ch.CloseWrite()
 
 	// Drain remaining input from client

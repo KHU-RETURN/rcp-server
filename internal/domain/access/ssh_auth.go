@@ -63,7 +63,7 @@ func buildSSHServerConfig(hostKey gossh.Signer, cfCAKey gossh.PublicKey, verifie
 
 			return &gossh.Permissions{
 				Extensions: map[string]string{
-					"email": email,
+					permissionEmailKey: email,
 				},
 			}, nil
 		},
@@ -74,39 +74,34 @@ func buildSSHServerConfig(hostKey gossh.Signer, cfCAKey gossh.PublicKey, verifie
 
 // loadSSHHostKey reads and parses the SSH host private key from the given path.
 func loadSSHHostKey(path string) (gossh.Signer, error) {
-	keyBytes, err := os.ReadFile(path) //nolint:gosec // path comes from trusted config
-	if err != nil {
-		return nil, fmt.Errorf("loadSSHHostKey: read %s: %w", path, err)
-	}
-	signer, err := gossh.ParsePrivateKey(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("loadSSHHostKey: parse %s: %w", path, err)
-	}
-	return signer, nil
+	return readSSHKey(path, gossh.ParsePrivateKey)
 }
 
 // loadCFCAKey reads and parses the Cloudflare CA public key from the given path.
 func loadCFCAKey(path string) (gossh.PublicKey, error) {
-	keyBytes, err := os.ReadFile(path) //nolint:gosec // path comes from trusted config
-	if err != nil {
-		return nil, fmt.Errorf("loadCFCAKey: read %s: %w", path, err)
-	}
-	pubKey, _, _, _, err := gossh.ParseAuthorizedKey(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("loadCFCAKey: parse %s: %w", path, err)
-	}
-	return pubKey, nil
+	return readSSHKey(path, func(b []byte) (gossh.PublicKey, error) {
+		pub, _, _, _, err := gossh.ParseAuthorizedKey(b)
+		return pub, err
+	})
 }
 
 // loadSSHServiceKey reads and parses the RCP service private key used to authenticate to VMs.
 func loadSSHServiceKey(path string) (gossh.Signer, error) {
-	keyBytes, err := os.ReadFile(path) //nolint:gosec // path comes from trusted config
+	return readSSHKey(path, gossh.ParsePrivateKey)
+}
+
+// readSSHKey reads a key file and parses it with the provided parser.
+// Path comes from app config at startup, not from user input.
+func readSSHKey[T any](path string, parse func([]byte) (T, error)) (T, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // path comes from trusted config
 	if err != nil {
-		return nil, fmt.Errorf("loadSSHServiceKey: read %s: %w", path, err)
+		var zero T
+		return zero, fmt.Errorf("read key %s: %w", path, err)
 	}
-	signer, err := gossh.ParsePrivateKey(keyBytes)
+	result, err := parse(b)
 	if err != nil {
-		return nil, fmt.Errorf("loadSSHServiceKey: parse %s: %w", path, err)
+		var zero T
+		return zero, fmt.Errorf("parse key %s: %w", path, err)
 	}
-	return signer, nil
+	return result, nil
 }

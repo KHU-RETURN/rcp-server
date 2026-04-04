@@ -59,7 +59,7 @@ func (s *SSHServer) handleTCPConn(conn net.Conn) {
 	}
 	defer func() { _ = sshConn.Close() }()
 
-	email, ok := sshConn.Permissions.Extensions["email"]
+	email, ok := sshConn.Permissions.Extensions[permissionEmailKey]
 	if !ok {
 		log.Printf("SSH conn missing email extension from %s", conn.RemoteAddr())
 		return

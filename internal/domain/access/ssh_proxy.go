@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -30,7 +31,7 @@ func (h *ConnectionHandler) handleDirectRelay(
 	}
 
 	for newChan := range chans {
-		if newChan.ChannelType() != "direct-tcpip" {
+		if newChan.ChannelType() != channelTypeDirect {
 			_ = newChan.Reject(gossh.UnknownChannelType, "only direct-tcpip supported in direct mode")
 			continue
 		}
@@ -54,22 +55,24 @@ func (h *ConnectionHandler) handleDirectRelay(
 	}
 }
 
-// bridgeSSHStreams copies bytes bidirectionally between a and b until either side closes.
+// bridgeSSHStreams copies bytes bidirectionally between a and b until both sides are done.
+// Closing one side unblocks io.Copy on the other, so both goroutines always exit.
 func bridgeSSHStreams(a io.ReadWriteCloser, b io.ReadWriteCloser) {
-	done := make(chan struct{}, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	go func() {
+		defer wg.Done()
 		_, _ = io.Copy(a, b)
-		done <- struct{}{}
+		_ = a.Close()
 	}()
 	go func() {
+		defer wg.Done()
 		_, _ = io.Copy(b, a)
-		done <- struct{}{}
+		_ = b.Close()
 	}()
 
-	<-done
-	_ = a.Close()
-	_ = b.Close()
+	wg.Wait()
 }
 
 // drainSSHChannels rejects all pending channel requests with the given reason.
