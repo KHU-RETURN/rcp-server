@@ -27,6 +27,8 @@ type CreateServerOpts struct {
 	KeyName        string
 	SecurityGroups []string
 	Networks       []servers.Network // 네트워크 정보가 없으면 생성이 안 될 수 있습니다.
+	UserData       []byte            // cloud-init script (e.g. for injecting SSH keys)
+	UserEmail      string            // authenticated user's email (for user_vms registration)
 }
 
 func NewRepository(client *gophercloud.ProviderClient) *Repository {
@@ -73,6 +75,7 @@ func (r *Repository) CreateServer(client *gophercloud.ServiceClient, opts Create
 		FlavorRef:      opts.FlavorRef,
 		SecurityGroups: opts.SecurityGroups,
 		Networks:       opts.Networks,
+		UserData:       opts.UserData,
 	}
 
 	createOpts := keypairs.CreateOptsExt{

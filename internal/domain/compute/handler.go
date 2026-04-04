@@ -117,7 +117,7 @@ func (h *Handler) CreateServer(c *gin.Context) {
 		return
 	}
 
-	server, err := h.Svc.CreateInstance(client, opts)
+	server, err := h.Svc.CreateInstance(c.Request.Context(), client, opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrCreateInstanceNameRequired),

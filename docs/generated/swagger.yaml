@@ -67,6 +67,9 @@ definitions:
         items:
           type: string
         type: array
+      user_email:
+        description: authenticated user's email for VM ownership tracking
+        type: string
     required:
     - flavor_id
     - image_id

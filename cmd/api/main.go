@@ -43,6 +43,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
 	}
+
+	// SSH relay server (non-blocking)
+	go func() {
+		if err := myApp.SSH.ListenAndServe(); err != nil {
+			log.Fatalf("SSH 서버 시작 실패: %v", err)
+		}
+	}()
+
 	r := server.NewRouter(myApp)
 
 	port := os.Getenv("PORT")

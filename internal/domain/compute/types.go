@@ -29,6 +29,7 @@ type CreateInstanceRequest struct {
 	NetworkID      string   `json:"network_id"`
 	KeyName        string   `json:"key_name"`
 	SecurityGroups []string `json:"security_groups"`
+	UserEmail      string   `json:"user_email"` // authenticated user's email for VM ownership tracking
 }
 
 // CreateInstanceResponse는 VM 생성 성공 응답 규격입니다.

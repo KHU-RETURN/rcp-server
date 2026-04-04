@@ -1,18 +1,28 @@
 package compute
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
+// VMRegistrar registers and unregisters VMs in the SSH relay's user_vms table.
+// Implemented by access.SSHRepository; defined here so compute does not import access.
+type VMRegistrar interface {
+	RegisterVM(ctx context.Context, userEmail, vmName, vmID, fixedIP string) error
+	UnregisterVM(ctx context.Context, vmID string) error
+}
+
 // Service는 비즈니스 로직을 담당합니다.
 type Service struct {
-	Repo computeRepository
+	Repo      computeRepository
+	Registrar VMRegistrar // may be nil (no VM registration)
 }
 
 var (
@@ -22,8 +32,8 @@ var (
 )
 
 // NewService는 새로운 서비스를 생성합니다.
-func NewService(repo computeRepository) *Service {
-	return &Service{Repo: repo}
+func NewService(repo computeRepository, registrar VMRegistrar) *Service {
+	return &Service{Repo: repo, Registrar: registrar}
 }
 
 // GetFlavors는 Repo에서 가져온 데이터를 우리 규격(FlavorResponse)으로 변환합니다.
@@ -107,10 +117,15 @@ func (s *Service) GetComputeClient() (*gophercloud.ServiceClient, error) {
 	return s.Repo.GetComputeClient()
 }
 
-func (s *Service) CreateInstance(client *gophercloud.ServiceClient, opts CreateServerOpts) (*CreateInstanceResponse, error) {
+func (s *Service) CreateInstance(ctx context.Context, client *gophercloud.ServiceClient, opts CreateServerOpts) (*CreateInstanceResponse, error) {
 	normalizedOpts := normalizeCreateServerOpts(opts)
 	if err := validateCreateServerOpts(normalizedOpts); err != nil {
 		return nil, err
+	}
+
+	// Inject RCP service public key via cloud-init so RCP can always authenticate to this VM
+	if rcpPubKey := strings.TrimSpace(os.Getenv("RCP_SERVICE_PUBLIC_KEY")); rcpPubKey != "" {
+		normalizedOpts.UserData = buildCloudInitUserData(rcpPubKey)
 	}
 
 	server, err := s.Repo.CreateServer(client, normalizedOpts)
@@ -118,7 +133,29 @@ func (s *Service) CreateInstance(client *gophercloud.ServiceClient, opts CreateS
 		return nil, err
 	}
 
-	return buildCreateInstanceResponse(server, normalizedOpts), nil
+	resp := buildCreateInstanceResponse(server, normalizedOpts)
+
+	// Register the new VM in the SSH relay's user_vms table
+	if s.Registrar != nil && opts.UserEmail != "" {
+		if regErr := s.Registrar.RegisterVM(ctx, opts.UserEmail, resp.Name, resp.ID, resp.FixedIP); regErr != nil {
+			// Log but don't fail the creation — VM is already running
+			fmt.Printf("warning: RegisterVM failed for %s: %v\n", resp.ID, regErr)
+		}
+	}
+
+	return resp, nil
+}
+
+// buildCloudInitUserData assembles a cloud-init script that appends
+// the RCP service public key to the ubuntu user's authorized_keys.
+func buildCloudInitUserData(rcpPubKey string) []byte {
+	script := fmt.Sprintf(`#!/bin/bash
+mkdir -p /home/ubuntu/.ssh
+echo "%s" >> /home/ubuntu/.ssh/authorized_keys
+chmod 600 /home/ubuntu/.ssh/authorized_keys
+chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+`, rcpPubKey)
+	return []byte(script)
 }
 
 type serverAddress struct {
@@ -135,6 +172,7 @@ func buildCreateServerOpts(req CreateInstanceRequest) (CreateServerOpts, error) 
 		FlavorRef:      req.FlavorID,
 		KeyName:        req.KeyName,
 		SecurityGroups: req.SecurityGroups,
+		UserEmail:      req.UserEmail,
 	}
 
 	if req.NetworkID != "" {
