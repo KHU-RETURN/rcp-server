@@ -365,7 +365,7 @@ func firstNonEmpty(values ...string) string {
 // 	return nil
 // }
 
-// // checkDuplicateName: 동일한 이름의 서버가 이미 존재하는지 확인
+// checkDuplicateName: 동일한 이름의 서버가 이미 존재하는지 확인
 // func (s *Service) checkDuplicateName(client *gophercloud.ServiceClient, name string) error {
 // 	allPages, err := servers.List(client, servers.ListOpts{Name: name}).AllPages()
 // 	if err != nil {
