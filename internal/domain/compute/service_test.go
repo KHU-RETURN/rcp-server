@@ -20,11 +20,6 @@ type fakeRepository struct {
 	getHypervisorListFn func(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error)
 }
 
-// GetHypervisorList implements [computeRepository].
-func (f *fakeRepository) GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error) {
-	panic("unimplemented")
-}
-
 func (f *fakeRepository) FetchFlavors() ([]flavors.Flavor, error) {
 	if f.fetchFlavorsFn != nil {
 		return f.fetchFlavorsFn()

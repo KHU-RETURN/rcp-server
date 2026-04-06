@@ -111,4 +111,3 @@ func (r *Repository) DeleteServer(client *gophercloud.ServiceClient, id string) 
 	// ID를 받아서 해당 서버를 삭제 요청합니다.
 	return servers.Delete(client, id).ExtractErr()
 }
-
