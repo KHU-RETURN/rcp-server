@@ -3,28 +3,150 @@ package compute
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
+
+func TestHandlerGetFlavors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newHandler := func(client *fakeClient) *Handler {
+		return NewHandler(NewService(client, "project-1"))
+	}
+
+	t.Run("returns 200 with flavor list", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "1", Name: "m1.small", VCPUs: 1, RAM: 2048, Disk: 20},
+				}, nil
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors", nil)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(client).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+
+		var res []FlavorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if len(res) != 1 || res[0].ID != "1" || res[0].VCPUs != 1 {
+			t.Fatalf("unexpected flavor response: %+v", res)
+		}
+	})
+
+	t.Run("returns 500 when client fails", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return nil, errors.New("upstream error")
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors", nil)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(client).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", w.Code)
+		}
+	})
+}
+
+func TestHandlerGetAvailableFlavors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newHandler := func(client *fakeClient) *Handler {
+		return NewHandler(NewService(client, "project-1"))
+	}
+
+	t.Run("returns 200 with available flavor list", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "1", Name: "m1.small", VCPUs: 2, RAM: 1024, Disk: 10},
+				}, nil
+			},
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 10, InUse: 4},
+					RAM:       QuotaDetail{Limit: 10000, InUse: 0},
+					Instances: QuotaDetail{Limit: 10, InUse: 0},
+				}, nil
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors/available", nil)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(client).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+
+		var res []AvailableFlavorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if len(res) != 1 {
+			t.Fatalf("expected 1 flavor, got %d", len(res))
+		}
+		// 6 cores / 2 vcpus = 3
+		if res[0].MaxConfigurable != 3 {
+			t.Fatalf("expected MaxConfigurable=3, got %d", res[0].MaxConfigurable)
+		}
+	})
+
+	t.Run("returns 500 when quota fetch fails", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{{ID: "1", Name: "m1.small", VCPUs: 2, RAM: 1024}}, nil
+			},
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return nil, errors.New("quota error")
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors/available", nil)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(client).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", w.Code)
+		}
+	})
+}
 
 func TestHandlerCreateServer(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newHandler := func(repo *fakeRepository) *Handler {
-		return NewHandler(NewService(repo))
+	newHandler := func(repo *fakeClient) *Handler {
+		return NewHandler(NewService(repo, "project-1"))
 	}
 
 	t.Run("returns 201 with expanded create response", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				return &gophercloud.ServiceClient{}, nil
-			},
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				if opts.Name != "test-vm" {
 					t.Fatalf("expected name test-vm, got %q", opts.Name)
 				}
@@ -91,7 +213,7 @@ func TestHandlerCreateServer(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group("/api/v1")
-		newHandler(&fakeRepository{}).InitRoutes(v1)
+		newHandler(&fakeClient{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -100,9 +222,9 @@ func TestHandlerCreateServer(t *testing.T) {
 	})
 
 	t.Run("returns 400 for whitespace-only required fields without hitting cloud", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				t.Fatal("GetComputeClient should not be called for invalid input")
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				t.Fatal("CreateServer should not be called for invalid input")
 				return nil, nil
 			},
 		}
@@ -129,11 +251,8 @@ func TestHandlerCreateServer(t *testing.T) {
 	})
 
 	t.Run("treats whitespace-only network_id as omitted", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				return &gophercloud.ServiceClient{}, nil
-			},
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				if len(opts.Networks) != 0 {
 					t.Fatalf("expected whitespace-only network_id to be omitted, got %#v", opts.Networks)
 				}

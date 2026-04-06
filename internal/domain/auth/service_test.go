@@ -2,55 +2,128 @@ package auth
 
 import (
 	"context"
-	"golang.org/x/oauth2"
 	"testing"
+	"time"
+
+	"golang.org/x/oauth2"
 )
 
-// 1. Mock 객체 정의: UserRepository 인터페이스의 모든 메서드를 구현해야 합니다.
-type MockUserRepository struct {
-	Users map[string]*User
+type fakeRepo struct {
+	users map[string]*User
 }
 
-// UpsertUser 구현
-func (m *MockUserRepository) UpsertUser(ctx context.Context, user *User) error {
-	m.Users[user.Email] = user
+func (f *fakeRepo) UpsertUser(ctx context.Context, user *User) error {
+	f.users[user.Email] = user
 	return nil
 }
 
-// ⚠️ 추가된 부분: FindByEmail 메서드 구현 (인터페이스 요구사항 충족)
-func (m *MockUserRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
-	user, ok := m.Users[email]
+func (f *fakeRepo) FindByEmail(ctx context.Context, email string) (*User, error) {
+	user, ok := f.users[email]
 	if !ok {
-		return nil, nil // 혹은 errors.New("not found")
+		return nil, nil
 	}
 	return user, nil
 }
 
+// MockUserRepository는 이전 테스트 코드와의 호환을 위해 유지합니다.
+type MockUserRepository = fakeRepo
+
 func TestService_Initialization(t *testing.T) {
-	// 2. 준비
-	mockRepo := &MockUserRepository{Users: make(map[string]*User)}
+	mockRepo := &fakeRepo{users: make(map[string]*User)}
 	tokenSvc := NewTokenService("test-secret-key")
 	conf := &oauth2.Config{}
 
-	// 3. 실행 (컴파일 에러 해결 지점)
 	authSvc := NewService(mockRepo, conf, tokenSvc)
 
-	// 4. 검증 (변수 미사용 에러 해결: authSvc를 실제로 테스트에 사용)
 	if authSvc == nil {
 		t.Fatal("authSvc should not be nil")
 	}
-
 	if authSvc.TokenService == nil {
 		t.Error("TokenService was not properly injected")
 	}
 }
 
-func TestTokenService_Logic(t *testing.T) {
-	svc := NewTokenService("secret")
-	t.Run("Generate Tokens", func(t *testing.T) {
-		_, _, _, err := svc.GenerateAuthTokens("test@khu.ac.kr")
+func TestTokenService(t *testing.T) {
+	svc := NewTokenService("test-secret")
+
+	t.Run("generates access and refresh tokens without error", func(t *testing.T) {
+		access, refresh, expiry, err := svc.GenerateAuthTokens("test@khu.ac.kr")
 		if err != nil {
-			t.Errorf("expected no error, got %v", err)
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if access == "" {
+			t.Fatal("expected non-empty access token")
+		}
+		if refresh == "" {
+			t.Fatal("expected non-empty refresh token")
+		}
+		if expiry.IsZero() {
+			t.Fatal("expected non-zero expiry")
+		}
+	})
+
+	t.Run("access token expiry is approximately 1 hour from now", func(t *testing.T) {
+		_, _, expiry, err := svc.GenerateAuthTokens("test@khu.ac.kr")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		remaining := time.Until(expiry)
+		if remaining < 59*time.Minute || remaining > 61*time.Minute {
+			t.Fatalf("expected expiry ~1 hour from now, got %v remaining", remaining)
+		}
+	})
+
+	t.Run("access token validates with correct claims", func(t *testing.T) {
+		email := "user@khu.ac.kr"
+		access, _, _, err := svc.GenerateAuthTokens(email)
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		claims, err := svc.ValidateToken(access)
+		if err != nil {
+			t.Fatalf("ValidateToken: %v", err)
+		}
+		if claims.Email != email {
+			t.Fatalf("expected email %q, got %q", email, claims.Email)
+		}
+		if claims.Type != "access" {
+			t.Fatalf("expected type 'access', got %q", claims.Type)
+		}
+	})
+
+	t.Run("refresh token validates with correct claims", func(t *testing.T) {
+		_, refresh, _, err := svc.GenerateAuthTokens("user@khu.ac.kr")
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		claims, err := svc.ValidateToken(refresh)
+		if err != nil {
+			t.Fatalf("ValidateToken: %v", err)
+		}
+		if claims.Type != "refresh" {
+			t.Fatalf("expected type 'refresh', got %q", claims.Type)
+		}
+	})
+
+	t.Run("rejects token signed with different secret", func(t *testing.T) {
+		otherSvc := NewTokenService("different-secret")
+		token, _, _, err := otherSvc.GenerateAuthTokens("user@khu.ac.kr")
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		_, err = svc.ValidateToken(token)
+		if err == nil {
+			t.Fatal("expected error for token with wrong secret, got nil")
+		}
+	})
+
+	t.Run("rejects tampered token", func(t *testing.T) {
+		_, err := svc.ValidateToken("not.a.valid.jwt")
+		if err == nil {
+			t.Fatal("expected error for malformed token, got nil")
 		}
 	})
 }

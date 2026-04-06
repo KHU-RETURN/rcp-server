@@ -52,7 +52,7 @@ func TestExtractBearerToken(t *testing.T) {
 func TestAuthRequired(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newProtectedRouter := func(repo UserRepository) (*gin.Engine, string) {
+	newProtectedRouter := func(repo userRepository) (*gin.Engine, string) {
 		tokenSvc := NewTokenService("test-secret")
 		handler := NewHandler(NewService(repo, &oauth2.Config{}, tokenSvc))
 
@@ -73,7 +73,7 @@ func TestAuthRequired(t *testing.T) {
 	}
 
 	t.Run("rejects request without authorization header", func(t *testing.T) {
-		repo := &MockUserRepository{Users: map[string]*User{}}
+		repo := &MockUserRepository{users: map[string]*User{}}
 		router, _ := newProtectedRouter(repo)
 
 		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
@@ -86,7 +86,7 @@ func TestAuthRequired(t *testing.T) {
 	})
 
 	t.Run("rejects invalid token", func(t *testing.T) {
-		repo := &MockUserRepository{Users: map[string]*User{}}
+		repo := &MockUserRepository{users: map[string]*User{}}
 		router, _ := newProtectedRouter(repo)
 
 		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
@@ -100,7 +100,7 @@ func TestAuthRequired(t *testing.T) {
 	})
 
 	t.Run("rejects refresh token", func(t *testing.T) {
-		repo := &MockUserRepository{Users: map[string]*User{
+		repo := &MockUserRepository{users: map[string]*User{
 			"user@khu.ac.kr": {Email: "user@khu.ac.kr"},
 		}}
 		tokenSvc := NewTokenService("test-secret")
@@ -129,7 +129,7 @@ func TestAuthRequired(t *testing.T) {
 	})
 
 	t.Run("rejects missing user", func(t *testing.T) {
-		repo := &MockUserRepository{Users: map[string]*User{}}
+		repo := &MockUserRepository{users: map[string]*User{}}
 		router, token := newProtectedRouter(repo)
 
 		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
@@ -143,7 +143,7 @@ func TestAuthRequired(t *testing.T) {
 	})
 
 	t.Run("allows valid access token", func(t *testing.T) {
-		repo := &MockUserRepository{Users: map[string]*User{
+		repo := &MockUserRepository{users: map[string]*User{
 			"user@khu.ac.kr": {Email: "user@khu.ac.kr", Name: "User"},
 		}}
 		router, token := newProtectedRouter(repo)

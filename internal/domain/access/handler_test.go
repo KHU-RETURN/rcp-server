@@ -11,27 +11,22 @@ import (
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 )
 
 func TestHandlerCreateKeyPair(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newHandler := func(repo *fakeRepository) *Handler {
+	newHandler := func(repo *fakeClient) *Handler {
 		return NewHandler(NewService(repo))
 	}
 
 	t.Run("returns 201 with response body", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				return &gophercloud.ServiceClient{}, nil
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusNotFound)
 			},
-			getKeyPairFn: func(client *gophercloud.ServiceClient, name string) (*keypairs.KeyPair, error) {
-				return nil, gophercloud.ErrDefault404{}
-			},
-			createKeyPairFn: func(client *gophercloud.ServiceClient, name, publicKey string) (*keypairs.KeyPair, error) {
-				return &keypairs.KeyPair{Name: name, Fingerprint: "fp", PublicKey: publicKey}, nil
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return &KeyPair{Name: name, Fingerprint: "fp", PublicKey: publicKey}, nil
 			},
 		}
 
@@ -65,7 +60,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group("/api/v1")
-		newHandler(&fakeRepository{}).InitRoutes(v1)
+		newHandler(&fakeClient{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -82,14 +77,11 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("returns 409 for duplicate name", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				return &gophercloud.ServiceClient{}, nil
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return &KeyPair{Name: name}, nil
 			},
-			getKeyPairFn: func(client *gophercloud.ServiceClient, name string) (*keypairs.KeyPair, error) {
-				return &keypairs.KeyPair{Name: name}, nil
-			},
-			createKeyPairFn: func(client *gophercloud.ServiceClient, name, publicKey string) (*keypairs.KeyPair, error) {
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
 				return nil, nil
 			},
 		}
@@ -118,16 +110,11 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("returns 403 with sanitized message for upstream access denied", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
-				return &gophercloud.ServiceClient{}, nil
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusForbidden)
 			},
-			getKeyPairFn: func(client *gophercloud.ServiceClient, name string) (*keypairs.KeyPair, error) {
-				return nil, gophercloud.ErrDefault403{
-					ErrUnexpectedResponseCode: newStatusError(http.StatusForbidden, "provider-secret"),
-				}
-			},
-			createKeyPairFn: func(client *gophercloud.ServiceClient, name, publicKey string) (*keypairs.KeyPair, error) {
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
 				t.Fatal("create should not be called when lookup is forbidden")
 				return nil, nil
 			},
@@ -159,9 +146,68 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 400 for invalid keypair request", func(t *testing.T) {
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusNotFound)
+			},
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusBadRequest)
+			},
+		}
+
+		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", w.Code)
+		}
+		var res api.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal error response: %v", err)
+		}
+		if res.Error != "invalid keypair request" {
+			t.Fatalf("unexpected error message: %q", res.Error)
+		}
+	})
+
+	t.Run("returns 500 default for unclassified error", func(t *testing.T) {
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusNotFound)
+			},
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				// Return a raw error that doesn't match any classified error
+				return nil, errors.New("unclassified internal error")
+			},
+		}
+
+		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group("/api/v1")
+		newHandler(repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		// Non-StatusError wraps as ErrKeyPairOperationFailed → 500
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", w.Code)
+		}
+	})
+
 	t.Run("returns 500 with sanitized message for internal failures", func(t *testing.T) {
-		repo := &fakeRepository{
-			getComputeClientFn: func() (*gophercloud.ServiceClient, error) {
+		repo := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
 				return nil, errors.New("provider bootstrap leaked")
 			},
 		}

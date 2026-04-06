@@ -1,76 +1,280 @@
 package compute
 
 import (
+	"errors"
 	"reflect"
 	"testing"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
-type fakeRepository struct {
-	fetchFlavorsFn        func() ([]flavors.Flavor, error)
-	getComputeQuotaFn     func(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
-	getComputeClientFn    func() (*gophercloud.ServiceClient, error)
-	createServerFn        func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
-	fetchInstancesFn      func() ([]servers.Server, error)
-	fetchInstanceDetailFn func(serverID string) (*servers.Server, map[string]interface{}, error)
-	deleteServerFn        func(client *gophercloud.ServiceClient, id string) error
-	getHypervisorListFn   func(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error)
+type fakeClient struct {
+	fetchFlavorsFn        func() ([]Flavor, error)
+	getComputeQuotaFn     func(projectID string) (*QuotaDetailSet, error)
+	createServerFn        func(opts CreateServerOpts) (*Server, error)
+	fetchInstancesFn      func() ([]Server, error)
+	fetchInstanceDetailFn func(id string) (*Server, map[string]any, error)
+	deleteServerFn        func(id string) error
 }
 
-func (f *fakeRepository) FetchFlavors() ([]flavors.Flavor, error) {
+func (f *fakeClient) FetchFlavors() ([]Flavor, error) {
 	if f.fetchFlavorsFn != nil {
 		return f.fetchFlavorsFn()
 	}
 	return nil, nil
 }
 
-func (f *fakeRepository) GetComputeQuota(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error) {
+func (f *fakeClient) GetComputeQuota(projectID string) (*QuotaDetailSet, error) {
 	if f.getComputeQuotaFn != nil {
-		return f.getComputeQuotaFn(client, projectID)
+		return f.getComputeQuotaFn(projectID)
 	}
 	return nil, nil
 }
 
-func (f *fakeRepository) GetComputeClient() (*gophercloud.ServiceClient, error) {
-	if f.getComputeClientFn != nil {
-		return f.getComputeClientFn()
-	}
-	return nil, nil
-}
-
-func (f *fakeRepository) CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+func (f *fakeClient) CreateServer(opts CreateServerOpts) (*Server, error) {
 	if f.createServerFn != nil {
-		return f.createServerFn(client, opts)
+		return f.createServerFn(opts)
 	}
 	return nil, nil
 }
 
-// FetchInstances 구현 추가
-func (f *fakeRepository) FetchInstances() ([]servers.Server, error) {
+func (f *fakeClient) FetchInstances() ([]Server, error) {
 	if f.fetchInstancesFn != nil {
 		return f.fetchInstancesFn()
 	}
 	return nil, nil
 }
 
-// FetchInstanceDetail 구현 추가
-func (f *fakeRepository) FetchInstanceDetail(serverID string) (*servers.Server, map[string]interface{}, error) {
+func (f *fakeClient) FetchInstanceDetail(id string) (*Server, map[string]any, error) {
 	if f.fetchInstanceDetailFn != nil {
-		return f.fetchInstanceDetailFn(serverID)
+		return f.fetchInstanceDetailFn(id)
 	}
 	return nil, nil, nil
+}
+
+func (f *fakeClient) DeleteServer(id string) error {
+	if f.deleteServerFn != nil {
+		return f.deleteServerFn(id)
+	}
+	return nil
+}
+
+func TestServiceGetFlavors(t *testing.T) {
+	t.Run("returns converted flavors", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "1", Name: "m1.small", VCPUs: 1, RAM: 2048, Disk: 20},
+					{ID: "2", Name: "m1.medium", VCPUs: 2, RAM: 4096, Disk: 40},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetFlavors()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 2 {
+			t.Fatalf("expected 2 flavors, got %d", len(res))
+		}
+		if res[0].ID != "1" || res[0].VCPUs != 1 || res[0].RAM != 2048 {
+			t.Fatalf("unexpected first flavor: %+v", res[0])
+		}
+		if res[1].ID != "2" || res[1].Name != "m1.medium" {
+			t.Fatalf("unexpected second flavor: %+v", res[1])
+		}
+	})
+
+	t.Run("returns empty slice when no flavors", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetFlavors()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 0 {
+			t.Fatalf("expected empty slice, got %v", res)
+		}
+	})
+
+	t.Run("propagates client error", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return nil, errors.New("upstream error")
+			},
+		}
+		svc := NewService(client, "project-1")
+		_, err := svc.GetFlavors()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+}
+
+func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
+	flavors := []Flavor{
+		{ID: "1", Name: "m1.small", VCPUs: 2, RAM: 1024, Disk: 10},
+		{ID: "2", Name: "m1.medium", VCPUs: 4, RAM: 2048, Disk: 20},
+	}
+
+	t.Run("calculates max based on cpu constraint", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 8, InUse: 2}, // 6 remaining
+					RAM:       QuotaDetail{Limit: 99999, InUse: 0},
+					Instances: QuotaDetail{Limit: 100, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 2 {
+			t.Fatalf("expected 2 flavors, got %d", len(res))
+		}
+		// 6 cores / 2 vcpus = 3 for m1.small
+		if res[0].MaxConfigurable != 3 {
+			t.Fatalf("expected MaxConfigurable=3 for m1.small, got %d", res[0].MaxConfigurable)
+		}
+		// 6 cores / 4 vcpus = 1 for m1.medium
+		if res[1].MaxConfigurable != 1 {
+			t.Fatalf("expected MaxConfigurable=1 for m1.medium, got %d", res[1].MaxConfigurable)
+		}
+	})
+
+	t.Run("calculates max based on ram constraint", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 99999, InUse: 0},
+					RAM:       QuotaDetail{Limit: 3000, InUse: 0}, // 3000 MB remaining
+					Instances: QuotaDetail{Limit: 100, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// 3000 / 1024 = 2 for m1.small
+		if res[0].MaxConfigurable != 2 {
+			t.Fatalf("expected MaxConfigurable=2 for m1.small, got %d", res[0].MaxConfigurable)
+		}
+		// 3000 / 2048 = 1 for m1.medium
+		if res[1].MaxConfigurable != 1 {
+			t.Fatalf("expected MaxConfigurable=1 for m1.medium, got %d", res[1].MaxConfigurable)
+		}
+	})
+
+	t.Run("calculates max based on instance count constraint", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 99999, InUse: 0},
+					RAM:       QuotaDetail{Limit: 99999, InUse: 0},
+					Instances: QuotaDetail{Limit: 3, InUse: 2}, // 1 remaining
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, f := range res {
+			if f.MaxConfigurable != 1 {
+				t.Fatalf("expected MaxConfigurable=1 for %s, got %d", f.Name, f.MaxConfigurable)
+			}
+		}
+	})
+
+	t.Run("returns 0 when quota is exhausted", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 10, InUse: 10},
+					RAM:       QuotaDetail{Limit: 10000, InUse: 0},
+					Instances: QuotaDetail{Limit: 10, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, f := range res {
+			if f.MaxConfigurable != 0 {
+				t.Fatalf("expected MaxConfigurable=0, got %d for %s", f.MaxConfigurable, f.Name)
+			}
+		}
+	})
+
+	t.Run("uses 999 fallback when flavor has zero vcpus", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{{ID: "z", Name: "zero-cpu", VCPUs: 0, RAM: 1024, Disk: 0}}, nil
+			},
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 10, InUse: 5},
+					RAM:       QuotaDetail{Limit: 10000, InUse: 0},
+					Instances: QuotaDetail{Limit: 5, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, "project-1")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// min(instances=5, min(ram-based, 999)) = 5
+		if res[0].MaxConfigurable != 5 {
+			t.Fatalf("expected MaxConfigurable=5 (instance limit), got %d", res[0].MaxConfigurable)
+		}
+	})
+
+	t.Run("propagates fetch flavors error", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return nil, errors.New("flavors fetch failed")
+			},
+		}
+		svc := NewService(client, "project-1")
+		_, err := svc.GetAvailableFlavorsWithLimit()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("propagates quota error", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) { return flavors, nil },
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return nil, errors.New("quota fetch failed")
+			},
+		}
+		svc := NewService(client, "project-1")
+		_, err := svc.GetAvailableFlavorsWithLimit()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
 }
 
 func TestServiceCreateInstance(t *testing.T) {
 	t.Run("maps floating and fixed IPs into response", func(t *testing.T) {
 		var gotOpts CreateServerOpts
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				gotOpts = opts
 				return testServer(map[string]any{
 					"private": []any{
@@ -81,14 +285,14 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:           " test-vm ",
 			ImageRef:       " image-1 ",
 			FlavorRef:      " flavor-1 ",
 			KeyName:        " team-key ",
 			SecurityGroups: []string{" default ", " ", "ssh"},
-			Networks:       []servers.Network{{UUID: " network-1 "}},
+			Networks:       []NetworkID{{UUID: " network-1 "}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -119,8 +323,8 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("falls back to fixed IP when floating IP is missing", func(t *testing.T) {
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				return testServer(map[string]any{
 					"private": []any{
 						map[string]any{"addr": "10.0.0.9", "OS-EXT-IPS:type": "fixed"},
@@ -129,8 +333,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -149,8 +353,8 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("uses access ipv4 as floating IP fallback", func(t *testing.T) {
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				server := testServer(map[string]any{
 					"private": []any{
 						map[string]any{"addr": "10.0.0.10", "OS-EXT-IPS:type": "fixed"},
@@ -161,8 +365,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -178,9 +382,9 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("falls back to request values when server metadata is missing", func(t *testing.T) {
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
-				return &servers.Server{
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				return &Server{
 					ID:        "server-2",
 					Name:      "fallback-vm",
 					Status:    "BUILD",
@@ -189,8 +393,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		res, err := svc.CreateInstance(CreateServerOpts{
 			Name:           "fallback-vm",
 			ImageRef:       "image-2",
 			FlavorRef:      "flavor-2",
@@ -213,9 +417,9 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("rejects whitespace-only required fields", func(t *testing.T) {
-		svc := NewService(&fakeRepository{})
+		svc := NewService(&fakeClient{}, "project-1")
 
-		_, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "   ",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -224,7 +428,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceNameRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err = svc.CreateInstance(CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "   ",
 			FlavorRef: "flavor-1",
@@ -233,7 +437,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceImageRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		_, err = svc.CreateInstance(CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "   ",
@@ -245,19 +449,19 @@ func TestServiceCreateInstance(t *testing.T) {
 
 	t.Run("drops blank network entries after trimming", func(t *testing.T) {
 		var gotOpts CreateServerOpts
-		repo := &fakeRepository{
-			createServerFn: func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				gotOpts = opts
 				return testServer(map[string]any{}), nil
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateInstance(&gophercloud.ServiceClient{}, CreateServerOpts{
+		svc := NewService(repo, "project-1")
+		_, err := svc.CreateInstance(CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
-			Networks:  []servers.Network{{UUID: "   "}},
+			Networks:  []NetworkID{{UUID: "   "}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -268,8 +472,8 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 }
 
-func testServer(addresses map[string]any) *servers.Server {
-	return &servers.Server{
+func testServer(addresses map[string]any) *Server {
+	return &Server{
 		ID:     "server-1",
 		Name:   "test-vm",
 		Status: "BUILD",
@@ -286,18 +490,4 @@ func testServer(addresses map[string]any) *servers.Server {
 			{"name": "ssh"},
 		},
 	}
-}
-
-func (f *fakeRepository) DeleteServer(client *gophercloud.ServiceClient, id string) error {
-	if f.deleteServerFn != nil {
-		return f.deleteServerFn(client, id)
-	}
-	return nil
-}
-
-func (f *fakeRepository) GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error) {
-	if f.getHypervisorListFn != nil {
-		return f.getHypervisorListFn(client)
-	}
-	return nil, nil
 }

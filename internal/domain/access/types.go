@@ -1,5 +1,26 @@
 package access
 
+// --- Domain models (gophercloud 의존 없음) ---
+
+// KeyPair는 SSH 키 페어의 도메인 표현입니다.
+type KeyPair struct {
+	Name        string
+	Fingerprint string
+	PublicKey   string
+}
+
+// StatusError는 HTTP 상태 코드를 담은 업스트림 에러입니다.
+// 인프라 레이어가 반환하며, 서비스 레이어가 gophercloud 없이 상태 코드로 분기할 수 있게 합니다.
+type StatusError struct {
+	Code int
+	Err  error
+}
+
+func (e *StatusError) Error() string { return e.Err.Error() }
+func (e *StatusError) Unwrap() error { return e.Err }
+
+// --- Request/Response DTOs ---
+
 // CreateKeyPairRequest는 KeyPair 등록 요청 본문입니다.
 type CreateKeyPairRequest struct {
 	// OpenStack key pair name.

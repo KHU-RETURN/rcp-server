@@ -8,10 +8,9 @@ import (
 	"testing"
 
 	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
-func TestRepositoryCreateServerIncludesSSHOptions(t *testing.T) {
+func TestClientCreateServerIncludesSSHOptions(t *testing.T) {
 	var gotBody map[string]any
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +42,7 @@ func TestRepositoryCreateServerIncludesSSHOptions(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := &gophercloud.ServiceClient{
+	sc := &gophercloud.ServiceClient{
 		ProviderClient: &gophercloud.ProviderClient{
 			TokenID:    "token",
 			HTTPClient: http.Client{},
@@ -51,14 +50,13 @@ func TestRepositoryCreateServerIncludesSSHOptions(t *testing.T) {
 		Endpoint: ts.URL + "/",
 	}
 
-	repo := NewRepository(nil)
-	server, err := repo.CreateServer(client, CreateServerOpts{
+	server, err := createServerWithServiceClient(sc, CreateServerOpts{
 		Name:           "test-vm",
 		ImageRef:       "image-1",
 		FlavorRef:      "flavor-1",
 		KeyName:        "team-key",
 		SecurityGroups: []string{"default", "ssh"},
-		Networks:       []servers.Network{{UUID: "network-1"}},
+		Networks:       []NetworkID{{UUID: "network-1"}},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

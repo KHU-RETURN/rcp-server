@@ -2,10 +2,10 @@ package compute
 
 import (
 	"errors"
+	"net/http"
+
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
-	"net/http"
-	"os"
 )
 
 // Handler는 HTTP 요청을 처리합니다.
@@ -93,16 +93,7 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 // @Failure 500 {object} api.ErrorResponse
 // @Router /api/v1/compute/flavors/available [get]
 func (h *Handler) GetAvailableFlavors(c *gin.Context) {
-	// 인프라 레이어를 직접 안 부르고 Service(또는 Repo)를 거칩니다.
-	client, err := h.Svc.GetComputeClient()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Cloud connection failed"})
-		return
-	}
-
-	projectID := os.Getenv("OS_PROJECT_ID")
-
-	flavors, err := h.Svc.GetAvailableFlavorsWithLimit(client, projectID)
+	flavors, err := h.Svc.GetAvailableFlavorsWithLimit()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
@@ -142,13 +133,7 @@ func (h *Handler) CreateServer(c *gin.Context) {
 		return
 	}
 
-	client, err := h.Svc.GetComputeClient()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to connect to cloud"})
-		return
-	}
-
-	server, err := h.Svc.CreateInstance(client, opts)
+	server, err := h.Svc.CreateInstance(opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrCreateInstanceNameRequired),
@@ -165,29 +150,19 @@ func (h *Handler) CreateServer(c *gin.Context) {
 }
 
 func (h *Handler) DeleteServer(c *gin.Context) {
-	// URL 파라미터에서 ID 추출
 	serverID := c.Param("id")
 	if serverID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Server ID is required"})
 		return
 	}
 
-	client, err := h.Svc.GetComputeClient()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cloud connection failed"})
-		return
-	}
-
-	// 삭제 서비스 호출
-	if err := h.Svc.DeleteInstance(client, serverID); err != nil {
-		// h.Svc.DeleteInstance에서 ErrInstanceNotFound를 리턴한다고 가정
+	if err := h.Svc.DeleteInstance(serverID); err != nil {
 		if errors.Is(err, ErrInstanceNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "해당 인스턴스를 찾을 수 없습니다.",
 				"code":  "INSTANCE_NOT_FOUND",
 			})
 		} else {
-			// 예상치 못한 시스템 에러
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "인스턴스 삭제 중 서버 오류가 발생했습니다.",
 				"detail": err.Error(),
@@ -196,6 +171,5 @@ func (h *Handler) DeleteServer(c *gin.Context) {
 		return
 	}
 
-	// 204 No Content: 성공했지만 돌려줄 본문은 없음 (삭제 시 표준)
 	c.Status(http.StatusNoContent)
 }
