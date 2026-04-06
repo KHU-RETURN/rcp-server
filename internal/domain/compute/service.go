@@ -173,8 +173,10 @@ func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) 
 	}
 
 	// 2. [핵심] 리포지토리에 이미 있는 FetchFlavors를 써서 모든 사양 정보를 가져옴
-	allFlavors, _ := s.Repo.FetchFlavors()
-
+	allFlavors, err := s.Repo.FetchFlavors()
+	if err != nil {
+		return nil, err
+	}
 	// 3. 서버가 쓰고 있는 Flavor ID랑 일치하는 녀석을 찾아서 상세 정보 추출
 	var targetFlavor FlavorResponse
 	serverFlavorID := server.Flavor["id"].(string)

@@ -68,7 +68,7 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		computeGroup.POST("/instances", h.CreateServer)
 		// 조회 추가!
 		computeGroup.GET("/instances", h.GetInstances)
-		computeGroup.GET("/instances/detail/:id", h.GetInstanceDetail)
+		computeGroup.GET("/instances/:id", h.GetInstanceDetail)
 	}
 
 }
