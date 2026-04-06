@@ -397,7 +397,7 @@ func (s *Service) DeleteInstance(client *gophercloud.ServiceClient, id string) e
 	// 삭제 실행
 	err = s.Repo.DeleteServer(client, id)
 	if err != nil {
-		return fmt.Errorf("서ver 삭제 실패: %v", err)
+		return fmt.Errorf("서버 삭제 실패: %v", err)
 	}
 
 	return nil
