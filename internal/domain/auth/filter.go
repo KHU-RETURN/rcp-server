@@ -30,7 +30,7 @@ func (h *Handler) AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		user, err := h.Svc.Repo.FindByEmail(c.Request.Context(), claims.Email)
+		user, err := h.Svc.repo.FindByEmail(c.Request.Context(), claims.Email)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to verify user"})
 			return
