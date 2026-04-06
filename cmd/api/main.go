@@ -1,14 +1,26 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
-	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
-	"github.com/KHU-RETURN/rcp-server/internal/server"
-	"github.com/joho/godotenv"
 	"log"
 	"os"
+
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
+	"github.com/KHU-RETURN/rcp-server/internal/server"
+
+	"github.com/joho/godotenv"
+	_ "modernc.org/sqlite"
 )
 
+//go:generate go run github.com/swaggo/swag/cmd/swag@v1.16.6 init --generalInfo main.go --dir .,../../internal/api,../../internal/domain/access,../../internal/domain/compute --output ../../docs/generated --outputTypes yaml --parseInternal
+
+// @title RCP Server API
+// @version 0.1.0
+// @description Local development reference for the RCP server.
+// @BasePath /
+// @schemes http
 func main() {
 	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Fatalf(".env 로드 실패: %v", err)
@@ -18,8 +30,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("OpenStack 인증 실패: %v", err)
 	}
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		log.Fatalf("DB 연결 실패: %v", err)
+	}
+	oauth, err := google.NewGoogleConfig()
+	if err != nil {
+		log.Fatalf("google oauth 연결 실패: %v", err)
+	}
 
-	myApp := server.NewApp(provider)
+	myApp, err := server.NewApp(provider, db, oauth)
+	if err != nil {
+		log.Fatalf("App 초기화 실패: %v", err)
+	}
 	r := server.NewRouter(myApp)
 
 	port := os.Getenv("PORT")

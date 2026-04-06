@@ -1,0 +1,444 @@
+openapi: 3.0.3
+info:
+  title: RCP Server API
+  version: 0.1.0
+  description: |-
+    2026-03-25 기준 `rcp` 백엔드 구현에서 추출한 OpenAPI 명세입니다.
+    현재 인증/인가가 구현되어 있지 않으므로 security scheme은 포함하지 않았습니다.
+servers:
+  - url: http://localhost:8080
+    description: 로컬 개발 서버
+security: []
+tags:
+  - name: compute
+    description: VM/Flavor 관련 API
+  - name: access
+    description: SSH KeyPair 관련 API
+paths:
+  /api/v1/compute/flavors:
+    get:
+      tags:
+        - compute
+      summary: 전체 VM flavor 목록 조회
+      description: OpenStack flavor 목록을 조회합니다.
+      operationId: listComputeFlavors
+      responses:
+        '200':
+          description: Flavor 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FlavorResponse'
+              examples:
+                default:
+                  value:
+                    - id: m1.small
+                      name: m1.small
+                      vcpus: 1
+                      ram: 2048
+                      disk: 20
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                fetchFlavorsFailed:
+                  value:
+                    error: 사양 조회를 실패했습니다
+
+  /api/v1/compute/flavors/all:
+    get:
+      tags:
+        - compute
+      summary: 전체 VM flavor 목록 조회 (별칭)
+      description: 기존 클라이언트 호환을 위해 유지되는 `/api/v1/compute/flavors`의 별칭 경로입니다.
+      operationId: listComputeFlavorsAlias
+      responses:
+        '200':
+          description: Flavor 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FlavorResponse'
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/compute/flavors/available:
+    get:
+      tags:
+        - compute
+      summary: 현재 쿼터 기준 가용 flavor 목록 조회
+      description: |-
+        남은 CPU/RAM/Instance 쿼터를 계산해 각 flavor별 최대 생성 가능 대수를 함께 반환합니다.
+      operationId: listAvailableComputeFlavors
+      responses:
+        '200':
+          description: 가용 Flavor 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AvailableFlavorResponse'
+              examples:
+                default:
+                  value:
+                    - id: m1.small
+                      name: m1.small
+                      vcpus: 1
+                      ram: 2048
+                      disk: 20
+                      max_configurable: 3
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                cloudConnectionFailed:
+                  value:
+                    error: Cloud connection failed
+
+  /api/v1/compute/instances:
+    post:
+      tags:
+        - compute
+      summary: VM 인스턴스 생성
+      description: |-
+        OpenStack에 VM 생성을 요청합니다.
+        응답은 현재 백엔드가 OpenStack SDK의 `servers.Server` 객체를 거의 그대로 반환하는 형태입니다.
+      operationId: createComputeInstance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstanceRequest'
+            examples:
+              default:
+                value:
+                  name: vm-01
+                  image_id: image-uuid
+                  flavor_id: flavor-uuid
+                  network_id: network-uuid
+      responses:
+        '201':
+          description: 생성 요청 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+              examples:
+                default:
+                  value:
+                    id: server-uuid
+                    tenant_id: project-uuid
+                    user_id: user-uuid
+                    name: vm-01
+                    updated: '2026-03-25T10:00:00Z'
+                    created: '2026-03-25T10:00:00Z'
+                    hostid: ''
+                    status: BUILD
+                    progress: 0
+                    accessIPv4: ''
+                    accessIPv6: ''
+                    flavor:
+                      id: flavor-uuid
+                    addresses: {}
+                    metadata: {}
+                    links: []
+                    key_name: ''
+                    adminPass: ''
+                    security_groups: []
+                    'os-extended-volumes:volumes_attached': []
+                    fault:
+                      code: 0
+                      created: '0001-01-01T00:00:00Z'
+                      details: ''
+                      message: ''
+                    tags: null
+                    server_groups: null
+        '400':
+          description: 잘못된 요청 본문
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequestBody:
+                  value:
+                    error: Invalid request body
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                failedToConnectCloud:
+                  value:
+                    error: Failed to connect to cloud
+
+  /api/v1/access/keypairs:
+    post:
+      tags:
+        - access
+      summary: SSH 공개키 등록
+      description: OpenStack KeyPair를 생성합니다.
+      operationId: createAccessKeyPair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKeyPairRequest'
+            examples:
+              default:
+                value:
+                  name: my-keypair
+                  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... user@example
+      responses:
+        '201':
+          description: KeyPair 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyPairResponse'
+              examples:
+                default:
+                  value:
+                    name: my-keypair
+                    fingerprint: aa:bb:cc:dd
+                    public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... user@example
+        '400':
+          description: 잘못된 요청 또는 잘못된 SSH 공개키 형식
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequestBody:
+                  value:
+                    error: Invalid request body
+                invalidSSHKey:
+                  value:
+                    error: invalid SSH public key format
+        '403':
+          description: KeyPair 접근 권한 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                accessDenied:
+                  value:
+                    error: keypair access denied
+        '409':
+          description: 동일 이름의 KeyPair가 이미 존재함
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                alreadyExists:
+                  value:
+                    error: name already exists
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                keyPairOperationFailed:
+                  value:
+                    error: failed to create keypair
+                internalServerError:
+                  value:
+                    error: internal server error
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: 오류 메시지
+
+    FlavorResponse:
+      type: object
+      required:
+        - id
+        - name
+        - vcpus
+        - ram
+        - disk
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        vcpus:
+          type: integer
+        ram:
+          type: integer
+          description: MB 단위 RAM
+        disk:
+          type: integer
+          description: GB 단위 Disk
+
+    AvailableFlavorResponse:
+      allOf:
+        - $ref: '#/components/schemas/FlavorResponse'
+        - type: object
+          required:
+            - max_configurable
+          properties:
+            max_configurable:
+              type: integer
+              description: 현재 쿼터 기준 최대 생성 가능 수량
+
+    CreateInstanceRequest:
+      type: object
+      required:
+        - name
+        - image_id
+        - flavor_id
+      properties:
+        name:
+          type: string
+        image_id:
+          type: string
+        flavor_id:
+          type: string
+        network_id:
+          type: string
+          description: 선택값. 전달되면 해당 네트워크에 VM을 연결합니다.
+
+    Server:
+      type: object
+      description: 백엔드가 OpenStack SDK `servers.Server`를 직렬화해 반환하는 응답 형식
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        user_id:
+          type: string
+        name:
+          type: string
+        updated:
+          type: string
+          format: date-time
+        created:
+          type: string
+          format: date-time
+        hostid:
+          type: string
+        status:
+          type: string
+        progress:
+          type: integer
+        accessIPv4:
+          type: string
+        accessIPv6:
+          type: string
+        flavor:
+          type: object
+          additionalProperties: true
+        addresses:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        links:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        key_name:
+          type: string
+        adminPass:
+          type: string
+        security_groups:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        'os-extended-volumes:volumes_attached':
+          type: array
+          items:
+            $ref: '#/components/schemas/AttachedVolume'
+        fault:
+          $ref: '#/components/schemas/Fault'
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+        server_groups:
+          type: array
+          nullable: true
+          items:
+            type: string
+
+    AttachedVolume:
+      type: object
+      properties:
+        id:
+          type: string
+
+    Fault:
+      type: object
+      properties:
+        code:
+          type: integer
+        created:
+          type: string
+          format: date-time
+        details:
+          type: string
+        message:
+          type: string
+
+    CreateKeyPairRequest:
+      type: object
+      required:
+        - name
+        - public_key
+      properties:
+        name:
+          type: string
+        public_key:
+          type: string
+          description: OpenSSH authorized_keys 형식의 공개키
+
+    KeyPairResponse:
+      type: object
+      required:
+        - name
+        - fingerprint
+        - public_key
+      properties:
+        name:
+          type: string
+        fingerprint:
+          type: string
+        public_key:
+          type: string
