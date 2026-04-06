@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gophercloud/gophercloud"
-	"strings"
 	// "github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	// "log"
+	"strings"
 )
 
 // Service는 비즈니스 로직을 담당합니다.
@@ -386,3 +386,19 @@ func firstNonEmpty(values ...string) string {
 
 // 	return nil
 // }
+
+func (s *Service) DeleteInstance(client *gophercloud.ServiceClient, id string) error {
+	// [Guard] 삭제 전 서버가 존재하는지 확인
+	_, err := servers.Get(client, id).Extract()
+	if err != nil {
+		return fmt.Errorf("삭제하려는 서버를 찾을 수 없습니다 (ID: %s)", id)
+	}
+
+	// 삭제 실행
+	err = s.Repo.DeleteServer(client, id)
+	if err != nil {
+		return fmt.Errorf("서버 삭제 실패: %v", err)
+	}
+
+	return nil
+}

@@ -15,6 +15,7 @@ type computeRepository interface {
 	GetComputeQuota(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
 	GetComputeClient() (*gophercloud.ServiceClient, error)
 	CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+	DeleteServer(client *gophercloud.ServiceClient, id string) error
 	GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error)
 }
 
@@ -104,4 +105,9 @@ func (r *Repository) GetHypervisorList(client *gophercloud.ServiceClient) ([]hyp
 	}
 
 	return allHypervisors, nil
+}
+
+func (r *Repository) DeleteServer(client *gophercloud.ServiceClient, id string) error {
+	// ID를 받아서 해당 서버를 삭제 요청합니다.
+	return servers.Delete(client, id).ExtractErr()
 }

@@ -18,6 +18,8 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
 
+var ErrInstanceNotFound = errors.New("instance not found")
+
 // GetFlavors godoc
 // @Summary List compute flavors
 // @Description Returns the currently available flavor catalog.
@@ -46,10 +48,11 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		computeGroup.GET("/flavors/all", h.GetFlavors)
 		// 남은 자원량 기반 가용 flavors 조회
 		computeGroup.GET("/flavors/available", h.GetAvailableFlavors)
-		// 서버 생성 엔드포인트
+		// 인스턴스 서버 생성 엔드포인트
 		computeGroup.POST("/instances", h.CreateServer)
+		// 인스턴스 서버 삭제 엔드포인트
+		computeGroup.DELETE("/instances/:id", h.DeleteServer)
 	}
-
 }
 
 // GetAvailableFlavors godoc
@@ -130,4 +133,40 @@ func (h *Handler) CreateServer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, server)
+}
+
+func (h *Handler) DeleteServer(c *gin.Context) {
+	// URL 파라미터에서 ID 추출
+	serverID := c.Param("id")
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	client, err := h.Svc.GetComputeClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cloud connection failed"})
+		return
+	}
+
+	// 삭제 서비스 호출
+	if err := h.Svc.DeleteInstance(client, serverID); err != nil {
+		// h.Svc.DeleteInstance에서 ErrInstanceNotFound를 리턴한다고 가정
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "해당 인스턴스를 찾을 수 없습니다.",
+				"code":  "INSTANCE_NOT_FOUND",
+			})
+		} else {
+			// 예상치 못한 시스템 에러
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":  "인스턴스 삭제 중 서버 오류가 발생했습니다.",
+				"detail": err.Error(),
+			})
+		}
+		return
+	}
+
+	// 204 No Content: 성공했지만 돌려줄 본문은 없음 (삭제 시 표준)
+	c.Status(http.StatusNoContent)
 }
