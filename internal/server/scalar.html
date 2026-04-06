@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RCP API Docs</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script>
+      Scalar.createApiReference('#app', {
+        url: '/openapi.yaml',
+        layout: 'modern',
+        agent: {
+          disabled: true,
+        },
+        metaData: {
+          title: 'RCP API Docs',
+          description: 'Local API reference for RCP server development',
+        },
+      })
+    </script>
+  </body>
+</html>

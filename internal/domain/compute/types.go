@@ -2,16 +2,22 @@ package compute
 
 // 기본 정보 (all 용)
 type FlavorResponse struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	VCPUs int    `json:"vcpus"`
-	RAM   int    `json:"ram"`  // MB 단위
-	Disk  int    `json:"disk"` // GB 단위
+	// Flavor UUID.
+	ID string `json:"id"`
+	// Human-readable flavor name.
+	Name string `json:"name"`
+	// Number of virtual CPUs.
+	VCPUs int `json:"vcpus"`
+	// Memory in MB.
+	RAM int `json:"ram"` // MB 단위
+	// Disk size in GB.
+	Disk int `json:"disk"` // GB 단위
 }
 
 // 계산 정보 포함 (available 용) - 상속(Embedding) 활용
 type AvailableFlavorResponse struct {
 	FlavorResponse
+	// Maximum number of instances that can still be configured with this flavor.
 	MaxConfigurable int `json:"max_configurable"`
 }
 
