@@ -106,6 +106,21 @@ go run ./cmd/api
 
 기본 주소는 `http://localhost:8080`입니다.
 
+## API Docs Generation
+
+Swagger 문서는 Swaggo 주석 기반으로 생성합니다.
+
+문서를 갱신하려면:
+
+```bash
+go generate ./cmd/api
+```
+
+생성된 산출물은 `docs/generated/swagger.yaml`이며, 서버 실행 후 다음 경로에서 확인할 수 있습니다.
+
+- `http://localhost:8080/docs`
+- `http://localhost:8080/openapi.yaml`
+
 ## Domain Documentation
 
 도메인별 API, 요청/응답 예시, 세부 비즈니스 규칙은 구현이 더 정리된 뒤 별도 섹션 또는 문서로 추가할 예정입니다.

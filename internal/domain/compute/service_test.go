@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
@@ -283,4 +284,18 @@ func testServer(addresses map[string]any) *servers.Server {
 			{"name": "ssh"},
 		},
 	}
+}
+
+func (f *fakeRepository) DeleteServer(client *gophercloud.ServiceClient, id string) error {
+	if f.deleteServerFn != nil {
+		return f.deleteServerFn(client, id)
+	}
+	return nil
+}
+
+func (f *fakeRepository) GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error) {
+	if f.getHypervisorListFn != nil {
+		return f.getHypervisorListFn(client)
+	}
+	return nil, nil
 }
