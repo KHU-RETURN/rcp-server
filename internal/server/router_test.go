@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/gin-gonic/gin"
 )
@@ -16,14 +17,19 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 
 	router := NewRouter(&App{
 		Access:  &access.Handler{},
+		Auth:    &auth.Handler{},
 		Compute: &compute.Handler{},
 	})
 
 	routes := router.Routes()
 	var foundFlavors bool
 	var foundCreateInstance bool
+	var foundAuthLogin bool
 
 	for _, route := range routes {
+		if route.Method == "GET" && route.Path == "/api/v1/auth/login" {
+			foundAuthLogin = true
+		}
 		if route.Method == "GET" && route.Path == "/api/v1/compute/flavors" {
 			foundFlavors = true
 		}
@@ -37,6 +43,9 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	}
 	if !foundCreateInstance {
 		t.Fatalf("POST /api/v1/compute/instances route was not registered")
+	}
+	if !foundAuthLogin {
+		t.Fatalf("GET /api/v1/auth/login route was not registered")
 	}
 }
 
