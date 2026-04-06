@@ -15,6 +15,8 @@ type computeRepository interface {
 	GetComputeQuota(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
 	GetComputeClient() (*gophercloud.ServiceClient, error)
 	CreateServer(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+	DeleteServer(client *gophercloud.ServiceClient, id string) error
+	GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error)
 }
 
 type Repository struct {

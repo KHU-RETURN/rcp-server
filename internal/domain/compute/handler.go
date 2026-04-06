@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
@@ -19,6 +18,8 @@ type Handler struct {
 func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
+
+var ErrInstanceNotFound = errors.New("instance not found")
 
 // GetFlavors godoc
 // @Summary List compute flavors
@@ -151,11 +152,18 @@ func (h *Handler) DeleteServer(c *gin.Context) {
 
 	// 삭제 서비스 호출
 	if err := h.Svc.DeleteInstance(client, serverID); err != nil {
-		// 아까 배운 대로! 없는 서버면 404, 아니면 500
-		if strings.Contains(err.Error(), "찾을 수 없습니다") {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		// h.Svc.DeleteInstance에서 ErrInstanceNotFound를 리턴한다고 가정
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "해당 인스턴스를 찾을 수 없습니다.",
+				"code":  "INSTANCE_NOT_FOUND",
+			})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			// 예상치 못한 시스템 에러
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":  "인스턴스 삭제 중 서버 오류가 발생했습니다.",
+				"detail": err.Error(),
+			})
 		}
 		return
 	}

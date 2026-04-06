@@ -5,16 +5,19 @@ import (
 	"testing"
 
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
 type fakeRepository struct {
-	fetchFlavorsFn     func() ([]flavors.Flavor, error)
-	getComputeQuotaFn  func(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
-	getComputeClientFn func() (*gophercloud.ServiceClient, error)
-	createServerFn     func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+	fetchFlavorsFn      func() ([]flavors.Flavor, error)
+	getComputeQuotaFn   func(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
+	getComputeClientFn  func() (*gophercloud.ServiceClient, error)
+	createServerFn      func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+	deleteServerFn      func(client *gophercloud.ServiceClient, id string) error
+	getHypervisorListFn func(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error)
 }
 
 func (f *fakeRepository) FetchFlavors() ([]flavors.Flavor, error) {
@@ -265,4 +268,18 @@ func testServer(addresses map[string]any) *servers.Server {
 			{"name": "ssh"},
 		},
 	}
+}
+
+func (f *fakeRepository) DeleteServer(client *gophercloud.ServiceClient, id string) error {
+	if f.deleteServerFn != nil {
+		return f.deleteServerFn(client, id)
+	}
+	return nil
+}
+
+func (f *fakeRepository) GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error) {
+	if f.getHypervisorListFn != nil {
+		return f.getHypervisorListFn(client)
+	}
+	return nil, nil
 }
