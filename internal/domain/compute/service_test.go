@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
@@ -15,6 +16,11 @@ type fakeRepository struct {
 	getComputeQuotaFn  func(client *gophercloud.ServiceClient, projectID string) (*quotasets.QuotaDetailSet, error)
 	getComputeClientFn func() (*gophercloud.ServiceClient, error)
 	createServerFn     func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
+}
+
+// GetHypervisorList implements [computeRepository].
+func (f *fakeRepository) GetHypervisorList(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error) {
+	panic("unimplemented")
 }
 
 func (f *fakeRepository) FetchFlavors() ([]flavors.Flavor, error) {
