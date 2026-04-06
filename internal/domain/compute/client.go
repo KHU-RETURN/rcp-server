@@ -3,6 +3,7 @@ package compute
 import (
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
@@ -77,6 +78,79 @@ func (c *Client) CreateServer(opts CreateServerOpts) (*Server, error) {
 		return nil, err
 	}
 	return createServerWithServiceClient(sc, opts)
+}
+
+func (c *Client) FetchInstances() ([]Server, error) {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return nil, err
+	}
+
+	allPages, err := servers.List(sc, servers.ListOpts{}).AllPages()
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := servers.ExtractServers(allPages)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]Server, len(raw))
+	for i, s := range raw {
+		result[i] = Server{
+			ID:             s.ID,
+			Name:           s.Name,
+			Status:         s.Status,
+			Image:          s.Image,
+			Flavor:         s.Flavor,
+			Addresses:      s.Addresses,
+			KeyName:        s.KeyName,
+			SecurityGroups: s.SecurityGroups,
+			AccessIPv4:     s.AccessIPv4,
+			Created:        s.Created,
+		}
+	}
+	return result, nil
+}
+
+func (c *Client) FetchInstanceDetail(id string) (*Server, map[string]any, error) {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	raw, err := servers.Get(sc, id).Extract()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	srv := &Server{
+		ID:             raw.ID,
+		Name:           raw.Name,
+		Status:         raw.Status,
+		Image:          raw.Image,
+		Flavor:         raw.Flavor,
+		Addresses:      raw.Addresses,
+		KeyName:        raw.KeyName,
+		SecurityGroups: raw.SecurityGroups,
+		AccessIPv4:     raw.AccessIPv4,
+		Created:        raw.Created,
+	}
+
+	diag, err := diagnostics.Get(sc, id).Extract()
+	if err != nil {
+		return srv, nil, nil
+	}
+	return srv, diag, nil
+}
+
+func (c *Client) DeleteServer(id string) error {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return err
+	}
+	return servers.Delete(sc, id).ExtractErr()
 }
 
 // createServerWithServiceClient는 테스트에서 mock ServiceClient를 주입할 때도 사용합니다.

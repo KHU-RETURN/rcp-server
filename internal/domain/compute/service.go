@@ -13,6 +13,9 @@ type computeClient interface {
 	FetchFlavors() ([]Flavor, error)
 	GetComputeQuota(projectID string) (*QuotaDetailSet, error)
 	CreateServer(opts CreateServerOpts) (*Server, error)
+	FetchInstances() ([]Server, error)
+	FetchInstanceDetail(id string) (*Server, map[string]any, error)
+	DeleteServer(id string) error
 }
 
 // Service는 비즈니스 로직을 담당합니다.
@@ -86,6 +89,123 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 		})
 	}
 	return res, nil
+}
+
+// GetInstances는 VM 전체 목록을 가져와 변환하며, 각 VM의 Flavor 상세 정보도 포함합니다.
+func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
+	rawServers, err := s.client.FetchInstances()
+	if err != nil {
+		return nil, err
+	}
+
+	allFlavors, err := s.client.FetchFlavors()
+	if err != nil {
+		return nil, err
+	}
+	flavorMap := make(map[string]FlavorResponse)
+	for _, f := range allFlavors {
+		flavorMap[f.ID] = FlavorResponse{
+			ID:    f.ID,
+			Name:  f.Name,
+			VCPUs: f.VCPUs,
+			RAM:   f.RAM,
+			Disk:  f.Disk,
+		}
+	}
+
+	var res []InstanceDetailResponse
+	for _, srv := range rawServers {
+		addrMap := make(map[string]string)
+		for netName, addrs := range srv.Addresses {
+			if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
+				if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
+					if addr, ok := firstAddr["addr"].(string); ok {
+						addrMap[netName] = addr
+					}
+				}
+			}
+		}
+
+		var targetFlavor FlavorResponse
+		if srvFlavorID, ok := srv.Flavor["id"].(string); ok {
+			if f, exists := flavorMap[srvFlavorID]; exists {
+				targetFlavor = f
+			}
+		}
+
+		res = append(res, InstanceDetailResponse{
+			ID:        srv.ID,
+			Name:      srv.Name,
+			Status:    srv.Status,
+			Created:   srv.Created,
+			Image:     extractResourceID(srv.Image),
+			Addresses: addrMap,
+			Flavor:    targetFlavor,
+		})
+	}
+	return res, nil
+}
+
+// GetInstanceDetail은 특정 VM의 상세 정보와 실시간 사용량을 반환합니다.
+func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) {
+	server, diag, err := s.client.FetchInstanceDetail(id)
+	if err != nil {
+		return nil, err
+	}
+
+	allFlavors, err := s.client.FetchFlavors()
+	if err != nil {
+		return nil, err
+	}
+	var targetFlavor FlavorResponse
+	serverFlavorID, _ := server.Flavor["id"].(string)
+	for _, f := range allFlavors {
+		if f.ID == serverFlavorID {
+			targetFlavor = FlavorResponse{
+				ID:    f.ID,
+				Name:  f.Name,
+				VCPUs: f.VCPUs,
+				RAM:   f.RAM,
+				Disk:  f.Disk,
+			}
+			break
+		}
+	}
+
+	addrMap := make(map[string]string)
+	for netName, addrs := range server.Addresses {
+		if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
+			if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
+				addrMap[netName], _ = firstAddr["addr"].(string)
+			}
+		}
+	}
+
+	usage := UsageStats{}
+	if diag != nil {
+		if cpu, ok := diag["cpu0_time"].(float64); ok {
+			usage.CPUUsage = cpu
+		}
+		if mem, ok := diag["memory"].(float64); ok {
+			usage.MemoryUsage = int(mem / 1024)
+		}
+	}
+
+	return &InstanceDetailResponse{
+		ID:        server.ID,
+		Name:      server.Name,
+		Status:    server.Status,
+		Addresses: addrMap,
+		Flavor:    targetFlavor,
+		Usage:     usage,
+		Created:   server.Created,
+		Image:     extractResourceID(server.Image),
+	}, nil
+}
+
+// DeleteInstance는 지정된 ID의 서버를 삭제합니다.
+func (s *Service) DeleteInstance(id string) error {
+	return s.client.DeleteServer(id)
 }
 
 func (s *Service) CreateInstance(opts CreateServerOpts) (*CreateInstanceResponse, error) {
@@ -307,59 +427,3 @@ func firstNonEmpty(values ...string) string {
 
 	return ""
 }
-
-// func (s *Service) checkQuota(client *gophercloud.ServiceClient, flavorID string) error {
-// 	// 1. Flavor 정보 가져오기
-// 	flavor, err := flavors.Get(client, flavorID).Extract()
-// 	if err != nil {
-// 		return fmt.Errorf("flavor 정보를 확인할 수 없습니다: %v", err)
-// 	}
-
-// 	// 2. [Guard B] 물리 자원(Hypervisor) 실점유율 체크
-// 	hvs, err := s.Repo.GetHypervisorList(client)
-// 	if err != nil {
-// 		return fmt.Errorf("하이퍼바이저 정보를 가져올 수 없습니다: %v", err)
-// 	}
-
-// 	var totalFreeVCPUs int
-// 	var totalFreeRAM int
-
-// 	// 모든 하이퍼바이저의 남은 자원을 합산합니다 (멀티 노드 대응)
-// 	for _, hv := range hvs {
-// 		totalFreeVCPUs += (hv.VCPUs - hv.VCPUsUsed)
-// 		totalFreeRAM += hv.FreeRamMB
-// 	}
-
-// 	log.Printf("[DEBUG] 가용 물리 자원 합계 - CPU: %d, RAM: %dMB", totalFreeVCPUs, totalFreeRAM)
-
-// 	if flavor.VCPUs > totalFreeVCPUs {
-// 		return fmt.Errorf("물리 서버 CPU 부족 (필요: %d, 가용: %d)", flavor.VCPUs, totalFreeVCPUs)
-// 	}
-// 	if flavor.RAM > totalFreeRAM {
-// 		return fmt.Errorf("물리 서버 RAM 부족 (필요: %dMB, 가용: %dMB)", flavor.RAM, totalFreeRAM)
-// 	}
-
-// 	return nil
-// }
-
-// checkDuplicateName: 동일한 이름의 서버가 이미 존재하는지 확인
-// func (s *Service) checkDuplicateName(client *gophercloud.ServiceClient, name string) error {
-// 	allPages, err := servers.List(client, servers.ListOpts{Name: name}).AllPages()
-// 	if err != nil {
-// 		return fmt.Errorf("서버 목록 조회 실패: %v", err)
-// 	}
-
-// 	allServers, err := servers.ExtractServers(allPages)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// 이름이 완전히 일치하는 서버가 있는지 체크
-// 	for _, srv := range allServers {
-// 		if srv.Name == name {
-// 			return fmt.Errorf("이미 '%s'라는 이름의 서버가 존재합니다", name)
-// 		}
-// 	}
-
-// 	return nil
-// }

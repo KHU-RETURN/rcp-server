@@ -7,9 +7,12 @@ import (
 )
 
 type fakeClient struct {
-	fetchFlavorsFn    func() ([]Flavor, error)
-	getComputeQuotaFn func(projectID string) (*QuotaDetailSet, error)
-	createServerFn    func(opts CreateServerOpts) (*Server, error)
+	fetchFlavorsFn        func() ([]Flavor, error)
+	getComputeQuotaFn     func(projectID string) (*QuotaDetailSet, error)
+	createServerFn        func(opts CreateServerOpts) (*Server, error)
+	fetchInstancesFn      func() ([]Server, error)
+	fetchInstanceDetailFn func(id string) (*Server, map[string]any, error)
+	deleteServerFn        func(id string) error
 }
 
 func (f *fakeClient) FetchFlavors() ([]Flavor, error) {
@@ -31,6 +34,27 @@ func (f *fakeClient) CreateServer(opts CreateServerOpts) (*Server, error) {
 		return f.createServerFn(opts)
 	}
 	return nil, nil
+}
+
+func (f *fakeClient) FetchInstances() ([]Server, error) {
+	if f.fetchInstancesFn != nil {
+		return f.fetchInstancesFn()
+	}
+	return nil, nil
+}
+
+func (f *fakeClient) FetchInstanceDetail(id string) (*Server, map[string]any, error) {
+	if f.fetchInstanceDetailFn != nil {
+		return f.fetchInstanceDetailFn(id)
+	}
+	return nil, nil, nil
+}
+
+func (f *fakeClient) DeleteServer(id string) error {
+	if f.deleteServerFn != nil {
+		return f.deleteServerFn(id)
+	}
+	return nil
 }
 
 func TestServiceGetFlavors(t *testing.T) {

@@ -18,6 +18,8 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
 
+var ErrInstanceNotFound = errors.New("instance not found")
+
 // GetFlavors godoc
 // @Summary List compute flavors
 // @Description Returns the currently available flavor catalog.
@@ -36,6 +38,32 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 	c.JSON(http.StatusOK, flavors)
 }
 
+// GetInstanceDetail 핸들러
+func (h *Handler) GetInstanceDetail(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "인스턴스 ID가 필요합니다."})
+		return
+	}
+
+	detail, err := h.Svc.GetInstanceDetail(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "상세 조회 실패: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, detail)
+}
+
+func (h *Handler) GetInstances(c *gin.Context) {
+	instances, err := h.Svc.GetInstances()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, instances)
+}
+
 // InitRoutes는 전달받은 RouterGroup에 Compute 관련 엔드포인트들을 등록합니다.
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	computeGroup := rg.Group("/compute") // /api/v1/compute
@@ -46,10 +74,14 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		computeGroup.GET("/flavors/all", h.GetFlavors)
 		// 남은 자원량 기반 가용 flavors 조회
 		computeGroup.GET("/flavors/available", h.GetAvailableFlavors)
-		// 서버 생성 엔드포인트
+		// 인스턴스 서버 생성 엔드포인트
 		computeGroup.POST("/instances", h.CreateServer)
+		// 조회 추가!
+		computeGroup.GET("/instances", h.GetInstances)
+		computeGroup.GET("/instances/:id", h.GetInstanceDetail)
+		// 인스턴스 서버 삭제 엔드포인트
+		computeGroup.DELETE("/instances/:id", h.DeleteServer)
 	}
-
 }
 
 // GetAvailableFlavors godoc
@@ -115,4 +147,29 @@ func (h *Handler) CreateServer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, server)
+}
+
+func (h *Handler) DeleteServer(c *gin.Context) {
+	serverID := c.Param("id")
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	if err := h.Svc.DeleteInstance(serverID); err != nil {
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "해당 인스턴스를 찾을 수 없습니다.",
+				"code":  "INSTANCE_NOT_FOUND",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":  "인스턴스 삭제 중 서버 오류가 발생했습니다.",
+				"detail": err.Error(),
+			})
+		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
