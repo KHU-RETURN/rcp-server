@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
 )
