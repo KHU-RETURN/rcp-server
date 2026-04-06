@@ -18,8 +18,8 @@ type fakeRepository struct {
 	createServerFn        func(client *gophercloud.ServiceClient, opts CreateServerOpts) (*servers.Server, error)
 	fetchInstancesFn      func() ([]servers.Server, error)
 	fetchInstanceDetailFn func(serverID string) (*servers.Server, map[string]interface{}, error)
-	deleteServerFn      func(client *gophercloud.ServiceClient, id string) error
-	getHypervisorListFn func(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error)
+	deleteServerFn        func(client *gophercloud.ServiceClient, id string) error
+	getHypervisorListFn   func(client *gophercloud.ServiceClient) ([]hypervisors.Hypervisor, error)
 }
 
 func (f *fakeRepository) FetchFlavors() ([]flavors.Flavor, error) {
