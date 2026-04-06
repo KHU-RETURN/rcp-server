@@ -47,6 +47,69 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 	return res, nil
 }
 
+// GetInstances는 VM 전체 목록을 가져와 변환하며, 각 VM의 Flavor 상세 정보도 포함합니다.
+func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
+	// 1. 모든 인스턴스 목록 가져오기
+	rawServers, err := s.Repo.FetchInstances()
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. [최적화] 모든 Flavor 정보를 미리 한 번만 가져와서 Map으로 변환
+	// 루프 안에서 API를 계속 호출하는 것을 방지합니다.
+	allFlavors, err := s.Repo.FetchFlavors()
+	if err != nil {
+		return nil, err
+	}
+	flavorMap := make(map[string]FlavorResponse)
+	for _, f := range allFlavors {
+		flavorMap[f.ID] = FlavorResponse{
+			ID:    f.ID,
+			Name:  f.Name,
+			VCPUs: f.VCPUs,
+			RAM:   f.RAM,
+			Disk:  f.Disk,
+		}
+	}
+
+	var res []InstanceDetailResponse
+
+	for _, srv := range rawServers {
+		// 3. IP 주소 파싱 (Helper 함수로 분리하면 더 깔끔합니다)
+		addrMap := make(map[string]string)
+		for netName, addrs := range srv.Addresses {
+			if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
+				if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
+					if addr, ok := firstAddr["addr"].(string); ok {
+						addrMap[netName] = addr
+					}
+				}
+			}
+		}
+
+		// 4. 미리 만들어둔 flavorMap에서 해당 인스턴스의 Flavor 정보 찾기
+		var targetFlavor FlavorResponse
+		if srvFlavorID, ok := srv.Flavor["id"].(string); ok {
+			if f, exists := flavorMap[srvFlavorID]; exists {
+				targetFlavor = f
+			}
+		}
+
+		// 5. 결과 리스트에 추가
+		res = append(res, InstanceDetailResponse{
+			ID:        srv.ID,
+			Name:      srv.Name,
+			Status:    srv.Status,
+			Created:   srv.Created,
+			Image:     extractResourceID(srv.Image),
+			Addresses: addrMap,
+			Flavor:    targetFlavor, // 이제 목록 조회에서도 Flavor 상세 정보가 포함됩니다.
+		})
+	}
+
+	return res, nil
+}
+
 // GetAvailableFlavorsWithLimit 는 남은 자원량을 계산하여 각 Flavor별 가용 대수를 포함해 반환합니다.
 func (s *Service) GetAvailableFlavorsWithLimit(client *gophercloud.ServiceClient, projectID string) ([]AvailableFlavorResponse, error) {
 	// 1. 전체 Flavor 목록 가져오기
@@ -102,6 +165,68 @@ func (s *Service) GetAvailableFlavorsWithLimit(client *gophercloud.ServiceClient
 		})
 	}
 	return res, nil
+}
+func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) {
+	// 1. 리포지토리 호출 (서버 정보 + 진단 정보)
+	server, diag, err := s.Repo.FetchInstanceDetail(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. [핵심] 리포지토리에 이미 있는 FetchFlavors를 써서 모든 사양 정보를 가져옴
+	allFlavors, err := s.Repo.FetchFlavors()
+	if err != nil {
+		return nil, err
+	}
+	// 3. 서버가 쓰고 있는 Flavor ID랑 일치하는 녀석을 찾아서 상세 정보 추출
+	var targetFlavor FlavorResponse
+	serverFlavorID := server.Flavor["id"].(string)
+
+	for _, f := range allFlavors {
+		if f.ID == serverFlavorID {
+			targetFlavor = FlavorResponse{
+				ID:    f.ID,
+				Name:  f.Name,
+				VCPUs: f.VCPUs, // 이제 여기서 0이 아닌 진짜 숫자가 담김!
+				RAM:   f.RAM,
+				Disk:  f.Disk,
+			}
+			break
+		}
+	}
+
+	// 4. IP 주소 파싱
+	addrMap := make(map[string]string)
+	for netName, addrs := range server.Addresses {
+		if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
+			if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
+				addrMap[netName] = firstAddr["addr"].(string)
+			}
+		}
+	}
+
+	// 5. 사용량 정보 매핑
+	usage := UsageStats{}
+	if diag != nil {
+		if cpu, ok := diag["cpu0_time"].(float64); ok {
+			usage.CPUUsage = cpu
+		}
+		if mem, ok := diag["memory"].(float64); ok {
+			usage.MemoryUsage = int(mem / 1024)
+		}
+	}
+
+	// 6. 최종 합체
+	return &InstanceDetailResponse{
+		ID:        server.ID,
+		Name:      server.Name,
+		Status:    server.Status,
+		Addresses: addrMap,
+		Flavor:    targetFlavor,
+		Usage:     usage,
+		Created:   server.Created,
+		Image:     extractResourceID(server.Image),
+	}, nil
 }
 
 func (s *Service) GetComputeClient() (*gophercloud.ServiceClient, error) {
