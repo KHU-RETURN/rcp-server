@@ -104,13 +104,7 @@ func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 	}
 	flavorMap := make(map[string]FlavorResponse)
 	for _, f := range allFlavors {
-		flavorMap[f.ID] = FlavorResponse{
-			ID:    f.ID,
-			Name:  f.Name,
-			VCPUs: f.VCPUs,
-			RAM:   f.RAM,
-			Disk:  f.Disk,
-		}
+		flavorMap[f.ID] = FlavorResponse(f)
 	}
 
 	var res []InstanceDetailResponse
@@ -161,13 +155,7 @@ func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) 
 	serverFlavorID, _ := server.Flavor["id"].(string)
 	for _, f := range allFlavors {
 		if f.ID == serverFlavorID {
-			targetFlavor = FlavorResponse{
-				ID:    f.ID,
-				Name:  f.Name,
-				VCPUs: f.VCPUs,
-				RAM:   f.RAM,
-				Disk:  f.Disk,
-			}
+			targetFlavor = FlavorResponse(f)
 			break
 		}
 	}
