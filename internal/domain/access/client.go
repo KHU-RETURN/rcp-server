@@ -42,6 +42,42 @@ func (c *Client) GetKeyPair(name string) (*KeyPair, error) {
 	}, nil
 }
 
+func (c *Client) ListKeyPairs() ([]KeyPair, error) {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return nil, err
+	}
+
+	pages, err := keypairs.List(sc, nil).AllPages()
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+
+	kps, err := keypairs.ExtractKeyPairs(pages)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]KeyPair, len(kps))
+	for i, kp := range kps {
+		result[i] = KeyPair{
+			Name:        kp.Name,
+			Fingerprint: kp.Fingerprint,
+			PublicKey:   kp.PublicKey,
+		}
+	}
+	return result, nil
+}
+
+func (c *Client) DeleteKeyPair(name string) error {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return err
+	}
+
+	return toStatusError(keypairs.Delete(sc, name, nil).ExtractErr())
+}
+
 func (c *Client) CreateKeyPair(name, publicKey string) (*KeyPair, error) {
 	sc, err := c.serviceClient()
 	if err != nil {

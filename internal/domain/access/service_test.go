@@ -9,8 +9,17 @@ import (
 const testPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMz7v3R7iK4WbG2ZrM8Z8vV7n6lYx4l6Wwq8m7M+v7gL test@example"
 
 type fakeClient struct {
+	listKeyPairsFn  func() ([]KeyPair, error)
 	getKeyPairFn    func(name string) (*KeyPair, error)
 	createKeyPairFn func(name, publicKey string) (*KeyPair, error)
+	deleteKeyPairFn func(name string) error
+}
+
+func (f *fakeClient) ListKeyPairs() ([]KeyPair, error) {
+	if f.listKeyPairsFn != nil {
+		return f.listKeyPairsFn()
+	}
+	return nil, nil
 }
 
 func (f *fakeClient) GetKeyPair(name string) (*KeyPair, error) {
@@ -25,6 +34,13 @@ func (f *fakeClient) CreateKeyPair(name, publicKey string) (*KeyPair, error) {
 		return f.createKeyPairFn(name, publicKey)
 	}
 	return nil, nil
+}
+
+func (f *fakeClient) DeleteKeyPair(name string) error {
+	if f.deleteKeyPairFn != nil {
+		return f.deleteKeyPairFn(name)
+	}
+	return nil
 }
 
 func newStatusErr(code int) *StatusError {

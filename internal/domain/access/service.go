@@ -14,16 +14,20 @@ var (
 	ErrPublicKeyRequired      = errors.New("public_key is required")
 	ErrInvalidSSHKeyFormat    = errors.New("invalid SSH public key format")
 	ErrKeyPairAlreadyExists   = errors.New("name already exists")
+	ErrKeyPairNotFound        = errors.New("keypair not found")
 	ErrInvalidKeyPairRequest  = errors.New("invalid keypair request")
 	ErrKeyPairAccessDenied    = errors.New("keypair access denied")
 	ErrKeyPairOperationFailed = errors.New("failed to create keypair")
+	ErrKeyPairDeleteFailed    = errors.New("failed to delete keypair")
 )
 
 // keyPairClient는 OpenStack keypair API 접근 인터페이스입니다.
 // 구현체는 client.go의 Client입니다.
 type keyPairClient interface {
+	ListKeyPairs() ([]KeyPair, error)
 	GetKeyPair(name string) (*KeyPair, error)
 	CreateKeyPair(name, publicKey string) (*KeyPair, error)
+	DeleteKeyPair(name string) error
 }
 
 type Service struct {
@@ -72,6 +76,49 @@ func (s *Service) CreateKeyPair(req CreateKeyPairRequest) (*KeyPairResponse, err
 		Fingerprint: keyPair.Fingerprint,
 		PublicKey:   keyPair.PublicKey,
 	}, nil
+}
+
+func (s *Service) ListKeyPairs() ([]KeyPairResponse, error) {
+	kps, err := s.client.ListKeyPairs()
+	if err != nil {
+		return nil, normalizeKeyPairError(err)
+	}
+
+	result := make([]KeyPairResponse, len(kps))
+	for i, kp := range kps {
+		result[i] = KeyPairResponse{
+			Name:        kp.Name,
+			Fingerprint: kp.Fingerprint,
+			PublicKey:   kp.PublicKey,
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) GetKeyPair(name string) (*KeyPairResponse, error) {
+	kp, err := s.client.GetKeyPair(name)
+	if err != nil {
+		if isNotFoundError(err) {
+			return nil, ErrKeyPairNotFound
+		}
+		return nil, normalizeKeyPairError(err)
+	}
+
+	return &KeyPairResponse{
+		Name:        kp.Name,
+		Fingerprint: kp.Fingerprint,
+		PublicKey:   kp.PublicKey,
+	}, nil
+}
+
+func (s *Service) DeleteKeyPair(name string) error {
+	if err := s.client.DeleteKeyPair(name); err != nil {
+		if isNotFoundError(err) {
+			return ErrKeyPairNotFound
+		}
+		return fmt.Errorf("%w: %v", ErrKeyPairDeleteFailed, err)
+	}
+	return nil
 }
 
 func isNotFoundError(err error) bool {
