@@ -86,11 +86,7 @@ func (s *Service) ListKeyPairs() ([]KeyPairResponse, error) {
 
 	result := make([]KeyPairResponse, len(kps))
 	for i, kp := range kps {
-		result[i] = KeyPairResponse{
-			Name:        kp.Name,
-			Fingerprint: kp.Fingerprint,
-			PublicKey:   kp.PublicKey,
-		}
+		result[i] = KeyPairResponse(kp)
 	}
 	return result, nil
 }
