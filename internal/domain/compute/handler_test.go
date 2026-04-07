@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,10 +28,10 @@ func TestHandlerGetFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -54,10 +55,10 @@ func TestHandlerGetFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -90,10 +91,10 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors?available=true", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -124,10 +125,10 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors?available=true", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -181,12 +182,12 @@ func TestHandlerCreateServer(t *testing.T) {
 			SecurityGroups: []string{"default", "ssh"},
 		})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/compute/instances", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -207,12 +208,12 @@ func TestHandlerCreateServer(t *testing.T) {
 	})
 
 	t.Run("returns 400 for invalid json", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/compute/instances", bytes.NewBufferString("{"))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewBufferString("{"))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(&fakeClient{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -236,12 +237,12 @@ func TestHandlerCreateServer(t *testing.T) {
 			NetworkID: "   ",
 		})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/compute/instances", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -267,12 +268,12 @@ func TestHandlerCreateServer(t *testing.T) {
 			NetworkID: "   ",
 		})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/compute/instances", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath + "")
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 

@@ -3,6 +3,7 @@ package server
 import (
 	"testing"
 
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
@@ -24,25 +25,25 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	var foundAuthLogin bool
 
 	for _, route := range routes {
-		if route.Method == "GET" && route.Path == "/api/v1/auth/oauth/google" {
+		if route.Method == "GET" && route.Path == api.BasePath+"/auth/oauth/google" {
 			foundAuthLogin = true
 		}
-		if route.Method == "GET" && route.Path == "/api/v1/compute/flavors" {
+		if route.Method == "GET" && route.Path == api.BasePath+"/compute/flavors" {
 			foundFlavors = true
 		}
-		if route.Method == "POST" && route.Path == "/api/v1/compute/instances" {
+		if route.Method == "POST" && route.Path == api.BasePath+"/compute/instances" {
 			foundCreateInstance = true
 		}
 	}
 
 	if !foundFlavors {
-		t.Fatalf("GET /api/v1/compute/flavors route was not registered")
+		t.Fatalf("GET %s/compute/flavors route was not registered", api.BasePath)
 	}
 	if !foundCreateInstance {
-		t.Fatalf("POST /api/v1/compute/instances route was not registered")
+		t.Fatalf("POST %s/compute/instances route was not registered", api.BasePath)
 	}
 	if !foundAuthLogin {
-		t.Fatalf("GET /api/v1/auth/oauth/google route was not registered")
+		t.Fatalf("GET %s/auth/oauth/google route was not registered", api.BasePath)
 	}
 }
 
