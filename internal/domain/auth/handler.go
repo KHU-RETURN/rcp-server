@@ -17,21 +17,24 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	authGroup := rg.Group("/auth")
 	{
-		// 사용자를 구글 로그인 페이지로 보냄
-		authGroup.GET("/login", h.Login)
-		// 구글 로그인 후 돌아오는 경로
-		authGroup.GET("/google/callback", h.Callback)
+		oauthGroup := authGroup.Group("/oauth/google")
+		{
+			// 사용자를 구글 로그인 페이지로 보냄
+			oauthGroup.GET("", h.Login)
+			// 구글 로그인 후 돌아오는 경로
+			oauthGroup.GET("/callback", h.Callback)
+		}
 	}
 }
 
-// Login: GET /api/v1/auth/login
+// Login: GET /api/v1/auth/oauth/google
 func (h *Handler) Login(c *gin.Context) {
 	url := h.Svc.GetGoogleLoginURL()
 	// 구글 승인 서버로 리다이렉트
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
-// Callback: GET /api/v1/auth/google/callback
+// Callback: GET /api/v1/auth/oauth/google/callback
 func (h *Handler) Callback(c *gin.Context) {
 	code := c.Query("code")
 	if code == "" {

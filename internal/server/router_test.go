@@ -27,7 +27,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	var foundAuthLogin bool
 
 	for _, route := range routes {
-		if route.Method == "GET" && route.Path == "/api/v1/auth/login" {
+		if route.Method == "GET" && route.Path == "/api/v1/auth/oauth/google" {
 			foundAuthLogin = true
 		}
 		if route.Method == "GET" && route.Path == "/api/v1/compute/flavors" {
@@ -45,7 +45,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 		t.Fatalf("POST /api/v1/compute/instances route was not registered")
 	}
 	if !foundAuthLogin {
-		t.Fatalf("GET /api/v1/auth/login route was not registered")
+		t.Fatalf("GET /api/v1/auth/oauth/google route was not registered")
 	}
 }
 
