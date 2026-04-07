@@ -31,7 +31,7 @@ func TestHandlerGetFlavors(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -58,7 +58,7 @@ func TestHandlerGetFlavors(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -94,7 +94,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -128,7 +128,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(client).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -187,7 +187,7 @@ func TestHandlerCreateServer(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -213,7 +213,7 @@ func TestHandlerCreateServer(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(&fakeClient{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -242,7 +242,7 @@ func TestHandlerCreateServer(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -273,7 +273,7 @@ func TestHandlerCreateServer(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group(api.BasePath + "")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
