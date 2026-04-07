@@ -28,7 +28,7 @@ func TestHandlerGetFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath + "")
@@ -55,7 +55,7 @@ func TestHandlerGetFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath + "")
@@ -91,7 +91,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors?available=true", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath + "")
@@ -125,7 +125,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, api.BasePath + "/compute/flavors?available=true", nil)
+		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath + "")
@@ -182,7 +182,7 @@ func TestHandlerCreateServer(t *testing.T) {
 			SecurityGroups: []string{"default", "ssh"},
 		})
 
-		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/compute/instances", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
@@ -208,7 +208,7 @@ func TestHandlerCreateServer(t *testing.T) {
 	})
 
 	t.Run("returns 400 for invalid json", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewBufferString("{"))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/compute/instances", bytes.NewBufferString("{"))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
@@ -237,7 +237,7 @@ func TestHandlerCreateServer(t *testing.T) {
 			NetworkID: "   ",
 		})
 
-		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/compute/instances", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
@@ -268,7 +268,7 @@ func TestHandlerCreateServer(t *testing.T) {
 			NetworkID: "   ",
 		})
 
-		req := httptest.NewRequest(http.MethodPost, api.BasePath + "/compute/instances", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/compute/instances", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
