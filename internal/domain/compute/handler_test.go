@@ -90,7 +90,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors/available", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group("/api/v1")
@@ -124,7 +124,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors/available", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group("/api/v1")

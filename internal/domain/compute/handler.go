@@ -22,14 +22,24 @@ var ErrInstanceNotFound = errors.New("instance not found")
 
 // GetFlavors godoc
 // @Summary List compute flavors
-// @Description Returns the currently available flavor catalog.
+// @Description Returns the flavor catalog. Use ?available=true to include max_configurable counts based on current quota.
 // @Tags compute
 // @Produce json
+// @Param available query boolean false "Filter to available flavors with quota-based capacity"
 // @Success 200 {array} FlavorResponse
 // @Failure 500 {object} api.ErrorResponse
 // @Router /api/v1/compute/flavors [get]
-// @Router /api/v1/compute/flavors/all [get]
 func (h *Handler) GetFlavors(c *gin.Context) {
+	if c.Query("available") == "true" {
+		flavors, err := h.Svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, flavors)
+		return
+	}
+
 	flavors, err := h.Svc.GetFlavors()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "사양 조회를 실패했습니다: " + err.Error()})
@@ -68,40 +78,15 @@ func (h *Handler) GetInstances(c *gin.Context) {
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	computeGroup := rg.Group("/compute") // /api/v1/compute
 	{
-		// 기존 클라이언트 호환을 위해 /flavors 경로를 유지합니다.
 		computeGroup.GET("/flavors", h.GetFlavors)
-		// 전체 flavors 조회 별칭
-		computeGroup.GET("/flavors/all", h.GetFlavors)
-		// 남은 자원량 기반 가용 flavors 조회
-		computeGroup.GET("/flavors/available", h.GetAvailableFlavors)
-		// 인스턴스 서버 생성 엔드포인트
-		computeGroup.POST("/instances", h.CreateServer)
-		// 조회 추가!
 		computeGroup.GET("/instances", h.GetInstances)
 		computeGroup.GET("/instances/:id", h.GetInstanceDetail)
-		// 인스턴스 서버 삭제 엔드포인트
-		computeGroup.DELETE("/instances/:id", h.DeleteServer)
+		computeGroup.POST("/instances", h.CreateInstance)
+		computeGroup.DELETE("/instances/:id", h.DeleteInstance)
 	}
 }
 
-// GetAvailableFlavors godoc
-// @Summary List flavors with remaining capacity
-// @Description Calculates how many instances can still be created for each flavor based on quota.
-// @Tags compute
-// @Produce json
-// @Success 200 {array} AvailableFlavorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /api/v1/compute/flavors/available [get]
-func (h *Handler) GetAvailableFlavors(c *gin.Context) {
-	flavors, err := h.Svc.GetAvailableFlavorsWithLimit()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, flavors)
-}
-
-// CreateServer godoc
+// CreateInstance godoc
 // @Summary Create a compute instance
 // @Description Creates a new OpenStack server instance.
 // @Tags compute
@@ -112,7 +97,7 @@ func (h *Handler) GetAvailableFlavors(c *gin.Context) {
 // @Failure 400 {object} api.ErrorResponse
 // @Failure 500 {object} api.ErrorResponse
 // @Router /api/v1/compute/instances [post]
-func (h *Handler) CreateServer(c *gin.Context) {
+func (h *Handler) CreateInstance(c *gin.Context) {
 	var req CreateInstanceRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -149,7 +134,7 @@ func (h *Handler) CreateServer(c *gin.Context) {
 	c.JSON(http.StatusCreated, server)
 }
 
-func (h *Handler) DeleteServer(c *gin.Context) {
+func (h *Handler) DeleteInstance(c *gin.Context) {
 	serverID := c.Param("id")
 	if serverID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Server ID is required"})
