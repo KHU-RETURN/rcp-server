@@ -20,15 +20,6 @@ func NewHandler(svc *Service) *Handler {
 
 var ErrInstanceNotFound = errors.New("instance not found")
 
-// GetFlavors godoc
-// @Summary List compute flavors
-// @Description Returns the flavor catalog. Use ?available=true to include max_configurable counts based on current quota.
-// @Tags compute
-// @Produce json
-// @Param available query boolean false "Filter to available flavors with quota-based capacity"
-// @Success 200 {array} FlavorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /api/v1/compute/flavors [get]
 func (h *Handler) GetFlavors(c *gin.Context) {
 	if c.Query("available") == "true" {
 		flavors, err := h.Svc.GetAvailableFlavorsWithLimit()
@@ -86,17 +77,6 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	}
 }
 
-// CreateInstance godoc
-// @Summary Create a compute instance
-// @Description Creates a new OpenStack server instance.
-// @Tags compute
-// @Accept json
-// @Produce json
-// @Param request body CreateInstanceRequest true "Instance creation request"
-// @Success 201 {object} CreateInstanceResponse
-// @Failure 400 {object} api.ErrorResponse
-// @Failure 500 {object} api.ErrorResponse
-// @Router /api/v1/compute/instances [post]
 func (h *Handler) CreateInstance(c *gin.Context) {
 	var req CreateInstanceRequest
 
