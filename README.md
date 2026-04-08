@@ -14,7 +14,19 @@ go run ./cmd/api
 
 기본 주소는 `http://localhost:8080`입니다.
 
-## API Docs Generation
+## Code Generation
+
+### Ent ORM
+
+DB 엔티티 스키마는 `internal/schema/`에 정의되어 있습니다. 스키마를 변경한 뒤 아래 명령으로 Ent 클라이언트 코드를 재생성합니다.
+
+```bash
+go generate ./ent/...
+```
+
+생성된 코드는 `ent/` 디렉토리에 출력되며, `.gitignore`로 버전 관리에서 제외됩니다.
+
+### API Docs Generation
 
 Swagger 문서는 Swaggo 주석 기반으로 생성합니다.
 
