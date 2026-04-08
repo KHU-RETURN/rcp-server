@@ -26,6 +26,8 @@ func (User) Fields() []ent.Field {
 
 func (User) Edges() []ent.Edge {
 	return []ent.Edge{
+		edge.To("instances", Instance.Type),
+		edge.To("keypairs", KeyPair.Type),
 		edge.To("sessions", Session.Type),
 	}
 }
