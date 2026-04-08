@@ -2,92 +2,80 @@ package auth
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
+
+	"github.com/KHU-RETURN/rcp-server/ent"
+	entuser "github.com/KHU-RETURN/rcp-server/ent/user"
+	"github.com/google/uuid"
 )
 
-// Repository는 *sql.DB를 통해 유저 데이터를 저장합니다.
+// Repository는 Ent 클라이언트를 통해 유저/세션 데이터를 저장합니다.
 type Repository struct {
-	db *sql.DB
+	client *ent.Client
 }
 
-// NewRepository는 DB 연결을 주입받고 초기 테이블을 생성합니다.
-func NewRepository(db *sql.DB) (*Repository, error) {
-	schema := `
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE,
-        name TEXT,
-        access_token TEXT,       -- 우리 서비스용
-        refresh_token TEXT,      -- 우리 서비스용
-        expiry DATETIME,         -- 우리 서비스용 만료
-        google_access_token TEXT, -- 구글 API용
-        google_refresh_token TEXT,-- 구글 API용
-        google_expiry DATETIME    -- 구글 토큰 만료
-    );`
-	if _, err := db.Exec(schema); err != nil {
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-	return &Repository{db: db}, nil
+// NewRepository는 Ent 클라이언트를 주입받아 Repository를 생성합니다.
+// 스키마 마이그레이션은 외부(main.go)에서 RunMigration으로 처리합니다.
+func NewRepository(client *ent.Client) *Repository {
+	return &Repository{client: client}
 }
 
-// UpsertUser는 Google에서 받은 정보를 DB에 저장하거나 업데이트합니다.
+// UpsertUser는 이메일 기준으로 유저를 생성하거나 업데이트합니다.
+// 처리 후 user.ID에 해당 유저의 UUID가 설정됩니다.
 func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
-	query := `
-    INSERT INTO users (
-        email, name, access_token, refresh_token, expiry,
-        google_access_token, google_refresh_token, google_expiry
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(email) DO UPDATE SET
-        name = excluded.name,
-        access_token = excluded.access_token,
-        refresh_token = excluded.refresh_token,
-        expiry = excluded.expiry,
-        google_access_token = excluded.google_access_token,
-        google_refresh_token = excluded.google_refresh_token,
-        google_expiry = excluded.google_expiry;`
-	var googleAccessToken, googleRefreshToken string
-	var googleExpiry sql.NullTime
-
-	if user.GoogleAuth != nil {
-		googleAccessToken = user.GoogleAuth.AccessToken
-		googleRefreshToken = user.GoogleAuth.RefreshToken
-		googleExpiry = sql.NullTime{
-			Time:  user.GoogleAuth.Expiry,
-			Valid: true,
-		}
-	} else {
-		googleExpiry = sql.NullTime{
-			Valid: false,
-		}
+	u, err := r.client.User.Query().Where(entuser.EmailEQ(user.Email)).Only(ctx)
+	if err != nil && !ent.IsNotFound(err) {
+		return err
 	}
-	_, err := r.db.ExecContext(ctx, query,
-		user.Email,
-		user.Name,
-		user.AccessToken,
-		user.RefreshToken,
-		user.Expiry,
-		googleAccessToken,
-		googleRefreshToken,
-		googleExpiry)
-	return err
+	if u != nil {
+		updated, err := u.Update().SetName(user.Name).Save(ctx)
+		if err != nil {
+			return err
+		}
+		user.ID = updated.ID
+		return nil
+	}
+	created, err := r.client.User.Create().
+		SetEmail(user.Email).
+		SetName(user.Name).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	user.ID = created.ID
+	return nil
 }
 
-// FindByEmail은 이메일로 기존 유저를 조회합니다.
+// FindByEmail은 이메일로 유저를 조회합니다. 존재하지 않으면 (nil, nil)을 반환합니다.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, error) {
-	query := `SELECT id, email, name, access_token, refresh_token, expiry FROM users WHERE email = ?`
-
-	row := r.db.QueryRowContext(ctx, query, email)
-
-	u := &User{}
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AccessToken, &u.RefreshToken, &u.Expiry)
+	u, err := r.client.User.Query().Where(entuser.EmailEQ(email)).Only(ctx)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if ent.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	return &User{
+		ID:    u.ID,
+		Email: u.Email,
+		Name:  u.Name,
+	}, nil
+}
 
-	return u, nil
+// CreateSession은 유저에 연결된 새 세션을 생성합니다.
+func (r *Repository) CreateSession(ctx context.Context, userID uuid.UUID, session *Session) error {
+	builder := r.client.Session.Create().
+		SetAccessToken(session.AccessToken).
+		SetRefreshToken(session.RefreshToken).
+		SetExpiry(session.Expiry).
+		SetProvider("GOOGLE").
+		SetProviderToken(session.ProviderToken).
+		SetUserID(userID)
+	if session.ProviderRefresh != nil {
+		builder = builder.SetProviderRefresh(*session.ProviderRefresh)
+	}
+	if session.ProviderExpiry != nil {
+		builder = builder.SetProviderExpiry(*session.ProviderExpiry)
+	}
+	_, err := builder.Save(ctx)
+	return err
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -42,6 +43,11 @@ func main() {
 		log.Fatalf("DB 연결 실패: %v", err)
 	}
 
+	entClient := database.NewEntClient(db)
+	if err := database.RunMigration(context.Background(), entClient); err != nil {
+		log.Fatalf("스키마 마이그레이션 실패: %v", err)
+	}
+
 	oauth, err := google.NewGoogleConfig(google.OAuthConfig{
 		ClientID:     os.Getenv("GG_OAUTH_CLIENT"),
 		ClientSecret: os.Getenv("GG_OAUTH_SECRET"),
@@ -51,7 +57,7 @@ func main() {
 		log.Fatalf("google oauth 연결 실패: %v", err)
 	}
 
-	myApp, err := server.NewApp(provider, db, oauth, os.Getenv("OS_PROJECT_ID"), jwtSecret)
+	myApp, err := server.NewApp(provider, entClient, oauth, os.Getenv("OS_PROJECT_ID"), jwtSecret)
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
 	}
