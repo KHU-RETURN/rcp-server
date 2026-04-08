@@ -6,6 +6,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 	"github.com/google/uuid"
 )
 
@@ -24,5 +25,11 @@ func (KeyPair) Fields() []ent.Field {
 func (KeyPair) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("user", User.Type).Ref("keypairs").Unique().Required(),
+	}
+}
+
+func (KeyPair) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("name").Edges("user").Unique(),
 	}
 }
