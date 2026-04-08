@@ -2,9 +2,10 @@ package compute
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gophercloud/gophercloud"
@@ -13,41 +14,43 @@ import (
 func TestClientCreateServerIncludesSSHOptions(t *testing.T) {
 	var gotBody map[string]any
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Fatalf("expected POST request, got %s", r.Method)
-		}
-		if r.URL.Path != "/servers" {
-			t.Fatalf("expected /servers path, got %s", r.URL.Path)
-		}
-
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-			t.Fatalf("failed to decode request body: %v", err)
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{
-			"server": {
-				"id": "server-1",
-				"name": "test-vm",
-				"status": "BUILD",
-				"image": {"id": "image-1"},
-				"flavor": {"id": "flavor-1"},
-				"addresses": {},
-				"key_name": "team-key",
-				"security_groups": [{"name": "default"}, {"name": "ssh"}]
-			}
-		}`))
-	}))
-	defer ts.Close()
-
 	sc := &gophercloud.ServiceClient{
 		ProviderClient: &gophercloud.ProviderClient{
-			TokenID:    "token",
-			HTTPClient: http.Client{},
+			TokenID: "token",
+			HTTPClient: http.Client{
+				Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					if r.Method != http.MethodPost {
+						t.Fatalf("expected POST request, got %s", r.Method)
+					}
+					if r.URL.Path != "/servers" {
+						t.Fatalf("expected /servers path, got %s", r.URL.Path)
+					}
+
+					if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+						t.Fatalf("failed to decode request body: %v", err)
+					}
+
+					return &http.Response{
+						StatusCode: http.StatusAccepted,
+						Header:     http.Header{"Content-Type": []string{"application/json"}},
+						Body: io.NopCloser(strings.NewReader(`{
+							"server": {
+								"id": "server-1",
+								"name": "test-vm",
+								"status": "BUILD",
+								"image": {"id": "image-1"},
+								"flavor": {"id": "flavor-1"},
+								"addresses": {},
+								"key_name": "team-key",
+								"security_groups": [{"name": "default"}, {"name": "ssh"}]
+							}
+						}`)),
+						Request: r,
+					}, nil
+				}),
+			},
 		},
-		Endpoint: ts.URL + "/",
+		Endpoint: "http://openstack.test/",
 	}
 
 	server, err := createServerWithServiceClient(sc, CreateServerOpts{
@@ -100,4 +103,10 @@ func TestClientCreateServerIncludesSSHOptions(t *testing.T) {
 	if !reflect.DeepEqual(gotGroupNames, []string{"default", "ssh"}) {
 		t.Fatalf("expected security group names [default ssh], got %#v", gotGroupNames)
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return fn(r)
 }

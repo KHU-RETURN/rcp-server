@@ -51,7 +51,7 @@ func TestExtractBearerToken(t *testing.T) {
 func TestAuthRequired(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newProtectedRouter := func(repo userRepository) (*gin.Engine, string) {
+	newProtectedRouter := func(repo authRepository) (*gin.Engine, string) {
 		tokenSvc := NewTokenService("test-secret")
 		handler := NewHandler(NewService(repo, &oauth2.Config{}, tokenSvc))
 

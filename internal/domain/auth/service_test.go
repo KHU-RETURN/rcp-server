@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 )
 
@@ -13,6 +14,9 @@ type fakeRepo struct {
 }
 
 func (f *fakeRepo) UpsertUser(ctx context.Context, user *User) error {
+	if user.ID == uuid.Nil {
+		user.ID = uuid.New()
+	}
 	f.users[user.Email] = user
 	return nil
 }
@@ -23,6 +27,10 @@ func (f *fakeRepo) FindByEmail(ctx context.Context, email string) (*User, error)
 		return nil, nil
 	}
 	return user, nil
+}
+
+func (f *fakeRepo) CreateSession(ctx context.Context, userID uuid.UUID, session *Session) error {
+	return nil
 }
 
 // MockUserRepository는 이전 테스트 코드와의 호환을 위해 유지합니다.

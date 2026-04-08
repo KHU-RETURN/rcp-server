@@ -6,39 +6,53 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite" // Pure Go SQLite 드라이버
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/KHU-RETURN/rcp-server/ent"
+	"github.com/google/uuid"
+	_ "modernc.org/sqlite"
 )
 
-func TestRepository_UpsertUser(t *testing.T) {
-	// 1. 드라이버 이름을 "sqlite"로 변경 (3을 뺍니다)
-	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(1)")
+func setupTestClient(t *testing.T) *ent.Client {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:testdb?mode=memory&cache=shared")
 	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
+		t.Fatalf("failed to open sqlite: %v", err)
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("failed to close database: %v", err)
-		}
-	}()
+	db.SetMaxOpenConns(1)
+	// modernc.org/sqlite는 DSN에 _fk=1을 지원하지 않으므로 PRAGMA로 직접 활성화합니다.
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		t.Fatalf("failed to enable foreign keys: %v", err)
+	}
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := ent.NewClient(ent.Driver(drv))
+	if err := client.Schema.Create(context.Background()); err != nil {
+		t.Fatalf("failed to run schema migration: %v", err)
+	}
+	t.Cleanup(func() {
+		client.Close()
+		db.Close()
+	})
+	return client
+}
 
-	repo, err := NewRepository(db)
-	if err != nil {
-		t.Fatalf("failed to create repository: %v", err)
-	}
+func TestRepository_UpsertUser(t *testing.T) {
+	client := setupTestClient(t)
+	repo := NewRepository(client)
 	ctx := context.Background()
 
 	t.Run("새로운 유저를 정상적으로 저장한다", func(t *testing.T) {
 		user := &User{
-			Email:        "test@khu.ac.kr",
-			Name:         "경희인",
-			AccessToken:  "access-123",
-			RefreshToken: "refresh-123",
-			Expiry:       time.Now().Add(1 * time.Hour),
+			Email: "test@khu.ac.kr",
+			Name:  "경희인",
 		}
 
 		err := repo.UpsertUser(ctx, user)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
+		}
+		if user.ID == uuid.Nil {
+			t.Fatal("expected user.ID to be set after UpsertUser")
 		}
 
 		saved, err := repo.FindByEmail(ctx, user.Email)
@@ -57,11 +71,15 @@ func TestRepository_UpsertUser(t *testing.T) {
 		if err := repo.UpsertUser(ctx, u1); err != nil {
 			t.Fatalf("failed to seed user: %v", err)
 		}
+		firstID := u1.ID
 
 		u2 := &User{Email: email, Name: "이름2"}
-		err := repo.UpsertUser(ctx, u2)
-		if err != nil {
+		if err := repo.UpsertUser(ctx, u2); err != nil {
 			t.Errorf("upsert failed: %v", err)
+		}
+
+		if u2.ID != firstID {
+			t.Errorf("expected same ID after upsert: first=%v, second=%v", firstID, u2.ID)
 		}
 
 		saved, _ := repo.FindByEmail(ctx, email)
@@ -71,98 +89,66 @@ func TestRepository_UpsertUser(t *testing.T) {
 	})
 }
 
-func TestRepository_UpsertUserWithGoogleAuth(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("failed to close database: %v", err)
-		}
-	}()
-
-	repo, err := NewRepository(db)
-	if err != nil {
-		t.Fatalf("failed to create repository: %v", err)
-	}
+func TestRepository_CreateSession(t *testing.T) {
+	client := setupTestClient(t)
+	repo := NewRepository(client)
 	ctx := context.Background()
 
-	t.Run("google tokens are stored correctly", func(t *testing.T) {
-		googleExpiry := time.Now().Add(1 * time.Hour).UTC().Truncate(time.Second)
-		user := &User{
-			Email:        "google@khu.ac.kr",
-			Name:         "구글 유저",
-			AccessToken:  "svc-access",
-			RefreshToken: "svc-refresh",
-			Expiry:       time.Now().Add(1 * time.Hour),
-			GoogleAuth: &GoogleInfo{
-				AccessToken:  "google-access-token",
-				RefreshToken: "google-refresh-token",
-				Expiry:       googleExpiry,
-			},
-		}
-
+	t.Run("세션을 정상적으로 생성한다", func(t *testing.T) {
+		user := &User{Email: "session@khu.ac.kr", Name: "세션유저"}
 		if err := repo.UpsertUser(ctx, user); err != nil {
 			t.Fatalf("UpsertUser failed: %v", err)
 		}
 
-		row := db.QueryRowContext(ctx,
-			`SELECT google_access_token, google_refresh_token FROM users WHERE email = ?`,
-			user.Email,
-		)
-		var gotAccess, gotRefresh string
-		if err := row.Scan(&gotAccess, &gotRefresh); err != nil {
-			t.Fatalf("failed to scan row: %v", err)
+		providerRefresh := "google-refresh"
+		providerExpiry := time.Now().Add(1 * time.Hour)
+		sess := &Session{
+			AccessToken:     "svc-access",
+			RefreshToken:    "svc-refresh",
+			Expiry:          time.Now().Add(1 * time.Hour),
+			Provider:        "GOOGLE",
+			ProviderToken:   "google-access-token",
+			ProviderRefresh: &providerRefresh,
+			ProviderExpiry:  &providerExpiry,
 		}
-		if gotAccess != "google-access-token" {
-			t.Fatalf("expected google_access_token=%q, got %q", "google-access-token", gotAccess)
+
+		if err := repo.CreateSession(ctx, user.ID, sess); err != nil {
+			t.Fatalf("CreateSession failed: %v", err)
 		}
-		if gotRefresh != "google-refresh-token" {
-			t.Fatalf("expected google_refresh_token=%q, got %q", "google-refresh-token", gotRefresh)
+
+		// 유저에 연결된 세션 수 확인
+		count, err := client.Session.Query().Count(ctx)
+		if err != nil {
+			t.Fatalf("failed to count sessions: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("expected 1 session, got %d", count)
 		}
 	})
 
-	t.Run("google tokens are empty when GoogleAuth is nil", func(t *testing.T) {
-		user := &User{
-			Email: "nogoogle@khu.ac.kr",
-			Name:  "노구글",
-		}
-
+	t.Run("ProviderRefresh가 nil인 세션을 생성한다", func(t *testing.T) {
+		user := &User{Email: "norefresh@khu.ac.kr", Name: "노리프레시"}
 		if err := repo.UpsertUser(ctx, user); err != nil {
 			t.Fatalf("UpsertUser failed: %v", err)
 		}
 
-		row := db.QueryRowContext(ctx,
-			`SELECT google_access_token, google_refresh_token FROM users WHERE email = ?`,
-			user.Email,
-		)
-		var gotAccess, gotRefresh string
-		if err := row.Scan(&gotAccess, &gotRefresh); err != nil {
-			t.Fatalf("failed to scan row: %v", err)
+		sess := &Session{
+			AccessToken:   "access",
+			RefreshToken:  "refresh",
+			Expiry:        time.Now().Add(1 * time.Hour),
+			Provider:      "GOOGLE",
+			ProviderToken: "google-token",
 		}
-		if gotAccess != "" || gotRefresh != "" {
-			t.Fatalf("expected empty google tokens, got access=%q refresh=%q", gotAccess, gotRefresh)
+
+		if err := repo.CreateSession(ctx, user.ID, sess); err != nil {
+			t.Fatalf("CreateSession with nil ProviderRefresh failed: %v", err)
 		}
 	})
 }
 
 func TestRepository_FindByEmail(t *testing.T) {
-	// 여기도 "sqlite"로 변경하고 에러 체크 추가
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("failed to close database: %v", err)
-		}
-	}()
-
-	repo, err := NewRepository(db)
-	if err != nil {
-		t.Fatalf("failed to create repository: %v", err)
-	}
+	client := setupTestClient(t)
+	repo := NewRepository(client)
 	ctx := context.Background()
 
 	t.Run("존재하지 않는 이메일 조회 시 nil을 반환한다", func(t *testing.T) {
