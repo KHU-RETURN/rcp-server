@@ -43,7 +43,7 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 func (h *Handler) GetInstanceDetail(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "인스턴스 ID가 필요합니다."})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "인스턴스 ID가 필요합니다."})
 		return
 	}
 

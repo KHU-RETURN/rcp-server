@@ -1,7 +1,5 @@
 package access
 
-// --- Domain models (gophercloud 의존 없음) ---
-
 // KeyPair는 SSH 키 페어의 도메인 표현입니다.
 type KeyPair struct {
 	Name        string
@@ -19,7 +17,13 @@ type StatusError struct {
 func (e *StatusError) Error() string { return e.Err.Error() }
 func (e *StatusError) Unwrap() error { return e.Err }
 
-// --- Request/Response DTOs ---
+// VMInfo는 SSH 릴레이에서 사용하는 VM 정보입니다.
+type VMInfo struct {
+	ID     string
+	Name   string
+	Status string
+	IP     string // 사설 IP (qrouter 경유)
+}
 
 // CreateKeyPairRequest는 KeyPair 등록 요청 본문입니다.
 type CreateKeyPairRequest struct {

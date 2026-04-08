@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/KHU-RETURN/rcp-server/internal/config"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
@@ -15,6 +16,7 @@ type App struct {
 	Compute *compute.Handler
 	Access  *access.Handler
 	Auth    *auth.Handler
+	SSH     *access.SSHServer
 }
 
 func NewApp(
@@ -23,15 +25,20 @@ func NewApp(
 	oauthConfig *oauth2.Config,
 	projectID string,
 	jwtSecret string,
+	sshCfg *config.SSHConfig,
 ) (*App, error) {
-	authHandler, err := auth.Init(db, oauthConfig, jwtSecret)
+	authHandler, authRepo, err := auth.Init(db, oauthConfig, jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
 
-	return &App{
+	app := &App{
 		Compute: compute.Init(p, projectID),
 		Access:  access.Init(p),
 		Auth:    authHandler,
-	}, nil
+		SSH:     access.InitSSH(sshCfg, authRepo, p),
+	}
+
+	return app, nil
 }
+
