@@ -31,6 +31,14 @@ func NewRepository(db *sql.DB) (*Repository, error) {
 	return &Repository{db: db}, nil
 }
 
+// ExistsByEmail은 해당 이메일의 유저가 존재하는지 확인합니다.
+// SSH 릴레이 서버 등 외부에서 DB를 직접 참조할 때 사용합니다.
+func ExistsByEmail(db *sql.DB, ctx context.Context, email string) (bool, error) {
+	var exists bool
+	err := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", email).Scan(&exists)
+	return exists, err
+}
+
 // UpsertUser는 Google에서 받은 정보를 DB에 저장하거나 업데이트합니다.
 func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 	query := `
