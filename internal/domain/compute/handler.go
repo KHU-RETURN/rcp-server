@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Handler는 HTTP 요청을 처리합니다.
@@ -19,6 +21,23 @@ func NewHandler(svc *Service) *Handler {
 }
 
 var ErrInstanceNotFound = errors.New("instance not found")
+
+func getUserID(c *gin.Context) (uuid.UUID, error) {
+	value, ok := c.Get(auth.ContextKeyUser)
+	if !ok {
+		value, ok = c.Get("currentUser")
+	}
+	if !ok {
+		return uuid.Nil, errors.New("unauthorized")
+	}
+
+	currentUser, ok := value.(*auth.User)
+	if !ok || currentUser == nil {
+		return uuid.Nil, errors.New("unauthorized")
+	}
+
+	return currentUser.ID, nil
+}
 
 func (h *Handler) GetFlavors(c *gin.Context) {
 	if c.Query("available") == "true" {
@@ -41,14 +60,24 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 
 // GetInstanceDetail 핸들러
 func (h *Handler) GetInstanceDetail(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	id := c.Param("id")
 	if id == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "인스턴스 ID가 필요합니다."})
 		return
 	}
 
-	detail, err := h.Svc.GetInstanceDetail(id)
+	detail, err := h.Svc.GetInstanceDetail(c.Request.Context(), userID, id)
 	if err != nil {
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "해당 인스턴스를 찾을 수 없습니다."})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "상세 조회 실패: " + err.Error()})
 		return
 	}
@@ -57,7 +86,13 @@ func (h *Handler) GetInstanceDetail(c *gin.Context) {
 }
 
 func (h *Handler) GetInstances(c *gin.Context) {
-	instances, err := h.Svc.GetInstances()
+	userID, err := getUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	instances, err := h.Svc.GetInstances(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -78,6 +113,12 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) CreateInstance(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	var req CreateInstanceRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -98,7 +139,7 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 		return
 	}
 
-	server, err := h.Svc.CreateInstance(opts)
+	server, err := h.Svc.CreateInstance(c.Request.Context(), userID, opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrCreateInstanceNameRequired),
@@ -115,13 +156,19 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 }
 
 func (h *Handler) DeleteInstance(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	serverID := c.Param("id")
 	if serverID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Server ID is required"})
 		return
 	}
 
-	if err := h.Svc.DeleteInstance(serverID); err != nil {
+	if err := h.Svc.DeleteInstance(c.Request.Context(), userID, serverID); err != nil {
 		if errors.Is(err, ErrInstanceNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "해당 인스턴스를 찾을 수 없습니다.",

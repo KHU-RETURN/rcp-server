@@ -1,10 +1,15 @@
 package compute
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/google/uuid"
 )
+
+var computeTestUserID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 
 type fakeClient struct {
 	fetchFlavorsFn        func() ([]Flavor, error)
@@ -57,6 +62,49 @@ func (f *fakeClient) DeleteServer(id string) error {
 	return nil
 }
 
+type noopComputeRepository struct {
+	saveInstanceFn           func(ctx context.Context, userID uuid.UUID, openstackID, name string) error
+	deleteInstanceFn         func(ctx context.Context, openstackID string) error
+	findOpenstackIDsByUserID func(ctx context.Context, userID uuid.UUID) (map[string]string, error)
+	isOwnerFn                func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error)
+}
+
+func (r *noopComputeRepository) SaveInstance(ctx context.Context, userID uuid.UUID, openstackID, name string) error {
+	if r.saveInstanceFn != nil {
+		return r.saveInstanceFn(ctx, userID, openstackID, name)
+	}
+	return nil
+}
+
+func (r *noopComputeRepository) DeleteInstance(ctx context.Context, openstackID string) error {
+	if r.deleteInstanceFn != nil {
+		return r.deleteInstanceFn(ctx, openstackID)
+	}
+	return nil
+}
+
+func (r *noopComputeRepository) FindOpenstackIDsByUserID(ctx context.Context, userID uuid.UUID) (map[string]string, error) {
+	if r.findOpenstackIDsByUserID != nil {
+		return r.findOpenstackIDsByUserID(ctx, userID)
+	}
+	return map[string]string{}, nil
+}
+
+func (r *noopComputeRepository) IsOwner(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+	if r.isOwnerFn != nil {
+		return r.isOwnerFn(ctx, userID, openstackID)
+	}
+	return true, nil
+}
+
+func newTestService(client *fakeClient) *Service {
+	return NewService(client, "project-1", &noopComputeRepository{})
+}
+
+func newTestServiceWithRepo(client *fakeClient, repo computeRepository) *Service {
+	return NewService(client, "project-1", repo)
+}
+
 func TestServiceGetFlavors(t *testing.T) {
 	t.Run("returns converted flavors", func(t *testing.T) {
 		client := &fakeClient{
@@ -67,7 +115,7 @@ func TestServiceGetFlavors(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		res, err := svc.GetFlavors()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -87,7 +135,7 @@ func TestServiceGetFlavors(t *testing.T) {
 		client := &fakeClient{
 			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		res, err := svc.GetFlavors()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -103,7 +151,7 @@ func TestServiceGetFlavors(t *testing.T) {
 				return nil, errors.New("upstream error")
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		_, err := svc.GetFlavors()
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -128,7 +176,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -157,7 +205,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -183,7 +231,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -206,7 +254,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -231,7 +279,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -248,7 +296,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				return nil, errors.New("flavors fetch failed")
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		_, err := svc.GetAvailableFlavorsWithLimit()
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -262,7 +310,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				return nil, errors.New("quota fetch failed")
 			},
 		}
-		svc := NewService(client, "project-1")
+		svc := newTestService(client)
 		_, err := svc.GetAvailableFlavorsWithLimit()
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -285,8 +333,23 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo, "project-1")
-		res, err := svc.CreateInstance(CreateServerOpts{
+		ownershipRepo := &noopComputeRepository{
+			saveInstanceFn: func(ctx context.Context, userID uuid.UUID, openstackID, name string) error {
+				if userID != computeTestUserID {
+					t.Fatalf("expected userID %s, got %s", computeTestUserID, userID)
+				}
+				if openstackID != "server-1" {
+					t.Fatalf("expected openstackID server-1, got %q", openstackID)
+				}
+				if name != "test-vm" {
+					t.Fatalf("expected saved name test-vm, got %q", name)
+				}
+				return nil
+			},
+		}
+
+		svc := newTestServiceWithRepo(repo, ownershipRepo)
+		res, err := svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:           " test-vm ",
 			ImageRef:       " image-1 ",
 			FlavorRef:      " flavor-1 ",
@@ -333,8 +396,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo, "project-1")
-		res, err := svc.CreateInstance(CreateServerOpts{
+		svc := newTestService(repo)
+		res, err := svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -365,8 +428,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo, "project-1")
-		res, err := svc.CreateInstance(CreateServerOpts{
+		svc := newTestService(repo)
+		res, err := svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -393,8 +456,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo, "project-1")
-		res, err := svc.CreateInstance(CreateServerOpts{
+		svc := newTestService(repo)
+		res, err := svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:           "fallback-vm",
 			ImageRef:       "image-2",
 			FlavorRef:      "flavor-2",
@@ -417,9 +480,9 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("rejects whitespace-only required fields", func(t *testing.T) {
-		svc := NewService(&fakeClient{}, "project-1")
+		svc := newTestService(&fakeClient{})
 
-		_, err := svc.CreateInstance(CreateServerOpts{
+		_, err := svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:      "   ",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
@@ -428,7 +491,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceNameRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(CreateServerOpts{
+		_, err = svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "   ",
 			FlavorRef: "flavor-1",
@@ -437,7 +500,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			t.Fatalf("expected ErrCreateInstanceImageRequired, got %v", err)
 		}
 
-		_, err = svc.CreateInstance(CreateServerOpts{
+		_, err = svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "   ",
@@ -456,8 +519,8 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo, "project-1")
-		_, err := svc.CreateInstance(CreateServerOpts{
+		svc := newTestService(repo)
+		_, err := svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",

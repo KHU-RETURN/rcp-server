@@ -1,10 +1,13 @@
 package compute
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // computeClient는 OpenStack compute API 접근 인터페이스입니다.
@@ -22,6 +25,7 @@ type computeClient interface {
 type Service struct {
 	client    computeClient
 	projectID string
+	repo      computeRepository
 }
 
 var (
@@ -31,8 +35,8 @@ var (
 )
 
 // NewService는 새로운 서비스를 생성합니다.
-func NewService(client computeClient, projectID string) *Service {
-	return &Service{client: client, projectID: projectID}
+func NewService(client computeClient, projectID string, repo computeRepository) *Service {
+	return &Service{client: client, projectID: projectID, repo: repo}
 }
 
 // GetFlavors는 Repo에서 가져온 데이터를 우리 규격(FlavorResponse)으로 변환합니다.
@@ -92,8 +96,13 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 }
 
 // GetInstances는 VM 전체 목록을 가져와 변환하며, 각 VM의 Flavor 상세 정보도 포함합니다.
-func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
+func (s *Service) GetInstances(ctx context.Context, userID uuid.UUID) ([]InstanceDetailResponse, error) {
 	rawServers, err := s.client.FetchInstances()
+	if err != nil {
+		return nil, err
+	}
+
+	ownedOpenstackIDs, err := s.repo.FindOpenstackIDsByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +118,10 @@ func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 
 	var res []InstanceDetailResponse
 	for _, srv := range rawServers {
+		if _, ok := ownedOpenstackIDs[srv.ID]; !ok {
+			continue
+		}
+
 		addrMap := make(map[string]string)
 		for netName, addrs := range srv.Addresses {
 			if addrList, ok := addrs.([]any); ok && len(addrList) > 0 {
@@ -141,7 +154,15 @@ func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 }
 
 // GetInstanceDetail은 특정 VM의 상세 정보와 실시간 사용량을 반환합니다.
-func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) {
+func (s *Service) GetInstanceDetail(ctx context.Context, userID uuid.UUID, id string) (*InstanceDetailResponse, error) {
+	isOwner, err := s.repo.IsOwner(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if !isOwner {
+		return nil, ErrInstanceNotFound
+	}
+
 	server, diag, err := s.client.FetchInstanceDetail(id)
 	if err != nil {
 		return nil, err
@@ -192,11 +213,21 @@ func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) 
 }
 
 // DeleteInstance는 지정된 ID의 서버를 삭제합니다.
-func (s *Service) DeleteInstance(id string) error {
-	return s.client.DeleteServer(id)
+func (s *Service) DeleteInstance(ctx context.Context, userID uuid.UUID, id string) error {
+	isOwner, err := s.repo.IsOwner(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if !isOwner {
+		return ErrInstanceNotFound
+	}
+	if err := s.client.DeleteServer(id); err != nil {
+		return err
+	}
+	return s.repo.DeleteInstance(ctx, id)
 }
 
-func (s *Service) CreateInstance(opts CreateServerOpts) (*CreateInstanceResponse, error) {
+func (s *Service) CreateInstance(ctx context.Context, userID uuid.UUID, opts CreateServerOpts) (*CreateInstanceResponse, error) {
 	normalizedOpts := normalizeCreateServerOpts(opts)
 	if err := validateCreateServerOpts(normalizedOpts); err != nil {
 		return nil, err
@@ -204,6 +235,10 @@ func (s *Service) CreateInstance(opts CreateServerOpts) (*CreateInstanceResponse
 
 	server, err := s.client.CreateServer(normalizedOpts)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.SaveInstance(ctx, userID, server.ID, firstNonEmpty(server.Name, normalizedOpts.Name)); err != nil {
 		return nil, err
 	}
 

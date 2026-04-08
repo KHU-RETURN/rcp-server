@@ -1,9 +1,13 @@
 package compute
 
-import "github.com/gophercloud/gophercloud"
+import (
+	"github.com/KHU-RETURN/rcp-server/ent"
+	"github.com/gophercloud/gophercloud"
+)
 
-func Init(p *gophercloud.ProviderClient, projectID string) *Handler {
-	client := NewClient(p)
-	svc := NewService(client, projectID)
+func Init(p *gophercloud.ProviderClient, projectID string, client *ent.Client) *Handler {
+	osClient := NewClient(p)
+	repo := NewRepository(client)
+	svc := NewService(osClient, projectID, repo)
 	return NewHandler(svc)
 }

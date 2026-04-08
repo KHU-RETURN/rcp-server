@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,7 +17,17 @@ func TestHandlerGetFlavors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(client *fakeClient) *Handler {
-		return NewHandler(NewService(client, "project-1"))
+		return NewHandler(newTestService(client))
+	}
+	newRouter := func(handler *Handler) *gin.Engine {
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		v1.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyUser, &auth.User{ID: computeTestUserID})
+			c.Next()
+		})
+		handler.InitRoutes(v1)
+		return r
 	}
 
 	t.Run("returns 200 with flavor list", func(t *testing.T) {
@@ -30,9 +41,7 @@ func TestHandlerGetFlavors(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors", nil)
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(client).InitRoutes(v1)
+		r := newRouter(newHandler(client))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -57,9 +66,7 @@ func TestHandlerGetFlavors(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors", nil)
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(client).InitRoutes(v1)
+		r := newRouter(newHandler(client))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
@@ -72,7 +79,17 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(client *fakeClient) *Handler {
-		return NewHandler(NewService(client, "project-1"))
+		return NewHandler(newTestService(client))
+	}
+	newRouter := func(handler *Handler) *gin.Engine {
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		v1.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyUser, &auth.User{ID: computeTestUserID})
+			c.Next()
+		})
+		handler.InitRoutes(v1)
+		return r
 	}
 
 	t.Run("returns 200 with available flavor list", func(t *testing.T) {
@@ -93,9 +110,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(client).InitRoutes(v1)
+		r := newRouter(newHandler(client))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -127,9 +142,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/flavors?available=true", nil)
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(client).InitRoutes(v1)
+		r := newRouter(newHandler(client))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
@@ -142,7 +155,17 @@ func TestHandlerCreateServer(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(repo *fakeClient) *Handler {
-		return NewHandler(NewService(repo, "project-1"))
+		return NewHandler(newTestService(repo))
+	}
+	newRouter := func(handler *Handler) *gin.Engine {
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		v1.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyUser, &auth.User{ID: computeTestUserID})
+			c.Next()
+		})
+		handler.InitRoutes(v1)
+		return r
 	}
 
 	t.Run("returns 201 with expanded create response", func(t *testing.T) {
@@ -186,9 +209,7 @@ func TestHandlerCreateServer(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusCreated {
@@ -212,9 +233,7 @@ func TestHandlerCreateServer(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(&fakeClient{}).InitRoutes(v1)
+		r := newRouter(newHandler(&fakeClient{}))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -241,9 +260,7 @@ func TestHandlerCreateServer(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -272,9 +289,7 @@ func TestHandlerCreateServer(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusCreated {
