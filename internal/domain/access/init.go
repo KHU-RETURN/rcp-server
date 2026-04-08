@@ -1,9 +1,13 @@
 package access
 
-import "github.com/gophercloud/gophercloud"
+import (
+	"github.com/KHU-RETURN/rcp-server/ent"
+	"github.com/gophercloud/gophercloud"
+)
 
-func Init(p *gophercloud.ProviderClient) *Handler {
-	client := NewClient(p)
-	svc := NewService(client)
+func Init(p *gophercloud.ProviderClient, client *ent.Client) *Handler {
+	osClient := NewClient(p)
+	repo := NewRepository(client)
+	svc := NewService(osClient, repo)
 	return NewHandler(svc)
 }

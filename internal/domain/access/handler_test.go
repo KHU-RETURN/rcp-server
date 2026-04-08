@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,7 +18,17 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(repo *fakeClient) *Handler {
-		return NewHandler(NewService(repo))
+		return NewHandler(newTestService(repo))
+	}
+	newRouter := func(handler *Handler) *gin.Engine {
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		v1.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyUser, &auth.User{ID: accessTestUserID})
+			c.Next()
+		})
+		handler.InitRoutes(v1)
+		return r
 	}
 
 	t.Run("returns 201 with response body", func(t *testing.T) {
@@ -35,9 +46,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusCreated {
@@ -58,9 +67,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(&fakeClient{}).InitRoutes(v1)
+		r := newRouter(newHandler(&fakeClient{}))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -91,9 +98,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusConflict {
@@ -125,9 +130,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusForbidden {
@@ -161,9 +164,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -194,9 +195,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		// Non-StatusError wraps as ErrKeyPairOperationFailed → 500
@@ -217,9 +216,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
-		r := gin.New()
-		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		r := newRouter(newHandler(repo))
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {

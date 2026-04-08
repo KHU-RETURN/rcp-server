@@ -1,11 +1,13 @@
 package access
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -32,13 +34,14 @@ type keyPairClient interface {
 
 type Service struct {
 	client keyPairClient
+	repo   keypairRepository
 }
 
-func NewService(client keyPairClient) *Service {
-	return &Service{client: client}
+func NewService(client keyPairClient, repo keypairRepository) *Service {
+	return &Service{client: client, repo: repo}
 }
 
-func (s *Service) CreateKeyPair(req CreateKeyPairRequest) (*KeyPairResponse, error) {
+func (s *Service) CreateKeyPair(ctx context.Context, userID uuid.UUID, req CreateKeyPairRequest) (*KeyPairResponse, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return nil, ErrNameRequired
@@ -71,6 +74,10 @@ func (s *Service) CreateKeyPair(req CreateKeyPairRequest) (*KeyPairResponse, err
 		return nil, normalizeKeyPairError(err)
 	}
 
+	if err := s.repo.SaveKeyPair(ctx, userID, name); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrKeyPairOperationFailed, err)
+	}
+
 	return &KeyPairResponse{
 		Name:        keyPair.Name,
 		Fingerprint: keyPair.Fingerprint,
@@ -78,20 +85,41 @@ func (s *Service) CreateKeyPair(req CreateKeyPairRequest) (*KeyPairResponse, err
 	}, nil
 }
 
-func (s *Service) ListKeyPairs() ([]KeyPairResponse, error) {
+func (s *Service) ListKeyPairs(ctx context.Context, userID uuid.UUID) ([]KeyPairResponse, error) {
 	kps, err := s.client.ListKeyPairs()
 	if err != nil {
 		return nil, normalizeKeyPairError(err)
 	}
 
-	result := make([]KeyPairResponse, len(kps))
-	for i, kp := range kps {
-		result[i] = KeyPairResponse(kp)
+	ownedNames, err := s.repo.FindNamesByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrKeyPairOperationFailed, err)
+	}
+
+	ownedSet := make(map[string]struct{}, len(ownedNames))
+	for _, name := range ownedNames {
+		ownedSet[name] = struct{}{}
+	}
+
+	result := make([]KeyPairResponse, 0, len(kps))
+	for _, kp := range kps {
+		if _, ok := ownedSet[kp.Name]; !ok {
+			continue
+		}
+		result = append(result, KeyPairResponse(kp))
 	}
 	return result, nil
 }
 
-func (s *Service) GetKeyPair(name string) (*KeyPairResponse, error) {
+func (s *Service) GetKeyPair(ctx context.Context, userID uuid.UUID, name string) (*KeyPairResponse, error) {
+	isOwner, err := s.repo.IsOwner(ctx, userID, name)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrKeyPairOperationFailed, err)
+	}
+	if !isOwner {
+		return nil, ErrKeyPairNotFound
+	}
+
 	kp, err := s.client.GetKeyPair(name)
 	if err != nil {
 		if isNotFoundError(err) {
@@ -107,11 +135,22 @@ func (s *Service) GetKeyPair(name string) (*KeyPairResponse, error) {
 	}, nil
 }
 
-func (s *Service) DeleteKeyPair(name string) error {
+func (s *Service) DeleteKeyPair(ctx context.Context, userID uuid.UUID, name string) error {
+	isOwner, err := s.repo.IsOwner(ctx, userID, name)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrKeyPairDeleteFailed, err)
+	}
+	if !isOwner {
+		return ErrKeyPairNotFound
+	}
+
 	if err := s.client.DeleteKeyPair(name); err != nil {
 		if isNotFoundError(err) {
 			return ErrKeyPairNotFound
 		}
+		return fmt.Errorf("%w: %v", ErrKeyPairDeleteFailed, err)
+	}
+	if err := s.repo.DeleteKeyPair(ctx, userID, name); err != nil {
 		return fmt.Errorf("%w: %v", ErrKeyPairDeleteFailed, err)
 	}
 	return nil

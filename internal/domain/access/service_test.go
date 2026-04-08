@@ -1,12 +1,17 @@
 package access
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 const testPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMz7v3R7iK4WbG2ZrM8Z8vV7n6lYx4l6Wwq8m7M+v7gL test@example"
+
+var accessTestUserID = uuid.MustParse("22222222-2222-2222-2222-222222222222")
 
 type fakeClient struct {
 	listKeyPairsFn  func() ([]KeyPair, error)
@@ -47,6 +52,49 @@ func newStatusErr(code int) *StatusError {
 	return &StatusError{Code: code, Err: errors.New(http.StatusText(code))}
 }
 
+type noopKeyPairRepository struct {
+	saveKeyPairFn   func(ctx context.Context, userID uuid.UUID, name string) error
+	deleteKeyPairFn func(ctx context.Context, userID uuid.UUID, name string) error
+	findNamesFn     func(ctx context.Context, userID uuid.UUID) ([]string, error)
+	isOwnerFn       func(ctx context.Context, userID uuid.UUID, name string) (bool, error)
+}
+
+func (r *noopKeyPairRepository) SaveKeyPair(ctx context.Context, userID uuid.UUID, name string) error {
+	if r.saveKeyPairFn != nil {
+		return r.saveKeyPairFn(ctx, userID, name)
+	}
+	return nil
+}
+
+func (r *noopKeyPairRepository) DeleteKeyPair(ctx context.Context, userID uuid.UUID, name string) error {
+	if r.deleteKeyPairFn != nil {
+		return r.deleteKeyPairFn(ctx, userID, name)
+	}
+	return nil
+}
+
+func (r *noopKeyPairRepository) FindNamesByUserID(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	if r.findNamesFn != nil {
+		return r.findNamesFn(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (r *noopKeyPairRepository) IsOwner(ctx context.Context, userID uuid.UUID, name string) (bool, error) {
+	if r.isOwnerFn != nil {
+		return r.isOwnerFn(ctx, userID, name)
+	}
+	return true, nil
+}
+
+func newTestService(client *fakeClient) *Service {
+	return NewService(client, &noopKeyPairRepository{})
+}
+
+func newTestServiceWithRepo(client *fakeClient, repo keypairRepository) *Service {
+	return NewService(client, repo)
+}
+
 func TestServiceCreateKeyPair(t *testing.T) {
 	t.Run("creates keypair when input is valid", func(t *testing.T) {
 		repo := &fakeClient{
@@ -62,8 +110,20 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		res, err := svc.CreateKeyPair(CreateKeyPairRequest{
+		ownershipRepo := &noopKeyPairRepository{
+			saveKeyPairFn: func(ctx context.Context, userID uuid.UUID, name string) error {
+				if userID != accessTestUserID {
+					t.Fatalf("expected userID %s, got %s", accessTestUserID, userID)
+				}
+				if name != "team-default-key" {
+					t.Fatalf("expected saved keypair name team-default-key, got %q", name)
+				}
+				return nil
+			},
+		}
+
+		svc := newTestServiceWithRepo(repo, ownershipRepo)
+		res, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{
 			Name:      " team-default-key ",
 			PublicKey: " " + testPublicKey + " ",
 		})
@@ -82,24 +142,24 @@ func TestServiceCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("rejects empty name", func(t *testing.T) {
-		svc := NewService(&fakeClient{})
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "   ", PublicKey: testPublicKey})
+		svc := newTestService(&fakeClient{})
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "   ", PublicKey: testPublicKey})
 		if !errors.Is(err, ErrNameRequired) {
 			t.Fatalf("expected ErrNameRequired, got %v", err)
 		}
 	})
 
 	t.Run("rejects empty public key", func(t *testing.T) {
-		svc := NewService(&fakeClient{})
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: "   "})
+		svc := newTestService(&fakeClient{})
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: "   "})
 		if !errors.Is(err, ErrPublicKeyRequired) {
 			t.Fatalf("expected ErrPublicKeyRequired, got %v", err)
 		}
 	})
 
 	t.Run("rejects invalid public key format", func(t *testing.T) {
-		svc := NewService(&fakeClient{})
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: "not-a-key"})
+		svc := newTestService(&fakeClient{})
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: "not-a-key"})
 		if !errors.Is(err, ErrInvalidSSHKeyFormat) {
 			t.Fatalf("expected ErrInvalidSSHKeyFormat, got %v", err)
 		}
@@ -116,8 +176,8 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		svc := newTestService(repo)
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
 		if !errors.Is(err, ErrKeyPairAlreadyExists) {
 			t.Fatalf("expected ErrKeyPairAlreadyExists, got %v", err)
 		}
@@ -133,8 +193,8 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		svc := newTestService(repo)
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
 		if !errors.Is(err, ErrKeyPairAlreadyExists) {
 			t.Fatalf("expected ErrKeyPairAlreadyExists, got %v", err)
 		}
@@ -151,8 +211,8 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		svc := newTestService(repo)
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
 		if !errors.Is(err, ErrKeyPairAccessDenied) {
 			t.Fatalf("expected ErrKeyPairAccessDenied, got %v", err)
 		}
@@ -168,8 +228,8 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		svc := newTestService(repo)
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
 		if !errors.Is(err, ErrInvalidKeyPairRequest) {
 			t.Fatalf("expected ErrInvalidKeyPairRequest, got %v", err)
 		}
@@ -185,8 +245,8 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		svc := newTestService(repo)
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
 		if !errors.Is(err, ErrKeyPairOperationFailed) {
 			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
 		}
@@ -203,8 +263,8 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			},
 		}
 
-		svc := NewService(repo)
-		_, err := svc.CreateKeyPair(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		svc := newTestService(repo)
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
 		if !errors.Is(err, ErrKeyPairOperationFailed) {
 			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
 		}
