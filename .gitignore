@@ -5,3 +5,8 @@
 # development environment
 .vscode/
 api
+
+# Ent generated code
+/ent/*.go
+!/ent/generate.go
+/ent/*/
