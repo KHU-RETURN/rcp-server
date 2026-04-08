@@ -75,7 +75,10 @@ func (s *Service) CreateKeyPair(ctx context.Context, userID uuid.UUID, req Creat
 	}
 
 	if err := s.repo.SaveKeyPair(ctx, userID, name); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrKeyPairOperationFailed, err)
+		if cleanupErr := s.client.DeleteKeyPair(keyPair.Name); cleanupErr != nil {
+			return nil, fmt.Errorf("%w: save keypair ownership: %v; cleanup keypair %s: %v", ErrKeyPairOperationFailed, err, keyPair.Name, cleanupErr)
+		}
+		return nil, fmt.Errorf("%w: save keypair ownership: %v", ErrKeyPairOperationFailed, err)
 	}
 
 	return &KeyPairResponse{
@@ -151,7 +154,8 @@ func (s *Service) DeleteKeyPair(ctx context.Context, userID uuid.UUID, name stri
 		return fmt.Errorf("%w: %v", ErrKeyPairDeleteFailed, err)
 	}
 	if err := s.repo.DeleteKeyPair(ctx, userID, name); err != nil {
-		return fmt.Errorf("%w: %v", ErrKeyPairDeleteFailed, err)
+		fmt.Printf("access: failed to delete stale keypair row user_id=%s name=%s: %v\n", userID, name, err)
+		return nil
 	}
 	return nil
 }

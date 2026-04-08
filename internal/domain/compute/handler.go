@@ -22,6 +22,8 @@ func NewHandler(svc *Service) *Handler {
 
 var ErrInstanceNotFound = errors.New("instance not found")
 
+const internalServerErrorMessage = "internal server error"
+
 func getUserID(c *gin.Context) (uuid.UUID, error) {
 	value, ok := c.Get(auth.ContextKeyUser)
 	if !ok {
@@ -43,7 +45,7 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 	if c.Query("available") == "true" {
 		flavors, err := h.Svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			respondInternalServerError(c)
 			return
 		}
 		c.JSON(http.StatusOK, flavors)
@@ -52,7 +54,7 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 
 	flavors, err := h.Svc.GetFlavors()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "사양 조회를 실패했습니다: " + err.Error()})
+		respondInternalServerError(c)
 		return
 	}
 	c.JSON(http.StatusOK, flavors)
@@ -75,10 +77,10 @@ func (h *Handler) GetInstanceDetail(c *gin.Context) {
 	detail, err := h.Svc.GetInstanceDetail(c.Request.Context(), userID, id)
 	if err != nil {
 		if errors.Is(err, ErrInstanceNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "해당 인스턴스를 찾을 수 없습니다."})
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: ErrInstanceNotFound.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "상세 조회 실패: " + err.Error()})
+		respondInternalServerError(c)
 		return
 	}
 
@@ -94,7 +96,7 @@ func (h *Handler) GetInstances(c *gin.Context) {
 
 	instances, err := h.Svc.GetInstances(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalServerError(c)
 		return
 	}
 	c.JSON(http.StatusOK, instances)
@@ -146,8 +148,10 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 			errors.Is(err, ErrCreateInstanceImageRequired),
 			errors.Is(err, ErrCreateInstanceFlavorRequired):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case isBadRequestError(err):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			respondInternalServerError(c)
 		}
 		return
 	}
@@ -170,18 +174,16 @@ func (h *Handler) DeleteInstance(c *gin.Context) {
 
 	if err := h.Svc.DeleteInstance(c.Request.Context(), userID, serverID); err != nil {
 		if errors.Is(err, ErrInstanceNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "해당 인스턴스를 찾을 수 없습니다.",
-				"code":  "INSTANCE_NOT_FOUND",
-			})
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: ErrInstanceNotFound.Error()})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":  "인스턴스 삭제 중 서버 오류가 발생했습니다.",
-				"detail": err.Error(),
-			})
+			respondInternalServerError(c)
 		}
 		return
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func respondInternalServerError(c *gin.Context) {
+	c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: internalServerErrorMessage})
 }

@@ -14,6 +14,8 @@ type Handler struct {
 	Svc *Service
 }
 
+const internalServerErrorMessage = "internal server error"
+
 func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
@@ -55,7 +57,7 @@ func (h *Handler) ListKeyPairs(c *gin.Context) {
 
 	kps, err := h.Svc.ListKeyPairs(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		respondInternalServerError(c)
 		return
 	}
 	c.JSON(http.StatusOK, kps)
@@ -72,10 +74,10 @@ func (h *Handler) GetKeyPair(c *gin.Context) {
 	kp, err := h.Svc.GetKeyPair(c.Request.Context(), userID, name)
 	if err != nil {
 		if errors.Is(err, ErrKeyPairNotFound) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: ErrKeyPairNotFound.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		respondInternalServerError(c)
 		return
 	}
 	c.JSON(http.StatusOK, kp)
@@ -91,10 +93,10 @@ func (h *Handler) DeleteKeyPair(c *gin.Context) {
 	name := c.Param("name")
 	if err := h.Svc.DeleteKeyPair(c.Request.Context(), userID, name); err != nil {
 		if errors.Is(err, ErrKeyPairNotFound) {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: ErrKeyPairNotFound.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		respondInternalServerError(c)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -119,18 +121,20 @@ func (h *Handler) CreateKeyPair(c *gin.Context) {
 		case errors.Is(err, ErrNameRequired), errors.Is(err, ErrPublicKeyRequired), errors.Is(err, ErrInvalidSSHKeyFormat):
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		case errors.Is(err, ErrInvalidKeyPairRequest):
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid keypair request"})
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		case errors.Is(err, ErrKeyPairAccessDenied):
 			c.JSON(http.StatusForbidden, api.ErrorResponse{Error: "keypair access denied"})
 		case errors.Is(err, ErrKeyPairAlreadyExists):
 			c.JSON(http.StatusConflict, api.ErrorResponse{Error: err.Error()})
-		case errors.Is(err, ErrKeyPairOperationFailed):
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to create keypair"})
 		default:
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "internal server error"})
+			respondInternalServerError(c)
 		}
 		return
 	}
 
 	c.JSON(http.StatusCreated, res)
+}
+
+func respondInternalServerError(c *gin.Context) {
+	c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: internalServerErrorMessage})
 }
