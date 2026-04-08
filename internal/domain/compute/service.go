@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
@@ -165,7 +166,7 @@ func (s *Service) GetInstanceDetail(ctx context.Context, userID uuid.UUID, id st
 
 	server, diag, err := s.client.FetchInstanceDetail(id)
 	if err != nil {
-		return nil, err
+		return nil, normalizeComputeError(err)
 	}
 
 	allFlavors, err := s.client.FetchFlavors()
@@ -222,9 +223,12 @@ func (s *Service) DeleteInstance(ctx context.Context, userID uuid.UUID, id strin
 		return ErrInstanceNotFound
 	}
 	if err := s.client.DeleteServer(id); err != nil {
-		return err
+		return normalizeComputeError(err)
 	}
-	return s.repo.DeleteInstance(ctx, id)
+	if err := s.repo.DeleteInstance(ctx, userID, id); err != nil {
+		fmt.Printf("compute: failed to delete stale instance row user_id=%s openstack_id=%s: %v\n", userID, id, err)
+	}
+	return nil
 }
 
 func (s *Service) CreateInstance(ctx context.Context, userID uuid.UUID, opts CreateServerOpts) (*CreateInstanceResponse, error) {
@@ -239,10 +243,29 @@ func (s *Service) CreateInstance(ctx context.Context, userID uuid.UUID, opts Cre
 	}
 
 	if err := s.repo.SaveInstance(ctx, userID, server.ID, firstNonEmpty(server.Name, normalizedOpts.Name)); err != nil {
-		return nil, err
+		if cleanupErr := s.client.DeleteServer(server.ID); cleanupErr != nil {
+			return nil, fmt.Errorf("save instance ownership: %w; cleanup server %s: %v", err, server.ID, cleanupErr)
+		}
+		return nil, fmt.Errorf("save instance ownership: %w", err)
 	}
 
 	return buildCreateInstanceResponse(server, normalizedOpts), nil
+}
+
+func normalizeComputeError(err error) error {
+	if hasStatusCode(err, http.StatusNotFound) {
+		return ErrInstanceNotFound
+	}
+	return err
+}
+
+func isBadRequestError(err error) bool {
+	return hasStatusCode(err, http.StatusBadRequest)
+}
+
+func hasStatusCode(err error, expected int) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Code == expected
 }
 
 type serverAddress struct {

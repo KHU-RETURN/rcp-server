@@ -11,7 +11,7 @@ import (
 
 type computeRepository interface {
 	SaveInstance(ctx context.Context, userID uuid.UUID, openstackID, name string) error
-	DeleteInstance(ctx context.Context, openstackID string) error
+	DeleteInstance(ctx context.Context, userID uuid.UUID, openstackID string) error
 	FindOpenstackIDsByUserID(ctx context.Context, userID uuid.UUID) (map[string]string, error)
 	IsOwner(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error)
 }
@@ -32,9 +32,12 @@ func (r *Repository) SaveInstance(ctx context.Context, userID uuid.UUID, opensta
 		Exec(ctx)
 }
 
-func (r *Repository) DeleteInstance(ctx context.Context, openstackID string) error {
+func (r *Repository) DeleteInstance(ctx context.Context, userID uuid.UUID, openstackID string) error {
 	_, err := r.client.Instance.Delete().
-		Where(instance.OpenstackID(openstackID)).
+		Where(
+			instance.OpenstackID(openstackID),
+			instance.HasUserWith(user.ID(userID)),
+		).
 		Exec(ctx)
 	return err
 }

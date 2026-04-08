@@ -1,6 +1,9 @@
 package compute
 
 import (
+	"errors"
+	"net/http"
+
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
@@ -33,7 +36,7 @@ func (c *Client) FetchFlavors() ([]Flavor, error) {
 
 	allPages, err := flavors.ListDetail(sc, nil).AllPages()
 	if err != nil {
-		return nil, err
+		return nil, toStatusError(err)
 	}
 
 	raw, err := flavors.ExtractFlavors(allPages)
@@ -62,7 +65,7 @@ func (c *Client) GetComputeQuota(projectID string) (*QuotaDetailSet, error) {
 
 	detail, err := quotasets.GetDetail(sc, projectID).Extract()
 	if err != nil {
-		return nil, err
+		return nil, toStatusError(err)
 	}
 
 	return &QuotaDetailSet{
@@ -88,7 +91,7 @@ func (c *Client) FetchInstances() ([]Server, error) {
 
 	allPages, err := servers.List(sc, servers.ListOpts{}).AllPages()
 	if err != nil {
-		return nil, err
+		return nil, toStatusError(err)
 	}
 
 	raw, err := servers.ExtractServers(allPages)
@@ -122,7 +125,7 @@ func (c *Client) FetchInstanceDetail(id string) (*Server, map[string]any, error)
 
 	raw, err := servers.Get(sc, id).Extract()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, toStatusError(err)
 	}
 
 	srv := &Server{
@@ -150,7 +153,7 @@ func (c *Client) DeleteServer(id string) error {
 	if err != nil {
 		return err
 	}
-	return servers.Delete(sc, id).ExtractErr()
+	return toStatusError(servers.Delete(sc, id).ExtractErr())
 }
 
 // createServerWithServiceClient는 테스트에서 mock ServiceClient를 주입할 때도 사용합니다.
@@ -175,7 +178,7 @@ func createServerWithServiceClient(sc *gophercloud.ServiceClient, opts CreateSer
 
 	server, err := servers.Create(sc, createOpts).Extract()
 	if err != nil {
-		return nil, err
+		return nil, toStatusError(err)
 	}
 
 	return &Server{
@@ -189,4 +192,54 @@ func createServerWithServiceClient(sc *gophercloud.ServiceClient, opts CreateSer
 		SecurityGroups: server.SecurityGroups,
 		AccessIPv4:     server.AccessIPv4,
 	}, nil
+}
+
+func toStatusError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	codes := []int{
+		http.StatusBadRequest,
+		http.StatusForbidden,
+		http.StatusNotFound,
+		http.StatusConflict,
+		http.StatusInternalServerError,
+	}
+
+	for _, code := range codes {
+		if isGophercloudStatus(err, code) {
+			return &StatusError{Code: code, Err: err}
+		}
+	}
+
+	return err
+}
+
+func isGophercloudStatus(err error, code int) bool {
+	switch code {
+	case http.StatusBadRequest:
+		var e gophercloud.ErrDefault400
+		if errors.As(err, &e) {
+			return true
+		}
+	case http.StatusForbidden:
+		var e gophercloud.ErrDefault403
+		if errors.As(err, &e) {
+			return true
+		}
+	case http.StatusNotFound:
+		var e gophercloud.ErrDefault404
+		if errors.As(err, &e) {
+			return true
+		}
+	case http.StatusConflict:
+		var e gophercloud.ErrDefault409
+		if errors.As(err, &e) {
+			return true
+		}
+	}
+
+	var codeErr gophercloud.StatusCodeError
+	return errors.As(err, &codeErr) && codeErr.GetStatusCode() == code
 }

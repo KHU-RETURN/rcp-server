@@ -4,6 +4,16 @@ import "time"
 
 // --- Domain models (gophercloud 의존 없음) ---
 
+// StatusError는 HTTP 상태 코드를 담은 업스트림 에러입니다.
+// 인프라 레이어가 반환하며, 서비스/핸들러 레이어가 상태 코드 기반으로 분기할 수 있게 합니다.
+type StatusError struct {
+	Code int
+	Err  error
+}
+
+func (e *StatusError) Error() string { return e.Err.Error() }
+func (e *StatusError) Unwrap() error { return e.Err }
+
 // Flavor는 OpenStack flavor의 도메인 표현입니다.
 type Flavor struct {
 	ID    string
