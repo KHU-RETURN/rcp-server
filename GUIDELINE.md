@@ -10,9 +10,10 @@ RCP-Server 프로젝트의 구조, 개발 규칙, 코드 컨벤션, API 엔드�
 
 ```text
 .
-|-- cmd/api/                  # 진입점: 환경 변수 로드, 서버 실행
+|-- cmd/api/                  # 진입점: 설정 로드, 인프라 생성, 서버 실행
 |-- internal/
 |   |-- api/                  # API 버전 상수(BasePath), 공통 응답 타입(ErrorResponse)
+|   |-- config/               # 환경 변수 로드, Config 구조체 정의
 |   |-- domain/               # 도메인별 구현
 |   |   |-- access/
 |   |   |-- auth/
@@ -43,15 +44,16 @@ RCP-Server 프로젝트의 구조, 개발 규칙, 코드 컨벤션, API 엔드�
 ## 2. 요청 처리 흐름
 
 ```
-main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 초기화
-                                                         ↓
-                                    handler → service → client/repository
+main.go → config.Load() → infrastructure 클라이언트 생성 → App 조립 → 라우터 초기화
+                                                                        ↓
+                                                   handler → service → client/repository
 ```
 
-1. `cmd/api/main.go`에서 `.env` 로드 후 인프라 클라이언트(OpenStack, DB, OAuth)를 생성합니다.
-2. `internal/server/app.go`에서 각 도메인의 `Init()`을 호출해 의존성을 조립합니다.
-3. `internal/server/router.go`에서 라우트 그룹과 미들웨어를 설정합니다.
-4. 요청이 들어오면 `handler → service → client/repository` 순서로 처리됩니다.
+1. `cmd/api/main.go`에서 `.env` 로드 후 `config.Load()`로 설정을 읽습니다.
+2. 설정값으로 인프라 클라이언트(OpenStack, DB, OAuth)를 생성합니다.
+3. `internal/server/app.go`에서 각 도메인의 `Init()`을 호출해 의존성을 조립합니다.
+4. `internal/server/router.go`에서 라우트 그룹과 미들웨어를 설정합니다.
+5. 요청이 들어오면 `handler → service → client/repository` 순서로 처리됩니다.
 
 ---
 
@@ -166,3 +168,9 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | `OS_USER_DOMAIN_NAME` | OpenStack 사용자 도메인 이름 |
 | `CF_ACCESS_CLIENT_ID` | Cloudflare Access Client ID |
 | `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access Client Secret |
+| `SSH_LISTEN_PORT` | SSH 릴레이 서버 포트 (미설정 시 비활성화) |
+| `SSH_HOST_KEY_PATH` | SSH 호스트 키 파일 경로 |
+| `CF_CA_PUBLIC_KEY_PATH` | Cloudflare CA 공개키 경로 |
+| `QROUTER_NAMESPACE` | qrouter namespace 이름 |
+| `RCP_SERVICE_KEY_PATH` | RCP 서비스 SSH 개인키 경로 |
+| `SSH_MENU_PAGE_SIZE` | VM 목록 페이지 크기 (기본값 `10`) |
