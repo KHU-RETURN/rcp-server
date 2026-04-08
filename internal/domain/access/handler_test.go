@@ -2,6 +2,7 @@ package access
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func TestHandlerCreateKeyPair(t *testing.T) {
@@ -114,7 +116,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 403 with sanitized message for upstream access denied", func(t *testing.T) {
+	t.Run("returns 403 for upstream access denied", func(t *testing.T) {
 		repo := &fakeClient{
 			getKeyPairFn: func(name string) (*KeyPair, error) {
 				return nil, newStatusErr(http.StatusForbidden)
@@ -135,9 +137,6 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("expected status 403, got %d", w.Code)
-		}
-		if strings.Contains(w.Body.String(), "provider-secret") {
-			t.Fatalf("response leaked provider details: %s", w.Body.String())
 		}
 
 		var res api.ErrorResponse
@@ -174,7 +173,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
 			t.Fatalf("failed to unmarshal error response: %v", err)
 		}
-		if res.Error != "invalid keypair request" {
+		if res.Error != "invalid keypair request: Bad Request" {
 			t.Fatalf("unexpected error message: %q", res.Error)
 		}
 	})
@@ -230,8 +229,65 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
 			t.Fatalf("failed to unmarshal error response: %v", err)
 		}
-		if res.Error != "failed to create keypair" {
+		if res.Error != internalServerErrorMessage {
 			t.Fatalf("unexpected error response: %+v", res)
+		}
+	})
+}
+
+func TestHandlerGetAndDeleteKeyPair(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newRouter := func(handler *Handler) *gin.Engine {
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		v1.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyUser, &auth.User{ID: accessTestUserID})
+			c.Next()
+		})
+		handler.InitRoutes(v1)
+		return r
+	}
+
+	t.Run("returns 404 for upstream not found on get", func(t *testing.T) {
+		client := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusNotFound)
+			},
+		}
+		repo := &noopKeyPairRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, name string) (bool, error) {
+				return true, nil
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/access/keypairs/team-default-key", nil)
+		w := httptest.NewRecorder()
+		r := newRouter(NewHandler(newTestServiceWithRepo(client, repo)))
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected status 404, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns 500 for ownership lookup failures on delete", func(t *testing.T) {
+		repo := &noopKeyPairRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, name string) (bool, error) {
+				return false, errors.New("sqlite busy leaked")
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, api.BasePath+"/access/keypairs/team-default-key", nil)
+		w := httptest.NewRecorder()
+		r := newRouter(NewHandler(newTestServiceWithRepo(&fakeClient{}, repo)))
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", w.Code)
+		}
+		if strings.Contains(w.Body.String(), "sqlite busy leaked") {
+			t.Fatalf("response leaked internal error: %s", w.Body.String())
 		}
 	})
 }

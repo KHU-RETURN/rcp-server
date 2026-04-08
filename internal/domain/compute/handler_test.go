@@ -2,15 +2,18 @@ package compute
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func TestHandlerGetFlavors(t *testing.T) {
@@ -294,6 +297,138 @@ func TestHandlerCreateServer(t *testing.T) {
 
 		if w.Code != http.StatusCreated {
 			t.Fatalf("expected status 201, got %d", w.Code)
+		}
+	})
+
+	t.Run("masks internal errors on create", func(t *testing.T) {
+		repo := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				return nil, errors.New("provider leaked detail")
+			},
+		}
+
+		body, _ := json.Marshal(CreateInstanceRequest{
+			Name:      "test-vm",
+			ImageID:   "image-1",
+			FlavorID:  "flavor-1",
+			NetworkID: "network-1",
+		})
+
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/compute/instances", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+		r := newRouter(newHandler(repo))
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", w.Code)
+		}
+		if strings.Contains(w.Body.String(), "provider leaked detail") {
+			t.Fatalf("response leaked internal error: %s", w.Body.String())
+		}
+
+		var res api.ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to unmarshal error response: %v", err)
+		}
+		if res.Error != internalServerErrorMessage {
+			t.Fatalf("unexpected error response: %+v", res)
+		}
+	})
+}
+
+func TestHandlerGetInstanceDetail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	client := &fakeClient{
+		fetchInstanceDetailFn: func(id string) (*Server, map[string]any, error) {
+			return nil, nil, newComputeStatusErr(http.StatusNotFound)
+		},
+	}
+	repo := &noopComputeRepository{
+		isOwnerFn: func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+			return true, nil
+		},
+	}
+	handler := NewHandler(newTestServiceWithRepo(client, repo))
+
+	r := gin.New()
+	v1 := r.Group(api.BasePath)
+	v1.Use(func(c *gin.Context) {
+		c.Set(auth.ContextKeyUser, &auth.User{ID: computeTestUserID})
+		c.Next()
+	})
+	handler.InitRoutes(v1)
+
+	req := httptest.NewRequest(http.MethodGet, api.BasePath+"/compute/instances/server-1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", w.Code)
+	}
+
+	var res api.ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to unmarshal error response: %v", err)
+	}
+	if res.Error != ErrInstanceNotFound.Error() {
+		t.Fatalf("unexpected error response: %+v", res)
+	}
+}
+
+func TestHandlerDeleteInstance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newRouter := func(handler *Handler) *gin.Engine {
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		v1.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyUser, &auth.User{ID: computeTestUserID})
+			c.Next()
+		})
+		handler.InitRoutes(v1)
+		return r
+	}
+
+	t.Run("returns 404 for upstream not found", func(t *testing.T) {
+		client := &fakeClient{
+			deleteServerFn: func(id string) error { return newComputeStatusErr(http.StatusNotFound) },
+		}
+		repo := &noopComputeRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+				return true, nil
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, api.BasePath+"/compute/instances/server-1", nil)
+		w := httptest.NewRecorder()
+		r := newRouter(NewHandler(newTestServiceWithRepo(client, repo)))
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected status 404, got %d", w.Code)
+		}
+	})
+
+	t.Run("masks ownership lookup failures as internal server error", func(t *testing.T) {
+		repo := &noopComputeRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+				return false, errors.New("sqlite busy leaked")
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, api.BasePath+"/compute/instances/server-1", nil)
+		w := httptest.NewRecorder()
+		r := newRouter(NewHandler(newTestServiceWithRepo(&fakeClient{}, repo)))
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", w.Code)
+		}
+		if strings.Contains(w.Body.String(), "sqlite busy leaked") {
+			t.Fatalf("response leaked internal error: %s", w.Body.String())
 		}
 	})
 }

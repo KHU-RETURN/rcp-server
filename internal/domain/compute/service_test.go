@@ -3,6 +3,7 @@ package compute
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -64,7 +65,7 @@ func (f *fakeClient) DeleteServer(id string) error {
 
 type noopComputeRepository struct {
 	saveInstanceFn           func(ctx context.Context, userID uuid.UUID, openstackID, name string) error
-	deleteInstanceFn         func(ctx context.Context, openstackID string) error
+	deleteInstanceFn         func(ctx context.Context, userID uuid.UUID, openstackID string) error
 	findOpenstackIDsByUserID func(ctx context.Context, userID uuid.UUID) (map[string]string, error)
 	isOwnerFn                func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error)
 }
@@ -76,9 +77,9 @@ func (r *noopComputeRepository) SaveInstance(ctx context.Context, userID uuid.UU
 	return nil
 }
 
-func (r *noopComputeRepository) DeleteInstance(ctx context.Context, openstackID string) error {
+func (r *noopComputeRepository) DeleteInstance(ctx context.Context, userID uuid.UUID, openstackID string) error {
 	if r.deleteInstanceFn != nil {
-		return r.deleteInstanceFn(ctx, openstackID)
+		return r.deleteInstanceFn(ctx, userID, openstackID)
 	}
 	return nil
 }
@@ -103,6 +104,10 @@ func newTestService(client *fakeClient) *Service {
 
 func newTestServiceWithRepo(client *fakeClient, repo computeRepository) *Service {
 	return NewService(client, "project-1", repo)
+}
+
+func newComputeStatusErr(code int) *StatusError {
+	return &StatusError{Code: code, Err: errors.New(http.StatusText(code))}
 }
 
 func TestServiceGetFlavors(t *testing.T) {
@@ -531,6 +536,129 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 		if len(gotOpts.Networks) != 0 {
 			t.Fatalf("expected blank networks to be dropped, got %#v", gotOpts.Networks)
+		}
+	})
+
+	t.Run("deletes created server when ownership save fails", func(t *testing.T) {
+		saveErr := errors.New("db write failed")
+		var deletedServerID string
+		client := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				return testServer(map[string]any{}), nil
+			},
+			deleteServerFn: func(id string) error {
+				deletedServerID = id
+				return nil
+			},
+		}
+		repo := &noopComputeRepository{
+			saveInstanceFn: func(ctx context.Context, userID uuid.UUID, openstackID, name string) error {
+				return saveErr
+			},
+		}
+
+		svc := newTestServiceWithRepo(client, repo)
+		_, err := svc.CreateInstance(context.Background(), computeTestUserID, CreateServerOpts{
+			Name:      "vm",
+			ImageRef:  "image-1",
+			FlavorRef: "flavor-1",
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if deletedServerID != "server-1" {
+			t.Fatalf("expected cleanup delete for server-1, got %q", deletedServerID)
+		}
+		if !errors.Is(err, saveErr) {
+			t.Fatalf("expected wrapped save error, got %v", err)
+		}
+	})
+}
+
+func TestServiceGetInstanceDetail(t *testing.T) {
+	t.Run("normalizes upstream 404 as instance not found", func(t *testing.T) {
+		client := &fakeClient{
+			fetchInstanceDetailFn: func(id string) (*Server, map[string]any, error) {
+				return nil, nil, newComputeStatusErr(http.StatusNotFound)
+			},
+		}
+		repo := &noopComputeRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+				return true, nil
+			},
+		}
+
+		svc := newTestServiceWithRepo(client, repo)
+		_, err := svc.GetInstanceDetail(context.Background(), computeTestUserID, "server-1")
+		if !errors.Is(err, ErrInstanceNotFound) {
+			t.Fatalf("expected ErrInstanceNotFound, got %v", err)
+		}
+	})
+}
+
+func TestServiceDeleteInstance(t *testing.T) {
+	t.Run("passes user filter to repository delete", func(t *testing.T) {
+		client := &fakeClient{
+			deleteServerFn: func(id string) error { return nil },
+		}
+		var gotUserID uuid.UUID
+		var gotOpenstackID string
+		repo := &noopComputeRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+				return true, nil
+			},
+			deleteInstanceFn: func(ctx context.Context, userID uuid.UUID, openstackID string) error {
+				gotUserID = userID
+				gotOpenstackID = openstackID
+				return nil
+			},
+		}
+
+		svc := newTestServiceWithRepo(client, repo)
+		if err := svc.DeleteInstance(context.Background(), computeTestUserID, "server-1"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotUserID != computeTestUserID {
+			t.Fatalf("expected userID %s, got %s", computeTestUserID, gotUserID)
+		}
+		if gotOpenstackID != "server-1" {
+			t.Fatalf("expected openstackID server-1, got %q", gotOpenstackID)
+		}
+	})
+
+	t.Run("returns nil when stale row delete fails after cloud delete", func(t *testing.T) {
+		client := &fakeClient{
+			deleteServerFn: func(id string) error { return nil },
+		}
+		repo := &noopComputeRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+				return true, nil
+			},
+			deleteInstanceFn: func(ctx context.Context, userID uuid.UUID, openstackID string) error {
+				return errors.New("db delete failed")
+			},
+		}
+
+		svc := newTestServiceWithRepo(client, repo)
+		if err := svc.DeleteInstance(context.Background(), computeTestUserID, "server-1"); err != nil {
+			t.Fatalf("expected nil on stale row, got %v", err)
+		}
+	})
+
+	t.Run("normalizes upstream 404 as instance not found", func(t *testing.T) {
+		client := &fakeClient{
+			deleteServerFn: func(id string) error { return newComputeStatusErr(http.StatusNotFound) },
+		}
+		repo := &noopComputeRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, openstackID string) (bool, error) {
+				return true, nil
+			},
+		}
+
+		svc := newTestServiceWithRepo(client, repo)
+		err := svc.DeleteInstance(context.Background(), computeTestUserID, "server-1")
+		if !errors.Is(err, ErrInstanceNotFound) {
+			t.Fatalf("expected ErrInstanceNotFound, got %v", err)
 		}
 	})
 }

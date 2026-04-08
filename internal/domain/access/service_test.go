@@ -269,4 +269,62 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
 		}
 	})
+
+	t.Run("deletes created keypair when ownership save fails", func(t *testing.T) {
+		saveErr := errors.New("db write failed")
+		var deletedKeyPair string
+		client := &fakeClient{
+			getKeyPairFn: func(name string) (*KeyPair, error) {
+				return nil, newStatusErr(http.StatusNotFound)
+			},
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return &KeyPair{Name: name, PublicKey: publicKey}, nil
+			},
+			deleteKeyPairFn: func(name string) error {
+				deletedKeyPair = name
+				return nil
+			},
+		}
+		repo := &noopKeyPairRepository{
+			saveKeyPairFn: func(ctx context.Context, userID uuid.UUID, name string) error {
+				return saveErr
+			},
+		}
+
+		svc := newTestServiceWithRepo(client, repo)
+		_, err := svc.CreateKeyPair(context.Background(), accessTestUserID, CreateKeyPairRequest{
+			Name:      "team-default-key",
+			PublicKey: testPublicKey,
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if deletedKeyPair != "team-default-key" {
+			t.Fatalf("expected cleanup delete for team-default-key, got %q", deletedKeyPair)
+		}
+		if !errors.Is(err, ErrKeyPairOperationFailed) {
+			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
+		}
+	})
+}
+
+func TestServiceDeleteKeyPair(t *testing.T) {
+	t.Run("returns nil when stale row delete fails after cloud delete", func(t *testing.T) {
+		client := &fakeClient{
+			deleteKeyPairFn: func(name string) error { return nil },
+		}
+		repo := &noopKeyPairRepository{
+			isOwnerFn: func(ctx context.Context, userID uuid.UUID, name string) (bool, error) {
+				return true, nil
+			},
+			deleteKeyPairFn: func(ctx context.Context, userID uuid.UUID, name string) error {
+				return errors.New("db delete failed")
+			},
+		}
+
+		svc := newTestServiceWithRepo(client, repo)
+		if err := svc.DeleteKeyPair(context.Background(), accessTestUserID, "team-default-key"); err != nil {
+			t.Fatalf("expected nil on stale row, got %v", err)
+		}
+	})
 }
