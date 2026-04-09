@@ -111,8 +111,8 @@ func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
 	for _, srv := range rawServers {
 		addrMap := make(map[string]string)
 		for netName, addrs := range srv.Addresses {
-			if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
-				if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
+			if addrList, ok := addrs.([]any); ok && len(addrList) > 0 {
+				if firstAddr, ok := addrList[0].(map[string]any); ok {
 					if addr, ok := firstAddr["addr"].(string); ok {
 						addrMap[netName] = addr
 					}
@@ -162,8 +162,8 @@ func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) 
 
 	addrMap := make(map[string]string)
 	for netName, addrs := range server.Addresses {
-		if addrList, ok := addrs.([]interface{}); ok && len(addrList) > 0 {
-			if firstAddr, ok := addrList[0].(map[string]interface{}); ok {
+		if addrList, ok := addrs.([]any); ok && len(addrList) > 0 {
+			if firstAddr, ok := addrList[0].(map[string]any); ok {
 				addrMap[netName], _ = firstAddr["addr"].(string)
 			}
 		}

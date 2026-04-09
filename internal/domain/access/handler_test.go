@@ -31,12 +31,12 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 
 		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -54,12 +54,12 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("returns 400 for invalid json", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewBufferString("{"))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewBufferString("{"))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath)
 		newHandler(&fakeClient{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -87,12 +87,12 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 
 		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -121,12 +121,12 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 
 		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -157,12 +157,12 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 
 		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -190,12 +190,12 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 
 		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
@@ -213,12 +213,12 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 
 		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/access/keypairs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
 		r := gin.New()
-		v1 := r.Group("/api/v1")
+		v1 := r.Group(api.BasePath)
 		newHandler(repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
