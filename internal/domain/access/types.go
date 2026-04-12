@@ -25,5 +25,5 @@ type CreateKeyPairRequest struct {
 type KeyPairResponse struct {
 	Name        string `json:"name"`
 	Fingerprint string `json:"fingerprint"`
-	PublicKey    string `json:"public_key"`
+	PublicKey   string `json:"public_key"`
 }
