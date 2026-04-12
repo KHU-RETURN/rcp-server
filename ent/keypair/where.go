@@ -7,7 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/KHU-RETURN/rcp-server/internal/predicate"
+	"github.com/KHU-RETURN/rcp-server/ent/predicate"
 	"github.com/google/uuid"
 )
 

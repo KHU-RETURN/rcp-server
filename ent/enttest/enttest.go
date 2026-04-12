@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/KHU-RETURN/rcp-server/internal"
+	"github.com/KHU-RETURN/rcp-server/ent"
 	// required by schema hooks.
-	_ "github.com/KHU-RETURN/rcp-server/internal/runtime"
+	_ "github.com/KHU-RETURN/rcp-server/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/KHU-RETURN/rcp-server/internal/migrate"
+	"github.com/KHU-RETURN/rcp-server/ent/migrate"
 )
 
 type (
@@ -25,13 +25,13 @@ type (
 	Option func(*options)
 
 	options struct {
-		opts        []internal.Option
+		opts        []ent.Option
 		migrateOpts []schema.MigrateOption
 	}
 )
 
 // WithOptions forwards options to client creation.
-func WithOptions(opts ...internal.Option) Option {
+func WithOptions(opts ...ent.Option) Option {
 	return func(o *options) {
 		o.opts = append(o.opts, opts...)
 	}
@@ -52,10 +52,10 @@ func newOptions(opts []Option) *options {
 	return o
 }
 
-// Open calls internal.Open and auto-run migration.
-func Open(t TestingT, driverName, dataSourceName string, opts ...Option) *internal.Client {
+// Open calls ent.Open and auto-run migration.
+func Open(t TestingT, driverName, dataSourceName string, opts ...Option) *ent.Client {
 	o := newOptions(opts)
-	c, err := internal.Open(driverName, dataSourceName, o.opts...)
+	c, err := ent.Open(driverName, dataSourceName, o.opts...)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -64,14 +64,14 @@ func Open(t TestingT, driverName, dataSourceName string, opts ...Option) *intern
 	return c
 }
 
-// NewClient calls internal.NewClient and auto-run migration.
-func NewClient(t TestingT, opts ...Option) *internal.Client {
+// NewClient calls ent.NewClient and auto-run migration.
+func NewClient(t TestingT, opts ...Option) *ent.Client {
 	o := newOptions(opts)
-	c := internal.NewClient(o.opts...)
+	c := ent.NewClient(o.opts...)
 	migrateSchema(t, c, o)
 	return c
 }
-func migrateSchema(t TestingT, c *internal.Client, o *options) {
+func migrateSchema(t TestingT, c *ent.Client, o *options) {
 	tables, err := schema.CopyTables(migrate.Tables)
 	if err != nil {
 		t.Error(err)
