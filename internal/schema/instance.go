@@ -33,7 +33,7 @@ func (Instance) Fields() []ent.Field {
 
 func (Instance) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("owner", User.Type).Ref("instances").Required(),
+		edge.From("owner", User.Type).Ref("instances").Required().Unique(),
 		edge.From("keypair", KeyPair.Type).Ref("instances").Unique(),
 	}
 }

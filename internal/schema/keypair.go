@@ -20,8 +20,6 @@ func (KeyPair) Fields() []ent.Field {
 		field.String("fingerprint"),
 		field.String("public_key"),
 		field.Enum("source_type").Values("user_uploaded", "system_generated"),
-		field.Enum("sync_state").Values("synced", "missing", "error").Default("synced"),
-		field.Time("last_synced_at"),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
@@ -29,7 +27,7 @@ func (KeyPair) Fields() []ent.Field {
 
 func (KeyPair) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("owner", User.Type).Ref("keypairs").Required(),
+		edge.From("owner", User.Type).Ref("keypairs").Required().Unique(),
 		edge.To("instances", Instance.Type),
 	}
 }
