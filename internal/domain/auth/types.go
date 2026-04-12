@@ -14,13 +14,13 @@ type AuthResponse struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	Email        string
-	Name         string
-	GoogleID     string
-	AccessToken  string
-	RefreshToken string
-	Expiry       time.Time
+	ID           uuid.UUID `json:"id"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	GoogleID     string    `json:"-"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	Expiry       time.Time `json:"expiry"`
 	// 구글 전용 정보 (서버 내부에서만 사용, 클라이언트에 노출 안 함)
 	GoogleAuth *GoogleInfo `json:"-"`
 }
