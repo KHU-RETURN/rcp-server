@@ -341,11 +341,11 @@ func normalizeCreateServerOpts(opts CreateServerOpts) CreateServerOpts {
 
 func validateCreateServerOpts(opts CreateServerOpts) error {
 	switch {
-	case strings.TrimSpace(opts.Name) == "":
+	case opts.Name == "":
 		return ErrCreateInstanceNameRequired
-	case strings.TrimSpace(opts.ImageRef) == "":
+	case opts.ImageRef == "":
 		return ErrCreateInstanceImageRequired
-	case strings.TrimSpace(opts.FlavorRef) == "":
+	case opts.FlavorRef == "":
 		return ErrCreateInstanceFlavorRequired
 	default:
 		return nil
