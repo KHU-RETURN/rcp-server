@@ -29,8 +29,8 @@ func newTestRepo(t *testing.T) *Repository {
 	}
 
 	t.Cleanup(func() {
-		client.Close()
-		db.Close()
+		_ = client.Close()
+		_ = db.Close()
 	})
 
 	return NewRepository(client)

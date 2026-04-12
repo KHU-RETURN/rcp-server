@@ -21,7 +21,7 @@ func NewEntClient(cfg Config) (*ent.Client, error) {
 	}
 
 	if err := client.Schema.Create(context.Background()); err != nil {
-		client.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to run schema migration: %w", err)
 	}
 

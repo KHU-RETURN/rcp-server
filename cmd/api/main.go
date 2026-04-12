@@ -52,7 +52,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("DB 연결 실패: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	oauth, err := google.NewGoogleConfig(google.OAuthConfig{
 		ClientID:     os.Getenv("GG_OAUTH_CLIENT"),
