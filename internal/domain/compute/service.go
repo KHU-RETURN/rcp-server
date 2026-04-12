@@ -134,13 +134,13 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 	wg.Wait()
 
 	if dbErr != nil {
-		return nil, ErrInstanceOperationFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, dbErr)
 	}
 	if osErr != nil {
-		return nil, ErrInstanceOperationFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, osErr)
 	}
 	if flvErr != nil {
-		return nil, flvErr
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, flvErr)
 	}
 
 	serverMap := make(map[string]Server, len(osServers))
@@ -198,16 +198,16 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 	wg.Wait()
 
 	if dbErr != nil {
-		return nil, ErrInstanceOperationFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, dbErr)
 	}
 	if inst == nil {
 		return nil, ErrInstanceNotFound
 	}
 	if osErr != nil {
-		return nil, ErrInstanceOperationFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, osErr)
 	}
 	if flvErr != nil {
-		return nil, flvErr
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, flvErr)
 	}
 
 	fixedIP, floatingIP := extractServerIPs(srv)
@@ -228,18 +228,18 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 func (s *Service) DeleteInstance(ctx context.Context, ownerID uuid.UUID, id string) error {
 	inst, err := s.repo.FindByOpenstackID(ctx, ownerID, id)
 	if err != nil {
-		return ErrInstanceOperationFailed
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 	if inst == nil {
 		return ErrInstanceNotFound
 	}
 
 	if err := s.client.DeleteServer(id); err != nil {
-		return ErrInstanceOperationFailed
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 
 	if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
-		return ErrInstanceOperationFailed
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 	return nil
 }
@@ -264,7 +264,7 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 	}
 
 	if err := s.repo.SaveInstance(ctx, ownerID, inst); err != nil {
-		return nil, ErrInstanceOperationFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 
 	return buildCreateInstanceResponse(server, normalizedOpts), nil
