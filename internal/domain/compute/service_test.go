@@ -12,13 +12,13 @@ import (
 var testOwnerID = uuid.New()
 
 type fakeClient struct {
-	fetchFlavorsFn      func() ([]Flavor, error)
-	getComputeQuotaFn   func(projectID string) (*QuotaDetailSet, error)
-	createServerFn      func(opts CreateServerOpts) (*Server, error)
-	deleteServerFn      func(id string) error
-	fetchInstancesFn    func() ([]Server, error)
-	fetchInstanceFn     func(id string) (*Server, error)
-	fetchDiagnosticsFn  func(id string) (map[string]any, error)
+	fetchFlavorsFn     func() ([]Flavor, error)
+	getComputeQuotaFn  func(projectID string) (*QuotaDetailSet, error)
+	createServerFn     func(opts CreateServerOpts) (*Server, error)
+	deleteServerFn     func(id string) error
+	fetchInstancesFn   func() ([]Server, error)
+	fetchInstanceFn    func(id string) (*Server, error)
+	fetchDiagnosticsFn func(id string) (map[string]any, error)
 }
 
 func (f *fakeClient) FetchFlavors() ([]Flavor, error) {

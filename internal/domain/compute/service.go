@@ -111,8 +111,8 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 // GetInstances는 DB(소유권)와 OpenStack(가변 상태)을 병렬로 읽어 조합하여 반환합니다.
 func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]InstanceDetailResponse, error) {
 	var (
-		dbInstances []Instance
-		osServers   []Server
+		dbInstances  []Instance
+		osServers    []Server
 		dbErr, osErr error
 	)
 
@@ -166,9 +166,9 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 // GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
 func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id string) (*InstanceDetailResponse, error) {
 	var (
-		inst              *Instance
-		srv               *Server
-		diag              map[string]any
+		inst         *Instance
+		srv          *Server
+		diag         map[string]any
 		dbErr, osErr error
 	)
 
