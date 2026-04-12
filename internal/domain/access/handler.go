@@ -5,9 +5,7 @@ import (
 	"net/http"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
-	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -29,20 +27,8 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	}
 }
 
-func ownerID(c *gin.Context) (uuid.UUID, bool) {
-	val, exists := c.Get(auth.ContextKeyUser)
-	if !exists {
-		return uuid.UUID{}, false
-	}
-	u, ok := val.(*auth.User)
-	if !ok {
-		return uuid.UUID{}, false
-	}
-	return u.ID, true
-}
-
 func (h *Handler) ListKeyPairs(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
@@ -57,7 +43,7 @@ func (h *Handler) ListKeyPairs(c *gin.Context) {
 }
 
 func (h *Handler) GetKeyPair(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
@@ -77,7 +63,7 @@ func (h *Handler) GetKeyPair(c *gin.Context) {
 }
 
 func (h *Handler) DeleteKeyPair(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
@@ -96,7 +82,7 @@ func (h *Handler) DeleteKeyPair(c *gin.Context) {
 }
 
 func (h *Handler) CreateKeyPair(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return

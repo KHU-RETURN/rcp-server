@@ -5,9 +5,7 @@ import (
 	"net/http"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
-	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // Handler는 HTTP 요청을 처리합니다.
@@ -18,18 +16,6 @@ type Handler struct {
 // NewHandler는 새로운 핸들러를 생성합니다.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
-}
-
-func ownerID(c *gin.Context) (uuid.UUID, bool) {
-	val, exists := c.Get(auth.ContextKeyUser)
-	if !exists {
-		return uuid.UUID{}, false
-	}
-	u, ok := val.(*auth.User)
-	if !ok {
-		return uuid.UUID{}, false
-	}
-	return u.ID, true
 }
 
 // InitRoutes는 전달받은 RouterGroup에 Compute 관련 엔드포인트들을 등록합니다.
@@ -64,7 +50,7 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 }
 
 func (h *Handler) GetInstances(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
@@ -79,7 +65,7 @@ func (h *Handler) GetInstances(c *gin.Context) {
 }
 
 func (h *Handler) GetInstanceDetail(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
@@ -99,7 +85,7 @@ func (h *Handler) GetInstanceDetail(c *gin.Context) {
 }
 
 func (h *Handler) CreateInstance(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
@@ -141,7 +127,7 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 }
 
 func (h *Handler) DeleteInstance(c *gin.Context) {
-	id, ok := ownerID(c)
+	id, ok := api.OwnerID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
