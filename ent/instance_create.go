@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
@@ -21,6 +23,7 @@ type InstanceCreate struct {
 	config
 	mutation *InstanceMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetOpenstackID sets the "openstack_id" field.
@@ -307,6 +310,7 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 		_node = &Instance{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(instance.Table, sqlgraph.NewFieldSpec(instance.FieldID, field.TypeUUID))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = &id
@@ -395,11 +399,462 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Instance.Create().
+//		SetOpenstackID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.InstanceUpsert) {
+//			SetOpenstackID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *InstanceCreate) OnConflict(opts ...sql.ConflictOption) *InstanceUpsertOne {
+	_c.conflict = opts
+	return &InstanceUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Instance.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *InstanceCreate) OnConflictColumns(columns ...string) *InstanceUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &InstanceUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// InstanceUpsertOne is the builder for "upsert"-ing
+	//  one Instance node.
+	InstanceUpsertOne struct {
+		create *InstanceCreate
+	}
+
+	// InstanceUpsert is the "OnConflict" setter.
+	InstanceUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetOpenstackID sets the "openstack_id" field.
+func (u *InstanceUpsert) SetOpenstackID(v string) *InstanceUpsert {
+	u.Set(instance.FieldOpenstackID, v)
+	return u
+}
+
+// UpdateOpenstackID sets the "openstack_id" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateOpenstackID() *InstanceUpsert {
+	u.SetExcluded(instance.FieldOpenstackID)
+	return u
+}
+
+// SetName sets the "name" field.
+func (u *InstanceUpsert) SetName(v string) *InstanceUpsert {
+	u.Set(instance.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateName() *InstanceUpsert {
+	u.SetExcluded(instance.FieldName)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *InstanceUpsert) SetStatus(v string) *InstanceUpsert {
+	u.Set(instance.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateStatus() *InstanceUpsert {
+	u.SetExcluded(instance.FieldStatus)
+	return u
+}
+
+// SetImageID sets the "image_id" field.
+func (u *InstanceUpsert) SetImageID(v string) *InstanceUpsert {
+	u.Set(instance.FieldImageID, v)
+	return u
+}
+
+// UpdateImageID sets the "image_id" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateImageID() *InstanceUpsert {
+	u.SetExcluded(instance.FieldImageID)
+	return u
+}
+
+// SetFlavorID sets the "flavor_id" field.
+func (u *InstanceUpsert) SetFlavorID(v string) *InstanceUpsert {
+	u.Set(instance.FieldFlavorID, v)
+	return u
+}
+
+// UpdateFlavorID sets the "flavor_id" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateFlavorID() *InstanceUpsert {
+	u.SetExcluded(instance.FieldFlavorID)
+	return u
+}
+
+// SetFixedIP sets the "fixed_ip" field.
+func (u *InstanceUpsert) SetFixedIP(v string) *InstanceUpsert {
+	u.Set(instance.FieldFixedIP, v)
+	return u
+}
+
+// UpdateFixedIP sets the "fixed_ip" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateFixedIP() *InstanceUpsert {
+	u.SetExcluded(instance.FieldFixedIP)
+	return u
+}
+
+// ClearFixedIP clears the value of the "fixed_ip" field.
+func (u *InstanceUpsert) ClearFixedIP() *InstanceUpsert {
+	u.SetNull(instance.FieldFixedIP)
+	return u
+}
+
+// SetFloatingIP sets the "floating_ip" field.
+func (u *InstanceUpsert) SetFloatingIP(v string) *InstanceUpsert {
+	u.Set(instance.FieldFloatingIP, v)
+	return u
+}
+
+// UpdateFloatingIP sets the "floating_ip" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateFloatingIP() *InstanceUpsert {
+	u.SetExcluded(instance.FieldFloatingIP)
+	return u
+}
+
+// ClearFloatingIP clears the value of the "floating_ip" field.
+func (u *InstanceUpsert) ClearFloatingIP() *InstanceUpsert {
+	u.SetNull(instance.FieldFloatingIP)
+	return u
+}
+
+// SetProviderCreatedAt sets the "provider_created_at" field.
+func (u *InstanceUpsert) SetProviderCreatedAt(v time.Time) *InstanceUpsert {
+	u.Set(instance.FieldProviderCreatedAt, v)
+	return u
+}
+
+// UpdateProviderCreatedAt sets the "provider_created_at" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateProviderCreatedAt() *InstanceUpsert {
+	u.SetExcluded(instance.FieldProviderCreatedAt)
+	return u
+}
+
+// SetSyncState sets the "sync_state" field.
+func (u *InstanceUpsert) SetSyncState(v instance.SyncState) *InstanceUpsert {
+	u.Set(instance.FieldSyncState, v)
+	return u
+}
+
+// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateSyncState() *InstanceUpsert {
+	u.SetExcluded(instance.FieldSyncState)
+	return u
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (u *InstanceUpsert) SetLastSyncedAt(v time.Time) *InstanceUpsert {
+	u.Set(instance.FieldLastSyncedAt, v)
+	return u
+}
+
+// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateLastSyncedAt() *InstanceUpsert {
+	u.SetExcluded(instance.FieldLastSyncedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *InstanceUpsert) SetUpdatedAt(v time.Time) *InstanceUpsert {
+	u.Set(instance.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateUpdatedAt() *InstanceUpsert {
+	u.SetExcluded(instance.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.Instance.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(instance.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *InstanceUpsertOne) UpdateNewValues() *InstanceUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(instance.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(instance.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Instance.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *InstanceUpsertOne) Ignore() *InstanceUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *InstanceUpsertOne) DoNothing() *InstanceUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the InstanceCreate.OnConflict
+// documentation for more info.
+func (u *InstanceUpsertOne) Update(set func(*InstanceUpsert)) *InstanceUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&InstanceUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetOpenstackID sets the "openstack_id" field.
+func (u *InstanceUpsertOne) SetOpenstackID(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetOpenstackID(v)
+	})
+}
+
+// UpdateOpenstackID sets the "openstack_id" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateOpenstackID() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateOpenstackID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *InstanceUpsertOne) SetName(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateName() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *InstanceUpsertOne) SetStatus(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateStatus() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetImageID sets the "image_id" field.
+func (u *InstanceUpsertOne) SetImageID(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetImageID(v)
+	})
+}
+
+// UpdateImageID sets the "image_id" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateImageID() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateImageID()
+	})
+}
+
+// SetFlavorID sets the "flavor_id" field.
+func (u *InstanceUpsertOne) SetFlavorID(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetFlavorID(v)
+	})
+}
+
+// UpdateFlavorID sets the "flavor_id" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateFlavorID() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateFlavorID()
+	})
+}
+
+// SetFixedIP sets the "fixed_ip" field.
+func (u *InstanceUpsertOne) SetFixedIP(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetFixedIP(v)
+	})
+}
+
+// UpdateFixedIP sets the "fixed_ip" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateFixedIP() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateFixedIP()
+	})
+}
+
+// ClearFixedIP clears the value of the "fixed_ip" field.
+func (u *InstanceUpsertOne) ClearFixedIP() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.ClearFixedIP()
+	})
+}
+
+// SetFloatingIP sets the "floating_ip" field.
+func (u *InstanceUpsertOne) SetFloatingIP(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetFloatingIP(v)
+	})
+}
+
+// UpdateFloatingIP sets the "floating_ip" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateFloatingIP() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateFloatingIP()
+	})
+}
+
+// ClearFloatingIP clears the value of the "floating_ip" field.
+func (u *InstanceUpsertOne) ClearFloatingIP() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.ClearFloatingIP()
+	})
+}
+
+// SetProviderCreatedAt sets the "provider_created_at" field.
+func (u *InstanceUpsertOne) SetProviderCreatedAt(v time.Time) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetProviderCreatedAt(v)
+	})
+}
+
+// UpdateProviderCreatedAt sets the "provider_created_at" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateProviderCreatedAt() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateProviderCreatedAt()
+	})
+}
+
+// SetSyncState sets the "sync_state" field.
+func (u *InstanceUpsertOne) SetSyncState(v instance.SyncState) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetSyncState(v)
+	})
+}
+
+// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateSyncState() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateSyncState()
+	})
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (u *InstanceUpsertOne) SetLastSyncedAt(v time.Time) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetLastSyncedAt(v)
+	})
+}
+
+// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateLastSyncedAt() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateLastSyncedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *InstanceUpsertOne) SetUpdatedAt(v time.Time) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateUpdatedAt() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *InstanceUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for InstanceCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *InstanceUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *InstanceUpsertOne) ID(ctx context.Context) (id uuid.UUID, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: InstanceUpsertOne.ID is not supported by MySQL driver. Use InstanceUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *InstanceUpsertOne) IDX(ctx context.Context) uuid.UUID {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // InstanceCreateBulk is the builder for creating many Instance entities in bulk.
 type InstanceCreateBulk struct {
 	config
 	err      error
 	builders []*InstanceCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Instance entities in the database.
@@ -429,6 +884,7 @@ func (_c *InstanceCreateBulk) Save(ctx context.Context) ([]*Instance, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -475,6 +931,291 @@ func (_c *InstanceCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *InstanceCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Instance.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.InstanceUpsert) {
+//			SetOpenstackID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *InstanceCreateBulk) OnConflict(opts ...sql.ConflictOption) *InstanceUpsertBulk {
+	_c.conflict = opts
+	return &InstanceUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Instance.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *InstanceCreateBulk) OnConflictColumns(columns ...string) *InstanceUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &InstanceUpsertBulk{
+		create: _c,
+	}
+}
+
+// InstanceUpsertBulk is the builder for "upsert"-ing
+// a bulk of Instance nodes.
+type InstanceUpsertBulk struct {
+	create *InstanceCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Instance.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(instance.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *InstanceUpsertBulk) UpdateNewValues() *InstanceUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(instance.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(instance.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Instance.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *InstanceUpsertBulk) Ignore() *InstanceUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *InstanceUpsertBulk) DoNothing() *InstanceUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the InstanceCreateBulk.OnConflict
+// documentation for more info.
+func (u *InstanceUpsertBulk) Update(set func(*InstanceUpsert)) *InstanceUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&InstanceUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetOpenstackID sets the "openstack_id" field.
+func (u *InstanceUpsertBulk) SetOpenstackID(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetOpenstackID(v)
+	})
+}
+
+// UpdateOpenstackID sets the "openstack_id" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateOpenstackID() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateOpenstackID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *InstanceUpsertBulk) SetName(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateName() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *InstanceUpsertBulk) SetStatus(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateStatus() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetImageID sets the "image_id" field.
+func (u *InstanceUpsertBulk) SetImageID(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetImageID(v)
+	})
+}
+
+// UpdateImageID sets the "image_id" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateImageID() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateImageID()
+	})
+}
+
+// SetFlavorID sets the "flavor_id" field.
+func (u *InstanceUpsertBulk) SetFlavorID(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetFlavorID(v)
+	})
+}
+
+// UpdateFlavorID sets the "flavor_id" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateFlavorID() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateFlavorID()
+	})
+}
+
+// SetFixedIP sets the "fixed_ip" field.
+func (u *InstanceUpsertBulk) SetFixedIP(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetFixedIP(v)
+	})
+}
+
+// UpdateFixedIP sets the "fixed_ip" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateFixedIP() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateFixedIP()
+	})
+}
+
+// ClearFixedIP clears the value of the "fixed_ip" field.
+func (u *InstanceUpsertBulk) ClearFixedIP() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.ClearFixedIP()
+	})
+}
+
+// SetFloatingIP sets the "floating_ip" field.
+func (u *InstanceUpsertBulk) SetFloatingIP(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetFloatingIP(v)
+	})
+}
+
+// UpdateFloatingIP sets the "floating_ip" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateFloatingIP() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateFloatingIP()
+	})
+}
+
+// ClearFloatingIP clears the value of the "floating_ip" field.
+func (u *InstanceUpsertBulk) ClearFloatingIP() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.ClearFloatingIP()
+	})
+}
+
+// SetProviderCreatedAt sets the "provider_created_at" field.
+func (u *InstanceUpsertBulk) SetProviderCreatedAt(v time.Time) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetProviderCreatedAt(v)
+	})
+}
+
+// UpdateProviderCreatedAt sets the "provider_created_at" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateProviderCreatedAt() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateProviderCreatedAt()
+	})
+}
+
+// SetSyncState sets the "sync_state" field.
+func (u *InstanceUpsertBulk) SetSyncState(v instance.SyncState) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetSyncState(v)
+	})
+}
+
+// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateSyncState() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateSyncState()
+	})
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (u *InstanceUpsertBulk) SetLastSyncedAt(v time.Time) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetLastSyncedAt(v)
+	})
+}
+
+// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateLastSyncedAt() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateLastSyncedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *InstanceUpsertBulk) SetUpdatedAt(v time.Time) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateUpdatedAt() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *InstanceUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the InstanceCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for InstanceCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *InstanceUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

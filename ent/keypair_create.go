@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
@@ -21,6 +23,7 @@ type KeyPairCreate struct {
 	config
 	mutation *KeyPairMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetOpenstackName sets the "openstack_name" field.
@@ -262,6 +265,7 @@ func (_c *KeyPairCreate) createSpec() (*KeyPair, *sqlgraph.CreateSpec) {
 		_node = &KeyPair{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(keypair.Table, sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = &id
@@ -333,11 +337,332 @@ func (_c *KeyPairCreate) createSpec() (*KeyPair, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.KeyPair.Create().
+//		SetOpenstackName(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.KeyPairUpsert) {
+//			SetOpenstackName(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *KeyPairCreate) OnConflict(opts ...sql.ConflictOption) *KeyPairUpsertOne {
+	_c.conflict = opts
+	return &KeyPairUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.KeyPair.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *KeyPairCreate) OnConflictColumns(columns ...string) *KeyPairUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &KeyPairUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// KeyPairUpsertOne is the builder for "upsert"-ing
+	//  one KeyPair node.
+	KeyPairUpsertOne struct {
+		create *KeyPairCreate
+	}
+
+	// KeyPairUpsert is the "OnConflict" setter.
+	KeyPairUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetOpenstackName sets the "openstack_name" field.
+func (u *KeyPairUpsert) SetOpenstackName(v string) *KeyPairUpsert {
+	u.Set(keypair.FieldOpenstackName, v)
+	return u
+}
+
+// UpdateOpenstackName sets the "openstack_name" field to the value that was provided on create.
+func (u *KeyPairUpsert) UpdateOpenstackName() *KeyPairUpsert {
+	u.SetExcluded(keypair.FieldOpenstackName)
+	return u
+}
+
+// SetFingerprint sets the "fingerprint" field.
+func (u *KeyPairUpsert) SetFingerprint(v string) *KeyPairUpsert {
+	u.Set(keypair.FieldFingerprint, v)
+	return u
+}
+
+// UpdateFingerprint sets the "fingerprint" field to the value that was provided on create.
+func (u *KeyPairUpsert) UpdateFingerprint() *KeyPairUpsert {
+	u.SetExcluded(keypair.FieldFingerprint)
+	return u
+}
+
+// SetPublicKey sets the "public_key" field.
+func (u *KeyPairUpsert) SetPublicKey(v string) *KeyPairUpsert {
+	u.Set(keypair.FieldPublicKey, v)
+	return u
+}
+
+// UpdatePublicKey sets the "public_key" field to the value that was provided on create.
+func (u *KeyPairUpsert) UpdatePublicKey() *KeyPairUpsert {
+	u.SetExcluded(keypair.FieldPublicKey)
+	return u
+}
+
+// SetSourceType sets the "source_type" field.
+func (u *KeyPairUpsert) SetSourceType(v keypair.SourceType) *KeyPairUpsert {
+	u.Set(keypair.FieldSourceType, v)
+	return u
+}
+
+// UpdateSourceType sets the "source_type" field to the value that was provided on create.
+func (u *KeyPairUpsert) UpdateSourceType() *KeyPairUpsert {
+	u.SetExcluded(keypair.FieldSourceType)
+	return u
+}
+
+// SetSyncState sets the "sync_state" field.
+func (u *KeyPairUpsert) SetSyncState(v keypair.SyncState) *KeyPairUpsert {
+	u.Set(keypair.FieldSyncState, v)
+	return u
+}
+
+// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
+func (u *KeyPairUpsert) UpdateSyncState() *KeyPairUpsert {
+	u.SetExcluded(keypair.FieldSyncState)
+	return u
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (u *KeyPairUpsert) SetLastSyncedAt(v time.Time) *KeyPairUpsert {
+	u.Set(keypair.FieldLastSyncedAt, v)
+	return u
+}
+
+// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
+func (u *KeyPairUpsert) UpdateLastSyncedAt() *KeyPairUpsert {
+	u.SetExcluded(keypair.FieldLastSyncedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *KeyPairUpsert) SetUpdatedAt(v time.Time) *KeyPairUpsert {
+	u.Set(keypair.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *KeyPairUpsert) UpdateUpdatedAt() *KeyPairUpsert {
+	u.SetExcluded(keypair.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.KeyPair.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(keypair.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *KeyPairUpsertOne) UpdateNewValues() *KeyPairUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(keypair.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(keypair.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.KeyPair.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *KeyPairUpsertOne) Ignore() *KeyPairUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *KeyPairUpsertOne) DoNothing() *KeyPairUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the KeyPairCreate.OnConflict
+// documentation for more info.
+func (u *KeyPairUpsertOne) Update(set func(*KeyPairUpsert)) *KeyPairUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&KeyPairUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetOpenstackName sets the "openstack_name" field.
+func (u *KeyPairUpsertOne) SetOpenstackName(v string) *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetOpenstackName(v)
+	})
+}
+
+// UpdateOpenstackName sets the "openstack_name" field to the value that was provided on create.
+func (u *KeyPairUpsertOne) UpdateOpenstackName() *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateOpenstackName()
+	})
+}
+
+// SetFingerprint sets the "fingerprint" field.
+func (u *KeyPairUpsertOne) SetFingerprint(v string) *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetFingerprint(v)
+	})
+}
+
+// UpdateFingerprint sets the "fingerprint" field to the value that was provided on create.
+func (u *KeyPairUpsertOne) UpdateFingerprint() *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateFingerprint()
+	})
+}
+
+// SetPublicKey sets the "public_key" field.
+func (u *KeyPairUpsertOne) SetPublicKey(v string) *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetPublicKey(v)
+	})
+}
+
+// UpdatePublicKey sets the "public_key" field to the value that was provided on create.
+func (u *KeyPairUpsertOne) UpdatePublicKey() *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdatePublicKey()
+	})
+}
+
+// SetSourceType sets the "source_type" field.
+func (u *KeyPairUpsertOne) SetSourceType(v keypair.SourceType) *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetSourceType(v)
+	})
+}
+
+// UpdateSourceType sets the "source_type" field to the value that was provided on create.
+func (u *KeyPairUpsertOne) UpdateSourceType() *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateSourceType()
+	})
+}
+
+// SetSyncState sets the "sync_state" field.
+func (u *KeyPairUpsertOne) SetSyncState(v keypair.SyncState) *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetSyncState(v)
+	})
+}
+
+// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
+func (u *KeyPairUpsertOne) UpdateSyncState() *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateSyncState()
+	})
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (u *KeyPairUpsertOne) SetLastSyncedAt(v time.Time) *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetLastSyncedAt(v)
+	})
+}
+
+// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
+func (u *KeyPairUpsertOne) UpdateLastSyncedAt() *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateLastSyncedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *KeyPairUpsertOne) SetUpdatedAt(v time.Time) *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *KeyPairUpsertOne) UpdateUpdatedAt() *KeyPairUpsertOne {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *KeyPairUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for KeyPairCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *KeyPairUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *KeyPairUpsertOne) ID(ctx context.Context) (id uuid.UUID, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: KeyPairUpsertOne.ID is not supported by MySQL driver. Use KeyPairUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *KeyPairUpsertOne) IDX(ctx context.Context) uuid.UUID {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // KeyPairCreateBulk is the builder for creating many KeyPair entities in bulk.
 type KeyPairCreateBulk struct {
 	config
 	err      error
 	builders []*KeyPairCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the KeyPair entities in the database.
@@ -367,6 +692,7 @@ func (_c *KeyPairCreateBulk) Save(ctx context.Context) ([]*KeyPair, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -413,6 +739,221 @@ func (_c *KeyPairCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *KeyPairCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.KeyPair.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.KeyPairUpsert) {
+//			SetOpenstackName(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *KeyPairCreateBulk) OnConflict(opts ...sql.ConflictOption) *KeyPairUpsertBulk {
+	_c.conflict = opts
+	return &KeyPairUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.KeyPair.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *KeyPairCreateBulk) OnConflictColumns(columns ...string) *KeyPairUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &KeyPairUpsertBulk{
+		create: _c,
+	}
+}
+
+// KeyPairUpsertBulk is the builder for "upsert"-ing
+// a bulk of KeyPair nodes.
+type KeyPairUpsertBulk struct {
+	create *KeyPairCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.KeyPair.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(keypair.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *KeyPairUpsertBulk) UpdateNewValues() *KeyPairUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(keypair.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(keypair.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.KeyPair.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *KeyPairUpsertBulk) Ignore() *KeyPairUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *KeyPairUpsertBulk) DoNothing() *KeyPairUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the KeyPairCreateBulk.OnConflict
+// documentation for more info.
+func (u *KeyPairUpsertBulk) Update(set func(*KeyPairUpsert)) *KeyPairUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&KeyPairUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetOpenstackName sets the "openstack_name" field.
+func (u *KeyPairUpsertBulk) SetOpenstackName(v string) *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetOpenstackName(v)
+	})
+}
+
+// UpdateOpenstackName sets the "openstack_name" field to the value that was provided on create.
+func (u *KeyPairUpsertBulk) UpdateOpenstackName() *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateOpenstackName()
+	})
+}
+
+// SetFingerprint sets the "fingerprint" field.
+func (u *KeyPairUpsertBulk) SetFingerprint(v string) *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetFingerprint(v)
+	})
+}
+
+// UpdateFingerprint sets the "fingerprint" field to the value that was provided on create.
+func (u *KeyPairUpsertBulk) UpdateFingerprint() *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateFingerprint()
+	})
+}
+
+// SetPublicKey sets the "public_key" field.
+func (u *KeyPairUpsertBulk) SetPublicKey(v string) *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetPublicKey(v)
+	})
+}
+
+// UpdatePublicKey sets the "public_key" field to the value that was provided on create.
+func (u *KeyPairUpsertBulk) UpdatePublicKey() *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdatePublicKey()
+	})
+}
+
+// SetSourceType sets the "source_type" field.
+func (u *KeyPairUpsertBulk) SetSourceType(v keypair.SourceType) *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetSourceType(v)
+	})
+}
+
+// UpdateSourceType sets the "source_type" field to the value that was provided on create.
+func (u *KeyPairUpsertBulk) UpdateSourceType() *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateSourceType()
+	})
+}
+
+// SetSyncState sets the "sync_state" field.
+func (u *KeyPairUpsertBulk) SetSyncState(v keypair.SyncState) *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetSyncState(v)
+	})
+}
+
+// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
+func (u *KeyPairUpsertBulk) UpdateSyncState() *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateSyncState()
+	})
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (u *KeyPairUpsertBulk) SetLastSyncedAt(v time.Time) *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetLastSyncedAt(v)
+	})
+}
+
+// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
+func (u *KeyPairUpsertBulk) UpdateLastSyncedAt() *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateLastSyncedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *KeyPairUpsertBulk) SetUpdatedAt(v time.Time) *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *KeyPairUpsertBulk) UpdateUpdatedAt() *KeyPairUpsertBulk {
+	return u.Update(func(s *KeyPairUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *KeyPairUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the KeyPairCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for KeyPairCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *KeyPairUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
