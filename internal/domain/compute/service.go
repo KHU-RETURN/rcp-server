@@ -111,13 +111,14 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 // GetInstances는 DB(소유권)와 OpenStack(가변 상태)을 병렬로 읽어 조합하여 반환합니다.
 func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]InstanceDetailResponse, error) {
 	var (
-		dbInstances  []Instance
-		osServers    []Server
-		dbErr, osErr error
+		dbInstances          []Instance
+		osServers            []Server
+		flavorMap            map[string]FlavorResponse
+		dbErr, osErr, flvErr error
 	)
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		dbInstances, dbErr = s.repo.ListByOwner(ctx, ownerID)
@@ -125,6 +126,10 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 	go func() {
 		defer wg.Done()
 		osServers, osErr = s.client.FetchInstances()
+	}()
+	go func() {
+		defer wg.Done()
+		flavorMap, flvErr = s.fetchFlavorMap()
 	}()
 	wg.Wait()
 
@@ -134,10 +139,8 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 	if osErr != nil {
 		return nil, ErrInstanceOperationFailed
 	}
-
-	flavorMap, err := s.fetchFlavorMap()
-	if err != nil {
-		return nil, err
+	if flvErr != nil {
+		return nil, flvErr
 	}
 
 	serverMap := make(map[string]Server, len(osServers))
@@ -166,14 +169,15 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 // GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
 func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id string) (*InstanceDetailResponse, error) {
 	var (
-		inst         *Instance
-		srv          *Server
-		diag         map[string]any
-		dbErr, osErr error
+		inst                      *Instance
+		srv                       *Server
+		diag                      map[string]any
+		flavorMap                 map[string]FlavorResponse
+		dbErr, osErr, flvErr error
 	)
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		inst, dbErr = s.repo.FindByOpenstackID(ctx, ownerID, id)
@@ -187,6 +191,10 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 		// diagnostics 실패는 non-fatal — 사용량 미표시로 처리
 		diag, _ = s.client.FetchDiagnostics(id)
 	}()
+	go func() {
+		defer wg.Done()
+		flavorMap, flvErr = s.fetchFlavorMap()
+	}()
 	wg.Wait()
 
 	if dbErr != nil {
@@ -198,10 +206,8 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 	if osErr != nil {
 		return nil, ErrInstanceOperationFailed
 	}
-
-	flavorMap, err := s.fetchFlavorMap()
-	if err != nil {
-		return nil, err
+	if flvErr != nil {
+		return nil, flvErr
 	}
 
 	fixedIP, floatingIP := extractServerIPs(srv)
