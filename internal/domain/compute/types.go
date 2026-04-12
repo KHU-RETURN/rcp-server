@@ -131,5 +131,4 @@ type InstanceDetailResponse struct {
 type UsageStats struct {
 	CPUUsage    float64 `json:"cpu_usage"`    // vCPU 시간 (누적)
 	MemoryUsage int     `json:"memory_usage"` // MB 단위
-	DiskUsage   int     `json:"disk_usage"`   // GB 단위
 }
