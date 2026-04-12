@@ -7,12 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type AuthResponse struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	Expiry       time.Time `json:"expiry"`
-}
-
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	Email        string    `json:"email"`
