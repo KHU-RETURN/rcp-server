@@ -9,7 +9,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 )
 
-// Client는 OpenStack keypair API를 호출하는 구현체입니다.
 type Client struct {
 	provider *gophercloud.ProviderClient
 }
@@ -99,7 +98,6 @@ func (c *Client) CreateKeyPair(name, publicKey string) (*KeyPair, error) {
 	}, nil
 }
 
-// toStatusError는 gophercloud 에러를 *StatusError로 변환합니다.
 func toStatusError(err error) error {
 	if err == nil {
 		return nil

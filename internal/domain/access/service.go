@@ -23,8 +23,6 @@ var (
 	ErrKeyPairDeleteFailed    = errors.New("failed to delete keypair")
 )
 
-// keyPairClient는 OpenStack keypair API 접근 인터페이스입니다.
-// 구현체는 client.go의 Client입니다.
 type keyPairClient interface {
 	CreateKeyPair(name, publicKey string) (*KeyPair, error)
 	DeleteKeyPair(name string) error

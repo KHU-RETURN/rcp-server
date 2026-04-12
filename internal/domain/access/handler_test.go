@@ -18,7 +18,6 @@ import (
 
 var testUser = &auth.User{ID: testOwnerID}
 
-// withTestUser는 테스트 요청에 인증된 유저를 gin context에 주입하는 미들웨어입니다.
 func withTestUser(r *gin.RouterGroup) {
 	r.Use(func(c *gin.Context) {
 		c.Set(auth.ContextKeyUser, testUser)

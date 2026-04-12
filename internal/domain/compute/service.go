@@ -11,8 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// computeClient는 OpenStack compute API 접근 인터페이스입니다.
-// 구현체는 client.go의 Client입니다.
 type computeClient interface {
 	FetchFlavors() ([]Flavor, error)
 	GetComputeQuota(projectID string) (*QuotaDetailSet, error)
@@ -23,8 +21,6 @@ type computeClient interface {
 	FetchDiagnostics(id string) (map[string]any, error)
 }
 
-// instanceRepo는 인스턴스 영속성 인터페이스입니다.
-// 구현체는 repository.go의 Repository입니다.
 type instanceRepo interface {
 	SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
 	DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error
@@ -32,7 +28,6 @@ type instanceRepo interface {
 	FindByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
 }
 
-// Service는 비즈니스 로직을 담당합니다.
 type Service struct {
 	client    computeClient
 	repo      instanceRepo
@@ -47,12 +42,10 @@ var (
 	ErrInstanceOperationFailed      = errors.New("instance operation failed")
 )
 
-// NewService는 새로운 서비스를 생성합니다.
 func NewService(client computeClient, repo instanceRepo, projectID string) *Service {
 	return &Service{client: client, repo: repo, projectID: projectID}
 }
 
-// GetFlavors는 Repo에서 가져온 데이터를 우리 규격(FlavorResponse)으로 변환합니다.
 func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 	rawFlavors, err := s.client.FetchFlavors()
 	if err != nil {
@@ -66,7 +59,6 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 	return res, nil
 }
 
-// GetAvailableFlavorsWithLimit는 남은 자원량을 계산하여 각 Flavor별 가용 대수를 포함해 반환합니다.
 func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, error) {
 	rawFlavors, err := s.client.FetchFlavors()
 	if err != nil {

@@ -2,10 +2,8 @@ package compute
 
 import "time"
 
-// --- Domain models (gophercloud 의존 없음) ---
-
-// Instance는 DB에 저장된 인스턴스 도메인 모델입니다.
-// 가변 상태(status, ip)는 저장하지 않으며, 읽기 시 OpenStack에서 직접 조회합니다.
+// Instance는 DB에 저장되는 불변 메타데이터.
+// 가변 상태(status, ip)는 읽기 시 OpenStack에서 직접 조회한다.
 type Instance struct {
 	OpenstackID string
 	Name        string
@@ -14,7 +12,6 @@ type Instance struct {
 	Created     time.Time
 }
 
-// Flavor는 OpenStack flavor의 도메인 표현입니다.
 type Flavor struct {
 	ID    string
 	Name  string
@@ -23,21 +20,18 @@ type Flavor struct {
 	Disk  int
 }
 
-// QuotaDetail은 단일 쿼터 항목의 상세 정보입니다.
 type QuotaDetail struct {
 	InUse    int
 	Limit    int
 	Reserved int
 }
 
-// QuotaDetailSet은 compute 쿼터 전체 정보입니다.
 type QuotaDetailSet struct {
 	Cores     QuotaDetail
 	RAM       QuotaDetail
 	Instances QuotaDetail
 }
 
-// Server는 생성된 서버의 도메인 표현입니다.
 type Server struct {
 	ID             string
 	Name           string
@@ -51,12 +45,10 @@ type Server struct {
 	Created        time.Time
 }
 
-// NetworkID는 서버 생성 시 사용할 네트워크 식별자입니다.
 type NetworkID struct {
 	UUID string
 }
 
-// CreateServerOpts는 서버 생성 요청 옵션입니다.
 type CreateServerOpts struct {
 	Name           string
 	ImageRef       string
@@ -68,28 +60,19 @@ type CreateServerOpts struct {
 
 // --- Request/Response DTOs ---
 
-// 기본 정보 (all 용)
 type FlavorResponse struct {
-	// Flavor UUID.
-	ID string `json:"id"`
-	// Human-readable flavor name.
-	Name string `json:"name"`
-	// Number of virtual CPUs.
-	VCPUs int `json:"vcpus"`
-	// Memory in MB.
-	RAM int `json:"ram"` // MB 단위
-	// Disk size in GB.
-	Disk int `json:"disk"` // GB 단위
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	VCPUs int    `json:"vcpus"`
+	RAM   int    `json:"ram"`  // MB
+	Disk  int    `json:"disk"` // GB
 }
 
-// 계산 정보 포함 (available 용) - 상속(Embedding) 활용
 type AvailableFlavorResponse struct {
 	FlavorResponse
-	// Maximum number of instances that can still be configured with this flavor.
 	MaxConfigurable int `json:"max_configurable"`
 }
 
-// CreateInstanceRequest는 VM 생성 요청 본문입니다.
 type CreateInstanceRequest struct {
 	Name           string   `json:"name" binding:"required"`
 	ImageID        string   `json:"image_id" binding:"required"`
@@ -99,7 +82,6 @@ type CreateInstanceRequest struct {
 	SecurityGroups []string `json:"security_groups"`
 }
 
-// CreateInstanceResponse는 VM 생성 성공 응답 규격입니다.
 type CreateInstanceResponse struct {
 	ID             string   `json:"id"`
 	Name           string   `json:"name"`
@@ -112,9 +94,6 @@ type CreateInstanceResponse struct {
 	FloatingIP     string   `json:"floating_ip"`
 }
 
-//조회
-
-// InstanceDetailResponse는 VM의 상세 정보를 담습니다.
 type InstanceDetailResponse struct {
 	ID         string         `json:"id"`
 	Name       string         `json:"name"`
@@ -127,8 +106,8 @@ type InstanceDetailResponse struct {
 	Created    time.Time      `json:"created"`
 }
 
-// UsageStats는 인스턴스의 실시간 자원 사용량입니다 (OpenStack diagnostics API 기반).
+// UsageStats — OpenStack diagnostics API 기반. 모든 하이퍼바이저가 지원하지는 않는다.
 type UsageStats struct {
 	CPUUsage    float64 `json:"cpu_usage"`    // vCPU 시간 (누적)
-	MemoryUsage int     `json:"memory_usage"` // MB 단위
+	MemoryUsage int     `json:"memory_usage"` // MB
 }

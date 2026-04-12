@@ -13,7 +13,6 @@ const testPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMz7v3R7iK4WbG2ZrM8Z8
 
 var testOwnerID = uuid.New()
 
-// fakeClient은 keyPairClient 인터페이스의 테스트용 구현체입니다.
 type fakeClient struct {
 	createKeyPairFn func(name, publicKey string) (*KeyPair, error)
 	deleteKeyPairFn func(name string) error
@@ -33,7 +32,6 @@ func (f *fakeClient) DeleteKeyPair(name string) error {
 	return nil
 }
 
-// fakeRepo는 keyPairRepo 인터페이스의 테스트용 구현체입니다.
 type fakeRepo struct {
 	findByNameFn   func(ctx context.Context, ownerID uuid.UUID, name string) (*KeyPair, error)
 	saveKeyPairFn  func(ctx context.Context, ownerID uuid.UUID, kp *KeyPair) error

@@ -10,7 +10,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
-// Client는 OpenStack compute API를 호출하는 구현체입니다.
 type Client struct {
 	provider *gophercloud.ProviderClient
 }
