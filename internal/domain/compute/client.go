@@ -99,50 +99,42 @@ func (c *Client) FetchInstances() ([]Server, error) {
 	result := make([]Server, len(raw))
 	for i, s := range raw {
 		result[i] = Server{
-			ID:             s.ID,
-			Name:           s.Name,
-			Status:         s.Status,
-			Image:          s.Image,
-			Flavor:         s.Flavor,
-			Addresses:      s.Addresses,
-			KeyName:        s.KeyName,
-			SecurityGroups: s.SecurityGroups,
-			AccessIPv4:     s.AccessIPv4,
-			Created:        s.Created,
+			ID:         s.ID,
+			Name:       s.Name,
+			Status:     s.Status,
+			Addresses:  s.Addresses,
+			AccessIPv4: s.AccessIPv4,
 		}
 	}
 	return result, nil
 }
 
-func (c *Client) FetchInstanceDetail(id string) (*Server, map[string]any, error) {
+func (c *Client) FetchInstance(id string) (*Server, error) {
 	sc, err := c.serviceClient()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	raw, err := servers.Get(sc, id).Extract()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	srv := &Server{
-		ID:             raw.ID,
-		Name:           raw.Name,
-		Status:         raw.Status,
-		Image:          raw.Image,
-		Flavor:         raw.Flavor,
-		Addresses:      raw.Addresses,
-		KeyName:        raw.KeyName,
-		SecurityGroups: raw.SecurityGroups,
-		AccessIPv4:     raw.AccessIPv4,
-		Created:        raw.Created,
-	}
+	return &Server{
+		ID:         raw.ID,
+		Name:       raw.Name,
+		Status:     raw.Status,
+		Addresses:  raw.Addresses,
+		AccessIPv4: raw.AccessIPv4,
+	}, nil
+}
 
-	diag, err := diagnostics.Get(sc, id).Extract()
+func (c *Client) FetchDiagnostics(id string) (map[string]any, error) {
+	sc, err := c.serviceClient()
 	if err != nil {
-		return srv, nil, nil
+		return nil, err
 	}
-	return srv, diag, nil
+	return diagnostics.Get(sc, id).Extract()
 }
 
 func (c *Client) DeleteServer(id string) error {

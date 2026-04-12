@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Handler는 HTTP 요청을 처리합니다.
@@ -18,7 +20,29 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{Svc: svc}
 }
 
-var ErrInstanceNotFound = errors.New("instance not found")
+func ownerID(c *gin.Context) (uuid.UUID, bool) {
+	val, exists := c.Get(auth.ContextKeyUser)
+	if !exists {
+		return uuid.UUID{}, false
+	}
+	u, ok := val.(*auth.User)
+	if !ok {
+		return uuid.UUID{}, false
+	}
+	return u.ID, true
+}
+
+// InitRoutes는 전달받은 RouterGroup에 Compute 관련 엔드포인트들을 등록합니다.
+func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
+	computeGroup := rg.Group("/compute") // /api/v1/compute
+	{
+		computeGroup.GET("/flavors", h.GetFlavors)
+		computeGroup.GET("/instances", h.GetInstances)
+		computeGroup.GET("/instances/:id", h.GetInstanceDetail)
+		computeGroup.POST("/instances", h.CreateInstance)
+		computeGroup.DELETE("/instances/:id", h.DeleteInstance)
+	}
+}
 
 func (h *Handler) GetFlavors(c *gin.Context) {
 	if c.Query("available") == "true" {
@@ -39,47 +63,49 @@ func (h *Handler) GetFlavors(c *gin.Context) {
 	c.JSON(http.StatusOK, flavors)
 }
 
-// GetInstanceDetail 핸들러
-func (h *Handler) GetInstanceDetail(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "인스턴스 ID가 필요합니다."})
-		return
-	}
-
-	detail, err := h.Svc.GetInstanceDetail(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "상세 조회 실패: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, detail)
-}
-
 func (h *Handler) GetInstances(c *gin.Context) {
-	instances, err := h.Svc.GetInstances()
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	instances, err := h.Svc.GetInstances(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, instances)
 }
 
-// InitRoutes는 전달받은 RouterGroup에 Compute 관련 엔드포인트들을 등록합니다.
-func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
-	computeGroup := rg.Group("/compute") // /api/v1/compute
-	{
-		computeGroup.GET("/flavors", h.GetFlavors)
-		computeGroup.GET("/instances", h.GetInstances)
-		computeGroup.GET("/instances/:id", h.GetInstanceDetail)
-		computeGroup.POST("/instances", h.CreateInstance)
-		computeGroup.DELETE("/instances/:id", h.DeleteInstance)
+func (h *Handler) GetInstanceDetail(c *gin.Context) {
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
 	}
+
+	instanceID := c.Param("id")
+	detail, err := h.Svc.GetInstanceDetail(c.Request.Context(), id, instanceID)
+	if err != nil {
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, detail)
 }
 
 func (h *Handler) CreateInstance(c *gin.Context) {
-	var req CreateInstanceRequest
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
 
+	var req CreateInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
 		return
@@ -91,22 +117,22 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 		case errors.Is(err, ErrCreateInstanceNameRequired),
 			errors.Is(err, ErrCreateInstanceImageRequired),
 			errors.Is(err, ErrCreateInstanceFlavorRequired):
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		default:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
 		}
 		return
 	}
 
-	server, err := h.Svc.CreateInstance(opts)
+	server, err := h.Svc.CreateInstance(c.Request.Context(), id, opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrCreateInstanceNameRequired),
 			errors.Is(err, ErrCreateInstanceImageRequired),
 			errors.Is(err, ErrCreateInstanceFlavorRequired):
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		}
 		return
 	}
@@ -115,26 +141,20 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 }
 
 func (h *Handler) DeleteInstance(c *gin.Context) {
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
 	serverID := c.Param("id")
-	if serverID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Server ID is required"})
-		return
-	}
-
-	if err := h.Svc.DeleteInstance(serverID); err != nil {
+	if err := h.Svc.DeleteInstance(c.Request.Context(), id, serverID); err != nil {
 		if errors.Is(err, ErrInstanceNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "해당 인스턴스를 찾을 수 없습니다.",
-				"code":  "INSTANCE_NOT_FOUND",
-			})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":  "인스턴스 삭제 중 서버 오류가 발생했습니다.",
-				"detail": err.Error(),
-			})
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			return
 		}
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
 	}
-
 	c.Status(http.StatusNoContent)
 }

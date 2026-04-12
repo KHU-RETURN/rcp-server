@@ -4,6 +4,16 @@ import "time"
 
 // --- Domain models (gophercloud 의존 없음) ---
 
+// Instance는 DB에 저장된 인스턴스 도메인 모델입니다.
+// 가변 상태(status, ip)는 저장하지 않으며, 읽기 시 OpenStack에서 직접 조회합니다.
+type Instance struct {
+	OpenstackID string
+	Name        string
+	ImageID     string
+	FlavorID    string
+	Created     time.Time
+}
+
 // Flavor는 OpenStack flavor의 도메인 표현입니다.
 type Flavor struct {
 	ID    string
@@ -104,21 +114,22 @@ type CreateInstanceResponse struct {
 
 //조회
 
-// InstanceDetailResponse는 VM의 상세 정보와 실시간 사용량을 담습니다.
+// InstanceDetailResponse는 VM의 상세 정보를 담습니다.
 type InstanceDetailResponse struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Status    string            `json:"status"`
-	Addresses map[string]string `json:"addresses"` // 네트워크 정보
-	Flavor    FlavorResponse    `json:"flavor"`    // 할당된 전체 사양
-	Usage     UsageStats        `json:"usage"`     // 실시간 사용량
-	Created   time.Time         `json:"created"`
-	Image     string            `json:"image"`
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Status     string         `json:"status"`
+	Image      string         `json:"image"`
+	Flavor     FlavorResponse `json:"flavor"`
+	FixedIP    string         `json:"fixed_ip,omitempty"`
+	FloatingIP string         `json:"floating_ip,omitempty"`
+	Usage      UsageStats     `json:"usage"`
+	Created    time.Time      `json:"created"`
 }
 
-// 현재 사용중인 자원량
+// UsageStats는 인스턴스의 실시간 자원 사용량입니다 (OpenStack diagnostics API 기반).
 type UsageStats struct {
-	CPUUsage    float64 `json:"cpu_usage"`    // % 단위 또는 vCPU 시간
+	CPUUsage    float64 `json:"cpu_usage"`    // vCPU 시간 (누적)
 	MemoryUsage int     `json:"memory_usage"` // MB 단위
 	DiskUsage   int     `json:"disk_usage"`   // GB 단위
 }

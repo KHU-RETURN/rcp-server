@@ -30,7 +30,7 @@ func NewApp(
 	}
 
 	return &App{
-		Compute: compute.Init(p, projectID),
+		Compute: compute.Init(p, client, projectID),
 		Access:  access.Init(p, client),
 		Auth:    authHandler,
 	}, nil
