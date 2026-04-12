@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -27,8 +29,26 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	}
 }
 
+func ownerID(c *gin.Context) (uuid.UUID, bool) {
+	val, exists := c.Get(auth.ContextKeyUser)
+	if !exists {
+		return uuid.UUID{}, false
+	}
+	u, ok := val.(*auth.User)
+	if !ok {
+		return uuid.UUID{}, false
+	}
+	return u.ID, true
+}
+
 func (h *Handler) ListKeyPairs(c *gin.Context) {
-	kps, err := h.Svc.ListKeyPairs()
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	kps, err := h.Svc.ListKeyPairs(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
@@ -37,8 +57,14 @@ func (h *Handler) ListKeyPairs(c *gin.Context) {
 }
 
 func (h *Handler) GetKeyPair(c *gin.Context) {
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
 	name := c.Param("name")
-	kp, err := h.Svc.GetKeyPair(name)
+	kp, err := h.Svc.GetKeyPair(c.Request.Context(), id, name)
 	if err != nil {
 		if errors.Is(err, ErrKeyPairNotFound) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
@@ -51,8 +77,14 @@ func (h *Handler) GetKeyPair(c *gin.Context) {
 }
 
 func (h *Handler) DeleteKeyPair(c *gin.Context) {
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
 	name := c.Param("name")
-	if err := h.Svc.DeleteKeyPair(name); err != nil {
+	if err := h.Svc.DeleteKeyPair(c.Request.Context(), id, name); err != nil {
 		if errors.Is(err, ErrKeyPairNotFound) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
 			return
@@ -64,13 +96,19 @@ func (h *Handler) DeleteKeyPair(c *gin.Context) {
 }
 
 func (h *Handler) CreateKeyPair(c *gin.Context) {
+	id, ok := ownerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
 	var req CreateKeyPairRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
 		return
 	}
 
-	res, err := h.Svc.CreateKeyPair(req)
+	res, err := h.Svc.CreateKeyPair(c.Request.Context(), id, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNameRequired), errors.Is(err, ErrPublicKeyRequired), errors.Is(err, ErrInvalidSSHKeyFormat):

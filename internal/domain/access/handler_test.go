@@ -2,6 +2,7 @@ package access
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,21 +11,30 @@ import (
 	"testing"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
+
+var testUser = &auth.User{ID: testOwnerID}
+
+// withTestUser는 테스트 요청에 인증된 유저를 gin context에 주입하는 미들웨어입니다.
+func withTestUser(r *gin.RouterGroup) {
+	r.Use(func(c *gin.Context) {
+		c.Set(auth.ContextKeyUser, testUser)
+		c.Next()
+	})
+}
 
 func TestHandlerCreateKeyPair(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newHandler := func(repo *fakeClient) *Handler {
-		return NewHandler(NewService(repo))
+	newHandler := func(osClient *fakeClient, repo *fakeRepo) *Handler {
+		return NewHandler(NewService(osClient, repo))
 	}
 
 	t.Run("returns 201 with response body", func(t *testing.T) {
-		repo := &fakeClient{
-			getKeyPairFn: func(name string) (*KeyPair, error) {
-				return nil, newStatusErr(http.StatusNotFound)
-			},
+		osClient := &fakeClient{
 			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
 				return &KeyPair{Name: name, Fingerprint: "fp", PublicKey: publicKey}, nil
 			},
@@ -37,7 +47,8 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		withTestUser(v1)
+		newHandler(osClient, &fakeRepo{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusCreated {
@@ -53,6 +64,22 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 401 when user is not authenticated", func(t *testing.T) {
+		body, _ := json.Marshal(CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		newHandler(&fakeClient{}, &fakeRepo{}).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status 401, got %d", w.Code)
+		}
+	})
+
 	t.Run("returns 400 for invalid json", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/access/keypairs", bytes.NewBufferString("{"))
 		req.Header.Set("Content-Type", "application/json")
@@ -60,7 +87,8 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
-		newHandler(&fakeClient{}).InitRoutes(v1)
+		withTestUser(v1)
+		newHandler(&fakeClient{}, &fakeRepo{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -77,12 +105,9 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("returns 409 for duplicate name", func(t *testing.T) {
-		repo := &fakeClient{
-			getKeyPairFn: func(name string) (*KeyPair, error) {
+		repo := &fakeRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, name string) (*KeyPair, error) {
 				return &KeyPair{Name: name}, nil
-			},
-			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
-				return nil, nil
 			},
 		}
 
@@ -93,7 +118,8 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		withTestUser(v1)
+		newHandler(&fakeClient{}, repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusConflict {
@@ -110,13 +136,9 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("returns 403 with sanitized message for upstream access denied", func(t *testing.T) {
-		repo := &fakeClient{
-			getKeyPairFn: func(name string) (*KeyPair, error) {
-				return nil, newStatusErr(http.StatusForbidden)
-			},
+		osClient := &fakeClient{
 			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
-				t.Fatal("create should not be called when lookup is forbidden")
-				return nil, nil
+				return nil, newStatusErr(http.StatusForbidden)
 			},
 		}
 
@@ -127,7 +149,8 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		withTestUser(v1)
+		newHandler(osClient, &fakeRepo{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusForbidden {
@@ -147,10 +170,7 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("returns 400 for invalid keypair request", func(t *testing.T) {
-		repo := &fakeClient{
-			getKeyPairFn: func(name string) (*KeyPair, error) {
-				return nil, newStatusErr(http.StatusNotFound)
-			},
+		osClient := &fakeClient{
 			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
 				return nil, newStatusErr(http.StatusBadRequest)
 			},
@@ -163,7 +183,8 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		withTestUser(v1)
+		newHandler(osClient, &fakeRepo{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
@@ -179,12 +200,8 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 	})
 
 	t.Run("returns 500 default for unclassified error", func(t *testing.T) {
-		repo := &fakeClient{
-			getKeyPairFn: func(name string) (*KeyPair, error) {
-				return nil, newStatusErr(http.StatusNotFound)
-			},
+		osClient := &fakeClient{
 			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
-				// Return a raw error that doesn't match any classified error
 				return nil, errors.New("unclassified internal error")
 			},
 		}
@@ -196,18 +213,18 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		withTestUser(v1)
+		newHandler(osClient, &fakeRepo{}).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
-		// Non-StatusError wraps as ErrKeyPairOperationFailed → 500
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("expected status 500, got %d", w.Code)
 		}
 	})
 
 	t.Run("returns 500 with sanitized message for internal failures", func(t *testing.T) {
-		repo := &fakeClient{
-			getKeyPairFn: func(name string) (*KeyPair, error) {
+		repo := &fakeRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*KeyPair, error) {
 				return nil, errors.New("provider bootstrap leaked")
 			},
 		}
@@ -219,7 +236,8 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
-		newHandler(repo).InitRoutes(v1)
+		withTestUser(v1)
+		newHandler(&fakeClient{}, repo).InitRoutes(v1)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
