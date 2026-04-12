@@ -1,6 +1,6 @@
 module github.com/KHU-RETURN/rcp-server
 
-go 1.26.1
+go 1.26.2
 
 require (
 	entgo.io/ent v0.14.6
