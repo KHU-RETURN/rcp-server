@@ -37,10 +37,22 @@ func main() {
 		log.Fatalf("OpenStack 인증 실패: %v", err)
 	}
 
-	db, err := database.NewSQLiteConnection()
+	dbDriver := os.Getenv("DB_DRIVER")
+	if dbDriver == "" {
+		dbDriver = "sqlite3"
+	}
+	dbDSN := os.Getenv("DB_DSN")
+	if dbDSN == "" {
+		dbDSN = "file:rcp.db?cache=shared&_fk=1"
+	}
+	db, err := database.NewEntClient(database.Config{
+		Driver: dbDriver,
+		DSN:    dbDSN,
+	})
 	if err != nil {
 		log.Fatalf("DB 연결 실패: %v", err)
 	}
+	defer db.Close()
 
 	oauth, err := google.NewGoogleConfig(google.OAuthConfig{
 		ClientID:     os.Getenv("GG_OAUTH_CLIENT"),

@@ -11,7 +11,8 @@ import (
 
 func main() {
 	err := entc.Generate("./internal/schema", &gen.Config{
-		Target: "./ent",
+		Target:  "./ent",
+		Package: "github.com/KHU-RETURN/rcp-server/ent",
 	})
 	if err != nil {
 		log.Fatal(err)
