@@ -71,11 +71,6 @@ func PublicKey(v string) predicate.KeyPair {
 	return predicate.KeyPair(sql.FieldEQ(FieldPublicKey, v))
 }
 
-// LastSyncedAt applies equality check predicate on the "last_synced_at" field. It's identical to LastSyncedAtEQ.
-func LastSyncedAt(v time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldEQ(FieldLastSyncedAt, v))
-}
-
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.KeyPair {
 	return predicate.KeyPair(sql.FieldEQ(FieldCreatedAt, v))
@@ -301,66 +296,6 @@ func SourceTypeNotIn(vs ...SourceType) predicate.KeyPair {
 	return predicate.KeyPair(sql.FieldNotIn(FieldSourceType, vs...))
 }
 
-// SyncStateEQ applies the EQ predicate on the "sync_state" field.
-func SyncStateEQ(v SyncState) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldEQ(FieldSyncState, v))
-}
-
-// SyncStateNEQ applies the NEQ predicate on the "sync_state" field.
-func SyncStateNEQ(v SyncState) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldNEQ(FieldSyncState, v))
-}
-
-// SyncStateIn applies the In predicate on the "sync_state" field.
-func SyncStateIn(vs ...SyncState) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldIn(FieldSyncState, vs...))
-}
-
-// SyncStateNotIn applies the NotIn predicate on the "sync_state" field.
-func SyncStateNotIn(vs ...SyncState) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldNotIn(FieldSyncState, vs...))
-}
-
-// LastSyncedAtEQ applies the EQ predicate on the "last_synced_at" field.
-func LastSyncedAtEQ(v time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldEQ(FieldLastSyncedAt, v))
-}
-
-// LastSyncedAtNEQ applies the NEQ predicate on the "last_synced_at" field.
-func LastSyncedAtNEQ(v time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldNEQ(FieldLastSyncedAt, v))
-}
-
-// LastSyncedAtIn applies the In predicate on the "last_synced_at" field.
-func LastSyncedAtIn(vs ...time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldIn(FieldLastSyncedAt, vs...))
-}
-
-// LastSyncedAtNotIn applies the NotIn predicate on the "last_synced_at" field.
-func LastSyncedAtNotIn(vs ...time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldNotIn(FieldLastSyncedAt, vs...))
-}
-
-// LastSyncedAtGT applies the GT predicate on the "last_synced_at" field.
-func LastSyncedAtGT(v time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldGT(FieldLastSyncedAt, v))
-}
-
-// LastSyncedAtGTE applies the GTE predicate on the "last_synced_at" field.
-func LastSyncedAtGTE(v time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldGTE(FieldLastSyncedAt, v))
-}
-
-// LastSyncedAtLT applies the LT predicate on the "last_synced_at" field.
-func LastSyncedAtLT(v time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldLT(FieldLastSyncedAt, v))
-}
-
-// LastSyncedAtLTE applies the LTE predicate on the "last_synced_at" field.
-func LastSyncedAtLTE(v time.Time) predicate.KeyPair {
-	return predicate.KeyPair(sql.FieldLTE(FieldLastSyncedAt, v))
-}
-
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.KeyPair {
 	return predicate.KeyPair(sql.FieldEQ(FieldCreatedAt, v))
@@ -446,7 +381,7 @@ func HasOwner() predicate.KeyPair {
 	return predicate.KeyPair(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, true, OwnerTable, OwnerPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.M2O, true, OwnerTable, OwnerColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})

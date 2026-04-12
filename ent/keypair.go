@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
+	"github.com/KHU-RETURN/rcp-server/ent/user"
 	"github.com/google/uuid"
 )
 
@@ -26,24 +27,21 @@ type KeyPair struct {
 	PublicKey string `json:"public_key,omitempty"`
 	// SourceType holds the value of the "source_type" field.
 	SourceType keypair.SourceType `json:"source_type,omitempty"`
-	// SyncState holds the value of the "sync_state" field.
-	SyncState keypair.SyncState `json:"sync_state,omitempty"`
-	// LastSyncedAt holds the value of the "last_synced_at" field.
-	LastSyncedAt time.Time `json:"last_synced_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the KeyPairQuery when eager-loading is set.
-	Edges        KeyPairEdges `json:"edges"`
-	selectValues sql.SelectValues
+	Edges         KeyPairEdges `json:"edges"`
+	user_keypairs *uuid.UUID
+	selectValues  sql.SelectValues
 }
 
 // KeyPairEdges holds the relations/edges for other nodes in the graph.
 type KeyPairEdges struct {
 	// Owner holds the value of the owner edge.
-	Owner []*User `json:"owner,omitempty"`
+	Owner *User `json:"owner,omitempty"`
 	// Instances holds the value of the instances edge.
 	Instances []*Instance `json:"instances,omitempty"`
 	// loadedTypes holds the information for reporting if a
@@ -52,10 +50,12 @@ type KeyPairEdges struct {
 }
 
 // OwnerOrErr returns the Owner value or an error if the edge
-// was not loaded in eager-loading.
-func (e KeyPairEdges) OwnerOrErr() ([]*User, error) {
-	if e.loadedTypes[0] {
+// was not loaded in eager-loading, or loaded but was not found.
+func (e KeyPairEdges) OwnerOrErr() (*User, error) {
+	if e.Owner != nil {
 		return e.Owner, nil
+	} else if e.loadedTypes[0] {
+		return nil, &NotFoundError{label: user.Label}
 	}
 	return nil, &NotLoadedError{edge: "owner"}
 }
@@ -74,12 +74,14 @@ func (*KeyPair) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case keypair.FieldOpenstackName, keypair.FieldFingerprint, keypair.FieldPublicKey, keypair.FieldSourceType, keypair.FieldSyncState:
+		case keypair.FieldOpenstackName, keypair.FieldFingerprint, keypair.FieldPublicKey, keypair.FieldSourceType:
 			values[i] = new(sql.NullString)
-		case keypair.FieldLastSyncedAt, keypair.FieldCreatedAt, keypair.FieldUpdatedAt:
+		case keypair.FieldCreatedAt, keypair.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case keypair.FieldID:
 			values[i] = new(uuid.UUID)
+		case keypair.ForeignKeys[0]: // user_keypairs
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
 		}
@@ -125,18 +127,6 @@ func (_m *KeyPair) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.SourceType = keypair.SourceType(value.String)
 			}
-		case keypair.FieldSyncState:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field sync_state", values[i])
-			} else if value.Valid {
-				_m.SyncState = keypair.SyncState(value.String)
-			}
-		case keypair.FieldLastSyncedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field last_synced_at", values[i])
-			} else if value.Valid {
-				_m.LastSyncedAt = value.Time
-			}
 		case keypair.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -148,6 +138,13 @@ func (_m *KeyPair) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 			} else if value.Valid {
 				_m.UpdatedAt = value.Time
+			}
+		case keypair.ForeignKeys[0]:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field user_keypairs", values[i])
+			} else if value.Valid {
+				_m.user_keypairs = new(uuid.UUID)
+				*_m.user_keypairs = *value.S.(*uuid.UUID)
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -206,12 +203,6 @@ func (_m *KeyPair) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("source_type=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SourceType))
-	builder.WriteString(", ")
-	builder.WriteString("sync_state=")
-	builder.WriteString(fmt.Sprintf("%v", _m.SyncState))
-	builder.WriteString(", ")
-	builder.WriteString("last_synced_at=")
-	builder.WriteString(_m.LastSyncedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

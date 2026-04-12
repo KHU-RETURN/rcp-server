@@ -51,8 +51,7 @@ type InstanceMutation struct {
 	created_at          *time.Time
 	updated_at          *time.Time
 	clearedFields       map[string]struct{}
-	owner               map[uuid.UUID]struct{}
-	removedowner        map[uuid.UUID]struct{}
+	owner               *uuid.UUID
 	clearedowner        bool
 	keypair             *uuid.UUID
 	clearedkeypair      bool
@@ -623,14 +622,9 @@ func (m *InstanceMutation) ResetUpdatedAt() {
 	m.updated_at = nil
 }
 
-// AddOwnerIDs adds the "owner" edge to the User entity by ids.
-func (m *InstanceMutation) AddOwnerIDs(ids ...uuid.UUID) {
-	if m.owner == nil {
-		m.owner = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		m.owner[ids[i]] = struct{}{}
-	}
+// SetOwnerID sets the "owner" edge to the User entity by id.
+func (m *InstanceMutation) SetOwnerID(id uuid.UUID) {
+	m.owner = &id
 }
 
 // ClearOwner clears the "owner" edge to the User entity.
@@ -643,29 +637,20 @@ func (m *InstanceMutation) OwnerCleared() bool {
 	return m.clearedowner
 }
 
-// RemoveOwnerIDs removes the "owner" edge to the User entity by IDs.
-func (m *InstanceMutation) RemoveOwnerIDs(ids ...uuid.UUID) {
-	if m.removedowner == nil {
-		m.removedowner = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		delete(m.owner, ids[i])
-		m.removedowner[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedOwner returns the removed IDs of the "owner" edge to the User entity.
-func (m *InstanceMutation) RemovedOwnerIDs() (ids []uuid.UUID) {
-	for id := range m.removedowner {
-		ids = append(ids, id)
+// OwnerID returns the "owner" edge ID in the mutation.
+func (m *InstanceMutation) OwnerID() (id uuid.UUID, exists bool) {
+	if m.owner != nil {
+		return *m.owner, true
 	}
 	return
 }
 
 // OwnerIDs returns the "owner" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OwnerID instead. It exists only for internal usage by the builders.
 func (m *InstanceMutation) OwnerIDs() (ids []uuid.UUID) {
-	for id := range m.owner {
-		ids = append(ids, id)
+	if id := m.owner; id != nil {
+		ids = append(ids, *id)
 	}
 	return
 }
@@ -674,7 +659,6 @@ func (m *InstanceMutation) OwnerIDs() (ids []uuid.UUID) {
 func (m *InstanceMutation) ResetOwner() {
 	m.owner = nil
 	m.clearedowner = false
-	m.removedowner = nil
 }
 
 // SetKeypairID sets the "keypair" edge to the KeyPair entity by id.
@@ -1066,11 +1050,9 @@ func (m *InstanceMutation) AddedEdges() []string {
 func (m *InstanceMutation) AddedIDs(name string) []ent.Value {
 	switch name {
 	case instance.EdgeOwner:
-		ids := make([]ent.Value, 0, len(m.owner))
-		for id := range m.owner {
-			ids = append(ids, id)
+		if id := m.owner; id != nil {
+			return []ent.Value{*id}
 		}
-		return ids
 	case instance.EdgeKeypair:
 		if id := m.keypair; id != nil {
 			return []ent.Value{*id}
@@ -1082,23 +1064,12 @@ func (m *InstanceMutation) AddedIDs(name string) []ent.Value {
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *InstanceMutation) RemovedEdges() []string {
 	edges := make([]string, 0, 2)
-	if m.removedowner != nil {
-		edges = append(edges, instance.EdgeOwner)
-	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *InstanceMutation) RemovedIDs(name string) []ent.Value {
-	switch name {
-	case instance.EdgeOwner:
-		ids := make([]ent.Value, 0, len(m.removedowner))
-		for id := range m.removedowner {
-			ids = append(ids, id)
-		}
-		return ids
-	}
 	return nil
 }
 
@@ -1130,6 +1101,9 @@ func (m *InstanceMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *InstanceMutation) ClearEdge(name string) error {
 	switch name {
+	case instance.EdgeOwner:
+		m.ClearOwner()
+		return nil
 	case instance.EdgeKeypair:
 		m.ClearKeypair()
 		return nil
@@ -1161,13 +1135,10 @@ type KeyPairMutation struct {
 	fingerprint      *string
 	public_key       *string
 	source_type      *keypair.SourceType
-	sync_state       *keypair.SyncState
-	last_synced_at   *time.Time
 	created_at       *time.Time
 	updated_at       *time.Time
 	clearedFields    map[string]struct{}
-	owner            map[uuid.UUID]struct{}
-	removedowner     map[uuid.UUID]struct{}
+	owner            *uuid.UUID
 	clearedowner     bool
 	instances        map[uuid.UUID]struct{}
 	removedinstances map[uuid.UUID]struct{}
@@ -1425,78 +1396,6 @@ func (m *KeyPairMutation) ResetSourceType() {
 	m.source_type = nil
 }
 
-// SetSyncState sets the "sync_state" field.
-func (m *KeyPairMutation) SetSyncState(ks keypair.SyncState) {
-	m.sync_state = &ks
-}
-
-// SyncState returns the value of the "sync_state" field in the mutation.
-func (m *KeyPairMutation) SyncState() (r keypair.SyncState, exists bool) {
-	v := m.sync_state
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSyncState returns the old "sync_state" field's value of the KeyPair entity.
-// If the KeyPair object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *KeyPairMutation) OldSyncState(ctx context.Context) (v keypair.SyncState, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSyncState is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSyncState requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSyncState: %w", err)
-	}
-	return oldValue.SyncState, nil
-}
-
-// ResetSyncState resets all changes to the "sync_state" field.
-func (m *KeyPairMutation) ResetSyncState() {
-	m.sync_state = nil
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (m *KeyPairMutation) SetLastSyncedAt(t time.Time) {
-	m.last_synced_at = &t
-}
-
-// LastSyncedAt returns the value of the "last_synced_at" field in the mutation.
-func (m *KeyPairMutation) LastSyncedAt() (r time.Time, exists bool) {
-	v := m.last_synced_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLastSyncedAt returns the old "last_synced_at" field's value of the KeyPair entity.
-// If the KeyPair object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *KeyPairMutation) OldLastSyncedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastSyncedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastSyncedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastSyncedAt: %w", err)
-	}
-	return oldValue.LastSyncedAt, nil
-}
-
-// ResetLastSyncedAt resets all changes to the "last_synced_at" field.
-func (m *KeyPairMutation) ResetLastSyncedAt() {
-	m.last_synced_at = nil
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (m *KeyPairMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1569,14 +1468,9 @@ func (m *KeyPairMutation) ResetUpdatedAt() {
 	m.updated_at = nil
 }
 
-// AddOwnerIDs adds the "owner" edge to the User entity by ids.
-func (m *KeyPairMutation) AddOwnerIDs(ids ...uuid.UUID) {
-	if m.owner == nil {
-		m.owner = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		m.owner[ids[i]] = struct{}{}
-	}
+// SetOwnerID sets the "owner" edge to the User entity by id.
+func (m *KeyPairMutation) SetOwnerID(id uuid.UUID) {
+	m.owner = &id
 }
 
 // ClearOwner clears the "owner" edge to the User entity.
@@ -1589,29 +1483,20 @@ func (m *KeyPairMutation) OwnerCleared() bool {
 	return m.clearedowner
 }
 
-// RemoveOwnerIDs removes the "owner" edge to the User entity by IDs.
-func (m *KeyPairMutation) RemoveOwnerIDs(ids ...uuid.UUID) {
-	if m.removedowner == nil {
-		m.removedowner = make(map[uuid.UUID]struct{})
-	}
-	for i := range ids {
-		delete(m.owner, ids[i])
-		m.removedowner[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedOwner returns the removed IDs of the "owner" edge to the User entity.
-func (m *KeyPairMutation) RemovedOwnerIDs() (ids []uuid.UUID) {
-	for id := range m.removedowner {
-		ids = append(ids, id)
+// OwnerID returns the "owner" edge ID in the mutation.
+func (m *KeyPairMutation) OwnerID() (id uuid.UUID, exists bool) {
+	if m.owner != nil {
+		return *m.owner, true
 	}
 	return
 }
 
 // OwnerIDs returns the "owner" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OwnerID instead. It exists only for internal usage by the builders.
 func (m *KeyPairMutation) OwnerIDs() (ids []uuid.UUID) {
-	for id := range m.owner {
-		ids = append(ids, id)
+	if id := m.owner; id != nil {
+		ids = append(ids, *id)
 	}
 	return
 }
@@ -1620,7 +1505,6 @@ func (m *KeyPairMutation) OwnerIDs() (ids []uuid.UUID) {
 func (m *KeyPairMutation) ResetOwner() {
 	m.owner = nil
 	m.clearedowner = false
-	m.removedowner = nil
 }
 
 // AddInstanceIDs adds the "instances" edge to the Instance entity by ids.
@@ -1711,7 +1595,7 @@ func (m *KeyPairMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *KeyPairMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 6)
 	if m.openstack_name != nil {
 		fields = append(fields, keypair.FieldOpenstackName)
 	}
@@ -1723,12 +1607,6 @@ func (m *KeyPairMutation) Fields() []string {
 	}
 	if m.source_type != nil {
 		fields = append(fields, keypair.FieldSourceType)
-	}
-	if m.sync_state != nil {
-		fields = append(fields, keypair.FieldSyncState)
-	}
-	if m.last_synced_at != nil {
-		fields = append(fields, keypair.FieldLastSyncedAt)
 	}
 	if m.created_at != nil {
 		fields = append(fields, keypair.FieldCreatedAt)
@@ -1752,10 +1630,6 @@ func (m *KeyPairMutation) Field(name string) (ent.Value, bool) {
 		return m.PublicKey()
 	case keypair.FieldSourceType:
 		return m.SourceType()
-	case keypair.FieldSyncState:
-		return m.SyncState()
-	case keypair.FieldLastSyncedAt:
-		return m.LastSyncedAt()
 	case keypair.FieldCreatedAt:
 		return m.CreatedAt()
 	case keypair.FieldUpdatedAt:
@@ -1777,10 +1651,6 @@ func (m *KeyPairMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldPublicKey(ctx)
 	case keypair.FieldSourceType:
 		return m.OldSourceType(ctx)
-	case keypair.FieldSyncState:
-		return m.OldSyncState(ctx)
-	case keypair.FieldLastSyncedAt:
-		return m.OldLastSyncedAt(ctx)
 	case keypair.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case keypair.FieldUpdatedAt:
@@ -1821,20 +1691,6 @@ func (m *KeyPairMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSourceType(v)
-		return nil
-	case keypair.FieldSyncState:
-		v, ok := value.(keypair.SyncState)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSyncState(v)
-		return nil
-	case keypair.FieldLastSyncedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLastSyncedAt(v)
 		return nil
 	case keypair.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -1911,12 +1767,6 @@ func (m *KeyPairMutation) ResetField(name string) error {
 	case keypair.FieldSourceType:
 		m.ResetSourceType()
 		return nil
-	case keypair.FieldSyncState:
-		m.ResetSyncState()
-		return nil
-	case keypair.FieldLastSyncedAt:
-		m.ResetLastSyncedAt()
-		return nil
 	case keypair.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -1944,11 +1794,9 @@ func (m *KeyPairMutation) AddedEdges() []string {
 func (m *KeyPairMutation) AddedIDs(name string) []ent.Value {
 	switch name {
 	case keypair.EdgeOwner:
-		ids := make([]ent.Value, 0, len(m.owner))
-		for id := range m.owner {
-			ids = append(ids, id)
+		if id := m.owner; id != nil {
+			return []ent.Value{*id}
 		}
-		return ids
 	case keypair.EdgeInstances:
 		ids := make([]ent.Value, 0, len(m.instances))
 		for id := range m.instances {
@@ -1962,9 +1810,6 @@ func (m *KeyPairMutation) AddedIDs(name string) []ent.Value {
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *KeyPairMutation) RemovedEdges() []string {
 	edges := make([]string, 0, 2)
-	if m.removedowner != nil {
-		edges = append(edges, keypair.EdgeOwner)
-	}
 	if m.removedinstances != nil {
 		edges = append(edges, keypair.EdgeInstances)
 	}
@@ -1975,12 +1820,6 @@ func (m *KeyPairMutation) RemovedEdges() []string {
 // the given name in this mutation.
 func (m *KeyPairMutation) RemovedIDs(name string) []ent.Value {
 	switch name {
-	case keypair.EdgeOwner:
-		ids := make([]ent.Value, 0, len(m.removedowner))
-		for id := range m.removedowner {
-			ids = append(ids, id)
-		}
-		return ids
 	case keypair.EdgeInstances:
 		ids := make([]ent.Value, 0, len(m.removedinstances))
 		for id := range m.removedinstances {
@@ -2019,6 +1858,9 @@ func (m *KeyPairMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *KeyPairMutation) ClearEdge(name string) error {
 	switch name {
+	case keypair.EdgeOwner:
+		m.ClearOwner()
+		return nil
 	}
 	return fmt.Errorf("unknown KeyPair unique edge %s", name)
 }

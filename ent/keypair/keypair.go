@@ -24,10 +24,6 @@ const (
 	FieldPublicKey = "public_key"
 	// FieldSourceType holds the string denoting the source_type field in the database.
 	FieldSourceType = "source_type"
-	// FieldSyncState holds the string denoting the sync_state field in the database.
-	FieldSyncState = "sync_state"
-	// FieldLastSyncedAt holds the string denoting the last_synced_at field in the database.
-	FieldLastSyncedAt = "last_synced_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -38,11 +34,13 @@ const (
 	EdgeInstances = "instances"
 	// Table holds the table name of the keypair in the database.
 	Table = "key_pairs"
-	// OwnerTable is the table that holds the owner relation/edge. The primary key declared below.
-	OwnerTable = "user_keypairs"
+	// OwnerTable is the table that holds the owner relation/edge.
+	OwnerTable = "key_pairs"
 	// OwnerInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	OwnerInverseTable = "users"
+	// OwnerColumn is the table column denoting the owner relation/edge.
+	OwnerColumn = "user_keypairs"
 	// InstancesTable is the table that holds the instances relation/edge.
 	InstancesTable = "instances"
 	// InstancesInverseTable is the table name for the Instance entity.
@@ -59,22 +57,25 @@ var Columns = []string{
 	FieldFingerprint,
 	FieldPublicKey,
 	FieldSourceType,
-	FieldSyncState,
-	FieldLastSyncedAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
 
-var (
-	// OwnerPrimaryKey and OwnerColumn2 are the table columns denoting the
-	// primary key for the owner relation (M2M).
-	OwnerPrimaryKey = []string{"user_id", "key_pair_id"}
-)
+// ForeignKeys holds the SQL foreign-keys that are owned by the "key_pairs"
+// table and are not defined as standalone fields in the schema.
+var ForeignKeys = []string{
+	"user_keypairs",
+}
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
 	for i := range Columns {
 		if column == Columns[i] {
+			return true
+		}
+	}
+	for i := range ForeignKeys {
+		if column == ForeignKeys[i] {
 			return true
 		}
 	}
@@ -115,33 +116,6 @@ func SourceTypeValidator(st SourceType) error {
 	}
 }
 
-// SyncState defines the type for the "sync_state" enum field.
-type SyncState string
-
-// SyncStateSynced is the default value of the SyncState enum.
-const DefaultSyncState = SyncStateSynced
-
-// SyncState values.
-const (
-	SyncStateSynced  SyncState = "synced"
-	SyncStateMissing SyncState = "missing"
-	SyncStateError   SyncState = "error"
-)
-
-func (ss SyncState) String() string {
-	return string(ss)
-}
-
-// SyncStateValidator is a validator for the "sync_state" field enum values. It is called by the builders before save.
-func SyncStateValidator(ss SyncState) error {
-	switch ss {
-	case SyncStateSynced, SyncStateMissing, SyncStateError:
-		return nil
-	default:
-		return fmt.Errorf("keypair: invalid enum value for sync_state field: %q", ss)
-	}
-}
-
 // OrderOption defines the ordering options for the KeyPair queries.
 type OrderOption func(*sql.Selector)
 
@@ -170,16 +144,6 @@ func BySourceType(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSourceType, opts...).ToFunc()
 }
 
-// BySyncState orders the results by the sync_state field.
-func BySyncState(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSyncState, opts...).ToFunc()
-}
-
-// ByLastSyncedAt orders the results by the last_synced_at field.
-func ByLastSyncedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLastSyncedAt, opts...).ToFunc()
-}
-
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
@@ -190,17 +154,10 @@ func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
 }
 
-// ByOwnerCount orders the results by owner count.
-func ByOwnerCount(opts ...sql.OrderTermOption) OrderOption {
+// ByOwnerField orders the results by owner field.
+func ByOwnerField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newOwnerStep(), opts...)
-	}
-}
-
-// ByOwner orders the results by owner terms.
-func ByOwner(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newOwnerStep(), append([]sql.OrderTerm{term}, terms...)...)
+		sqlgraph.OrderByNeighborTerms(s, newOwnerStep(), sql.OrderByField(field, opts...))
 	}
 }
 
@@ -221,7 +178,7 @@ func newOwnerStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(OwnerInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2M, true, OwnerTable, OwnerPrimaryKey...),
+		sqlgraph.Edge(sqlgraph.M2O, true, OwnerTable, OwnerColumn),
 	)
 }
 func newInstancesStep() *sqlgraph.Step {

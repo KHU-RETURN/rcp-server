@@ -152,19 +152,15 @@ func (_c *InstanceCreate) SetNillableID(v *uuid.UUID) *InstanceCreate {
 	return _c
 }
 
-// AddOwnerIDs adds the "owner" edge to the User entity by IDs.
-func (_c *InstanceCreate) AddOwnerIDs(ids ...uuid.UUID) *InstanceCreate {
-	_c.mutation.AddOwnerIDs(ids...)
+// SetOwnerID sets the "owner" edge to the User entity by ID.
+func (_c *InstanceCreate) SetOwnerID(id uuid.UUID) *InstanceCreate {
+	_c.mutation.SetOwnerID(id)
 	return _c
 }
 
-// AddOwner adds the "owner" edges to the User entity.
-func (_c *InstanceCreate) AddOwner(v ...*User) *InstanceCreate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddOwnerIDs(ids...)
+// SetOwner sets the "owner" edge to the User entity.
+func (_c *InstanceCreate) SetOwner(v *User) *InstanceCreate {
+	return _c.SetOwnerID(v.ID)
 }
 
 // SetKeypairID sets the "keypair" edge to the KeyPair entity by ID.
@@ -365,10 +361,10 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 	}
 	if nodes := _c.mutation.OwnerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.M2O,
 			Inverse: true,
 			Table:   instance.OwnerTable,
-			Columns: instance.OwnerPrimaryKey,
+			Columns: []string{instance.OwnerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
@@ -377,6 +373,7 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_node.user_instances = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.KeypairIDs(); len(nodes) > 0 {

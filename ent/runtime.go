@@ -35,11 +35,11 @@ func init() {
 	keypairFields := schema.KeyPair{}.Fields()
 	_ = keypairFields
 	// keypairDescCreatedAt is the schema descriptor for created_at field.
-	keypairDescCreatedAt := keypairFields[7].Descriptor()
+	keypairDescCreatedAt := keypairFields[5].Descriptor()
 	// keypair.DefaultCreatedAt holds the default value on creation for the created_at field.
 	keypair.DefaultCreatedAt = keypairDescCreatedAt.Default.(func() time.Time)
 	// keypairDescUpdatedAt is the schema descriptor for updated_at field.
-	keypairDescUpdatedAt := keypairFields[8].Descriptor()
+	keypairDescUpdatedAt := keypairFields[6].Descriptor()
 	// keypair.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	keypair.DefaultUpdatedAt = keypairDescUpdatedAt.Default.(func() time.Time)
 	// keypair.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

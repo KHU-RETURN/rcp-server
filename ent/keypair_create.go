@@ -50,26 +50,6 @@ func (_c *KeyPairCreate) SetSourceType(v keypair.SourceType) *KeyPairCreate {
 	return _c
 }
 
-// SetSyncState sets the "sync_state" field.
-func (_c *KeyPairCreate) SetSyncState(v keypair.SyncState) *KeyPairCreate {
-	_c.mutation.SetSyncState(v)
-	return _c
-}
-
-// SetNillableSyncState sets the "sync_state" field if the given value is not nil.
-func (_c *KeyPairCreate) SetNillableSyncState(v *keypair.SyncState) *KeyPairCreate {
-	if v != nil {
-		_c.SetSyncState(*v)
-	}
-	return _c
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (_c *KeyPairCreate) SetLastSyncedAt(v time.Time) *KeyPairCreate {
-	_c.mutation.SetLastSyncedAt(v)
-	return _c
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_c *KeyPairCreate) SetCreatedAt(v time.Time) *KeyPairCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -112,19 +92,15 @@ func (_c *KeyPairCreate) SetNillableID(v *uuid.UUID) *KeyPairCreate {
 	return _c
 }
 
-// AddOwnerIDs adds the "owner" edge to the User entity by IDs.
-func (_c *KeyPairCreate) AddOwnerIDs(ids ...uuid.UUID) *KeyPairCreate {
-	_c.mutation.AddOwnerIDs(ids...)
+// SetOwnerID sets the "owner" edge to the User entity by ID.
+func (_c *KeyPairCreate) SetOwnerID(id uuid.UUID) *KeyPairCreate {
+	_c.mutation.SetOwnerID(id)
 	return _c
 }
 
-// AddOwner adds the "owner" edges to the User entity.
-func (_c *KeyPairCreate) AddOwner(v ...*User) *KeyPairCreate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddOwnerIDs(ids...)
+// SetOwner sets the "owner" edge to the User entity.
+func (_c *KeyPairCreate) SetOwner(v *User) *KeyPairCreate {
+	return _c.SetOwnerID(v.ID)
 }
 
 // AddInstanceIDs adds the "instances" edge to the Instance entity by IDs.
@@ -177,10 +153,6 @@ func (_c *KeyPairCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *KeyPairCreate) defaults() {
-	if _, ok := _c.mutation.SyncState(); !ok {
-		v := keypair.DefaultSyncState
-		_c.mutation.SetSyncState(v)
-	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := keypair.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -213,17 +185,6 @@ func (_c *KeyPairCreate) check() error {
 		if err := keypair.SourceTypeValidator(v); err != nil {
 			return &ValidationError{Name: "source_type", err: fmt.Errorf(`ent: validator failed for field "KeyPair.source_type": %w`, err)}
 		}
-	}
-	if _, ok := _c.mutation.SyncState(); !ok {
-		return &ValidationError{Name: "sync_state", err: errors.New(`ent: missing required field "KeyPair.sync_state"`)}
-	}
-	if v, ok := _c.mutation.SyncState(); ok {
-		if err := keypair.SyncStateValidator(v); err != nil {
-			return &ValidationError{Name: "sync_state", err: fmt.Errorf(`ent: validator failed for field "KeyPair.sync_state": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.LastSyncedAt(); !ok {
-		return &ValidationError{Name: "last_synced_at", err: errors.New(`ent: missing required field "KeyPair.last_synced_at"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "KeyPair.created_at"`)}
@@ -286,14 +247,6 @@ func (_c *KeyPairCreate) createSpec() (*KeyPair, *sqlgraph.CreateSpec) {
 		_spec.SetField(keypair.FieldSourceType, field.TypeEnum, value)
 		_node.SourceType = value
 	}
-	if value, ok := _c.mutation.SyncState(); ok {
-		_spec.SetField(keypair.FieldSyncState, field.TypeEnum, value)
-		_node.SyncState = value
-	}
-	if value, ok := _c.mutation.LastSyncedAt(); ok {
-		_spec.SetField(keypair.FieldLastSyncedAt, field.TypeTime, value)
-		_node.LastSyncedAt = value
-	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(keypair.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -304,10 +257,10 @@ func (_c *KeyPairCreate) createSpec() (*KeyPair, *sqlgraph.CreateSpec) {
 	}
 	if nodes := _c.mutation.OwnerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.M2O,
 			Inverse: true,
 			Table:   keypair.OwnerTable,
-			Columns: keypair.OwnerPrimaryKey,
+			Columns: []string{keypair.OwnerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
@@ -316,6 +269,7 @@ func (_c *KeyPairCreate) createSpec() (*KeyPair, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_node.user_keypairs = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.InstancesIDs(); len(nodes) > 0 {
@@ -431,30 +385,6 @@ func (u *KeyPairUpsert) SetSourceType(v keypair.SourceType) *KeyPairUpsert {
 // UpdateSourceType sets the "source_type" field to the value that was provided on create.
 func (u *KeyPairUpsert) UpdateSourceType() *KeyPairUpsert {
 	u.SetExcluded(keypair.FieldSourceType)
-	return u
-}
-
-// SetSyncState sets the "sync_state" field.
-func (u *KeyPairUpsert) SetSyncState(v keypair.SyncState) *KeyPairUpsert {
-	u.Set(keypair.FieldSyncState, v)
-	return u
-}
-
-// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
-func (u *KeyPairUpsert) UpdateSyncState() *KeyPairUpsert {
-	u.SetExcluded(keypair.FieldSyncState)
-	return u
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (u *KeyPairUpsert) SetLastSyncedAt(v time.Time) *KeyPairUpsert {
-	u.Set(keypair.FieldLastSyncedAt, v)
-	return u
-}
-
-// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
-func (u *KeyPairUpsert) UpdateLastSyncedAt() *KeyPairUpsert {
-	u.SetExcluded(keypair.FieldLastSyncedAt)
 	return u
 }
 
@@ -574,34 +504,6 @@ func (u *KeyPairUpsertOne) SetSourceType(v keypair.SourceType) *KeyPairUpsertOne
 func (u *KeyPairUpsertOne) UpdateSourceType() *KeyPairUpsertOne {
 	return u.Update(func(s *KeyPairUpsert) {
 		s.UpdateSourceType()
-	})
-}
-
-// SetSyncState sets the "sync_state" field.
-func (u *KeyPairUpsertOne) SetSyncState(v keypair.SyncState) *KeyPairUpsertOne {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.SetSyncState(v)
-	})
-}
-
-// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
-func (u *KeyPairUpsertOne) UpdateSyncState() *KeyPairUpsertOne {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.UpdateSyncState()
-	})
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (u *KeyPairUpsertOne) SetLastSyncedAt(v time.Time) *KeyPairUpsertOne {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.SetLastSyncedAt(v)
-	})
-}
-
-// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
-func (u *KeyPairUpsertOne) UpdateLastSyncedAt() *KeyPairUpsertOne {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.UpdateLastSyncedAt()
 	})
 }
 
@@ -890,34 +792,6 @@ func (u *KeyPairUpsertBulk) SetSourceType(v keypair.SourceType) *KeyPairUpsertBu
 func (u *KeyPairUpsertBulk) UpdateSourceType() *KeyPairUpsertBulk {
 	return u.Update(func(s *KeyPairUpsert) {
 		s.UpdateSourceType()
-	})
-}
-
-// SetSyncState sets the "sync_state" field.
-func (u *KeyPairUpsertBulk) SetSyncState(v keypair.SyncState) *KeyPairUpsertBulk {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.SetSyncState(v)
-	})
-}
-
-// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
-func (u *KeyPairUpsertBulk) UpdateSyncState() *KeyPairUpsertBulk {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.UpdateSyncState()
-	})
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (u *KeyPairUpsertBulk) SetLastSyncedAt(v time.Time) *KeyPairUpsertBulk {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.SetLastSyncedAt(v)
-	})
-}
-
-// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
-func (u *KeyPairUpsertBulk) UpdateLastSyncedAt() *KeyPairUpsertBulk {
-	return u.Update(func(s *KeyPairUpsert) {
-		s.UpdateLastSyncedAt()
 	})
 }
 

@@ -546,7 +546,7 @@ func HasInstances() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, InstancesTable, InstancesPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.O2M, false, InstancesTable, InstancesColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})
@@ -569,7 +569,7 @@ func HasKeypairs() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, KeypairsTable, KeypairsPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.O2M, false, KeypairsTable, KeypairsColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})

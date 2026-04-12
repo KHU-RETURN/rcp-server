@@ -87,53 +87,21 @@ func (_u *KeyPairUpdate) SetNillableSourceType(v *keypair.SourceType) *KeyPairUp
 	return _u
 }
 
-// SetSyncState sets the "sync_state" field.
-func (_u *KeyPairUpdate) SetSyncState(v keypair.SyncState) *KeyPairUpdate {
-	_u.mutation.SetSyncState(v)
-	return _u
-}
-
-// SetNillableSyncState sets the "sync_state" field if the given value is not nil.
-func (_u *KeyPairUpdate) SetNillableSyncState(v *keypair.SyncState) *KeyPairUpdate {
-	if v != nil {
-		_u.SetSyncState(*v)
-	}
-	return _u
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (_u *KeyPairUpdate) SetLastSyncedAt(v time.Time) *KeyPairUpdate {
-	_u.mutation.SetLastSyncedAt(v)
-	return _u
-}
-
-// SetNillableLastSyncedAt sets the "last_synced_at" field if the given value is not nil.
-func (_u *KeyPairUpdate) SetNillableLastSyncedAt(v *time.Time) *KeyPairUpdate {
-	if v != nil {
-		_u.SetLastSyncedAt(*v)
-	}
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *KeyPairUpdate) SetUpdatedAt(v time.Time) *KeyPairUpdate {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
 }
 
-// AddOwnerIDs adds the "owner" edge to the User entity by IDs.
-func (_u *KeyPairUpdate) AddOwnerIDs(ids ...uuid.UUID) *KeyPairUpdate {
-	_u.mutation.AddOwnerIDs(ids...)
+// SetOwnerID sets the "owner" edge to the User entity by ID.
+func (_u *KeyPairUpdate) SetOwnerID(id uuid.UUID) *KeyPairUpdate {
+	_u.mutation.SetOwnerID(id)
 	return _u
 }
 
-// AddOwner adds the "owner" edges to the User entity.
-func (_u *KeyPairUpdate) AddOwner(v ...*User) *KeyPairUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddOwnerIDs(ids...)
+// SetOwner sets the "owner" edge to the User entity.
+func (_u *KeyPairUpdate) SetOwner(v *User) *KeyPairUpdate {
+	return _u.SetOwnerID(v.ID)
 }
 
 // AddInstanceIDs adds the "instances" edge to the Instance entity by IDs.
@@ -156,25 +124,10 @@ func (_u *KeyPairUpdate) Mutation() *KeyPairMutation {
 	return _u.mutation
 }
 
-// ClearOwner clears all "owner" edges to the User entity.
+// ClearOwner clears the "owner" edge to the User entity.
 func (_u *KeyPairUpdate) ClearOwner() *KeyPairUpdate {
 	_u.mutation.ClearOwner()
 	return _u
-}
-
-// RemoveOwnerIDs removes the "owner" edge to User entities by IDs.
-func (_u *KeyPairUpdate) RemoveOwnerIDs(ids ...uuid.UUID) *KeyPairUpdate {
-	_u.mutation.RemoveOwnerIDs(ids...)
-	return _u
-}
-
-// RemoveOwner removes "owner" edges to User entities.
-func (_u *KeyPairUpdate) RemoveOwner(v ...*User) *KeyPairUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveOwnerIDs(ids...)
 }
 
 // ClearInstances clears all "instances" edges to the Instance entity.
@@ -241,10 +194,8 @@ func (_u *KeyPairUpdate) check() error {
 			return &ValidationError{Name: "source_type", err: fmt.Errorf(`ent: validator failed for field "KeyPair.source_type": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.SyncState(); ok {
-		if err := keypair.SyncStateValidator(v); err != nil {
-			return &ValidationError{Name: "sync_state", err: fmt.Errorf(`ent: validator failed for field "KeyPair.sync_state": %w`, err)}
-		}
+	if _u.mutation.OwnerCleared() && len(_u.mutation.OwnerIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "KeyPair.owner"`)
 	}
 	return nil
 }
@@ -273,50 +224,28 @@ func (_u *KeyPairUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.SourceType(); ok {
 		_spec.SetField(keypair.FieldSourceType, field.TypeEnum, value)
 	}
-	if value, ok := _u.mutation.SyncState(); ok {
-		_spec.SetField(keypair.FieldSyncState, field.TypeEnum, value)
-	}
-	if value, ok := _u.mutation.LastSyncedAt(); ok {
-		_spec.SetField(keypair.FieldLastSyncedAt, field.TypeTime, value)
-	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(keypair.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if _u.mutation.OwnerCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.M2O,
 			Inverse: true,
 			Table:   keypair.OwnerTable,
-			Columns: keypair.OwnerPrimaryKey,
+			Columns: []string{keypair.OwnerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedOwnerIDs(); len(nodes) > 0 && !_u.mutation.OwnerCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: true,
-			Table:   keypair.OwnerTable,
-			Columns: keypair.OwnerPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
 	if nodes := _u.mutation.OwnerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.M2O,
 			Inverse: true,
 			Table:   keypair.OwnerTable,
-			Columns: keypair.OwnerPrimaryKey,
+			Columns: []string{keypair.OwnerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
@@ -448,53 +377,21 @@ func (_u *KeyPairUpdateOne) SetNillableSourceType(v *keypair.SourceType) *KeyPai
 	return _u
 }
 
-// SetSyncState sets the "sync_state" field.
-func (_u *KeyPairUpdateOne) SetSyncState(v keypair.SyncState) *KeyPairUpdateOne {
-	_u.mutation.SetSyncState(v)
-	return _u
-}
-
-// SetNillableSyncState sets the "sync_state" field if the given value is not nil.
-func (_u *KeyPairUpdateOne) SetNillableSyncState(v *keypair.SyncState) *KeyPairUpdateOne {
-	if v != nil {
-		_u.SetSyncState(*v)
-	}
-	return _u
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (_u *KeyPairUpdateOne) SetLastSyncedAt(v time.Time) *KeyPairUpdateOne {
-	_u.mutation.SetLastSyncedAt(v)
-	return _u
-}
-
-// SetNillableLastSyncedAt sets the "last_synced_at" field if the given value is not nil.
-func (_u *KeyPairUpdateOne) SetNillableLastSyncedAt(v *time.Time) *KeyPairUpdateOne {
-	if v != nil {
-		_u.SetLastSyncedAt(*v)
-	}
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *KeyPairUpdateOne) SetUpdatedAt(v time.Time) *KeyPairUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
 }
 
-// AddOwnerIDs adds the "owner" edge to the User entity by IDs.
-func (_u *KeyPairUpdateOne) AddOwnerIDs(ids ...uuid.UUID) *KeyPairUpdateOne {
-	_u.mutation.AddOwnerIDs(ids...)
+// SetOwnerID sets the "owner" edge to the User entity by ID.
+func (_u *KeyPairUpdateOne) SetOwnerID(id uuid.UUID) *KeyPairUpdateOne {
+	_u.mutation.SetOwnerID(id)
 	return _u
 }
 
-// AddOwner adds the "owner" edges to the User entity.
-func (_u *KeyPairUpdateOne) AddOwner(v ...*User) *KeyPairUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddOwnerIDs(ids...)
+// SetOwner sets the "owner" edge to the User entity.
+func (_u *KeyPairUpdateOne) SetOwner(v *User) *KeyPairUpdateOne {
+	return _u.SetOwnerID(v.ID)
 }
 
 // AddInstanceIDs adds the "instances" edge to the Instance entity by IDs.
@@ -517,25 +414,10 @@ func (_u *KeyPairUpdateOne) Mutation() *KeyPairMutation {
 	return _u.mutation
 }
 
-// ClearOwner clears all "owner" edges to the User entity.
+// ClearOwner clears the "owner" edge to the User entity.
 func (_u *KeyPairUpdateOne) ClearOwner() *KeyPairUpdateOne {
 	_u.mutation.ClearOwner()
 	return _u
-}
-
-// RemoveOwnerIDs removes the "owner" edge to User entities by IDs.
-func (_u *KeyPairUpdateOne) RemoveOwnerIDs(ids ...uuid.UUID) *KeyPairUpdateOne {
-	_u.mutation.RemoveOwnerIDs(ids...)
-	return _u
-}
-
-// RemoveOwner removes "owner" edges to User entities.
-func (_u *KeyPairUpdateOne) RemoveOwner(v ...*User) *KeyPairUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveOwnerIDs(ids...)
 }
 
 // ClearInstances clears all "instances" edges to the Instance entity.
@@ -615,10 +497,8 @@ func (_u *KeyPairUpdateOne) check() error {
 			return &ValidationError{Name: "source_type", err: fmt.Errorf(`ent: validator failed for field "KeyPair.source_type": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.SyncState(); ok {
-		if err := keypair.SyncStateValidator(v); err != nil {
-			return &ValidationError{Name: "sync_state", err: fmt.Errorf(`ent: validator failed for field "KeyPair.sync_state": %w`, err)}
-		}
+	if _u.mutation.OwnerCleared() && len(_u.mutation.OwnerIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "KeyPair.owner"`)
 	}
 	return nil
 }
@@ -664,50 +544,28 @@ func (_u *KeyPairUpdateOne) sqlSave(ctx context.Context) (_node *KeyPair, err er
 	if value, ok := _u.mutation.SourceType(); ok {
 		_spec.SetField(keypair.FieldSourceType, field.TypeEnum, value)
 	}
-	if value, ok := _u.mutation.SyncState(); ok {
-		_spec.SetField(keypair.FieldSyncState, field.TypeEnum, value)
-	}
-	if value, ok := _u.mutation.LastSyncedAt(); ok {
-		_spec.SetField(keypair.FieldLastSyncedAt, field.TypeTime, value)
-	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(keypair.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if _u.mutation.OwnerCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.M2O,
 			Inverse: true,
 			Table:   keypair.OwnerTable,
-			Columns: keypair.OwnerPrimaryKey,
+			Columns: []string{keypair.OwnerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedOwnerIDs(); len(nodes) > 0 && !_u.mutation.OwnerCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: true,
-			Table:   keypair.OwnerTable,
-			Columns: keypair.OwnerPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
 	if nodes := _u.mutation.OwnerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.M2O,
 			Inverse: true,
 			Table:   keypair.OwnerTable,
-			Columns: keypair.OwnerPrimaryKey,
+			Columns: []string{keypair.OwnerColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),

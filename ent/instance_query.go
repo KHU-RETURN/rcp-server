@@ -4,7 +4,6 @@ package ent
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -79,7 +78,7 @@ func (_q *InstanceQuery) QueryOwner() *UserQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(instance.Table, instance.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, true, instance.OwnerTable, instance.OwnerPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.M2O, true, instance.OwnerTable, instance.OwnerColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -415,7 +414,7 @@ func (_q *InstanceQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Ins
 			_q.withKeypair != nil,
 		}
 	)
-	if _q.withKeypair != nil {
+	if _q.withOwner != nil || _q.withKeypair != nil {
 		withFKs = true
 	}
 	if withFKs {
@@ -440,9 +439,8 @@ func (_q *InstanceQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Ins
 		return nodes, nil
 	}
 	if query := _q.withOwner; query != nil {
-		if err := _q.loadOwner(ctx, query, nodes,
-			func(n *Instance) { n.Edges.Owner = []*User{} },
-			func(n *Instance, e *User) { n.Edges.Owner = append(n.Edges.Owner, e) }); err != nil {
+		if err := _q.loadOwner(ctx, query, nodes, nil,
+			func(n *Instance, e *User) { n.Edges.Owner = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -456,62 +454,33 @@ func (_q *InstanceQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Ins
 }
 
 func (_q *InstanceQuery) loadOwner(ctx context.Context, query *UserQuery, nodes []*Instance, init func(*Instance), assign func(*Instance, *User)) error {
-	edgeIDs := make([]driver.Value, len(nodes))
-	byID := make(map[uuid.UUID]*Instance)
-	nids := make(map[uuid.UUID]map[*Instance]struct{})
-	for i, node := range nodes {
-		edgeIDs[i] = node.ID
-		byID[node.ID] = node
-		if init != nil {
-			init(node)
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Instance)
+	for i := range nodes {
+		if nodes[i].user_instances == nil {
+			continue
 		}
+		fk := *nodes[i].user_instances
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
 	}
-	query.Where(func(s *sql.Selector) {
-		joinT := sql.Table(instance.OwnerTable)
-		s.Join(joinT).On(s.C(user.FieldID), joinT.C(instance.OwnerPrimaryKey[0]))
-		s.Where(sql.InValues(joinT.C(instance.OwnerPrimaryKey[1]), edgeIDs...))
-		columns := s.SelectedColumns()
-		s.Select(joinT.C(instance.OwnerPrimaryKey[1]))
-		s.AppendSelect(columns...)
-		s.SetDistinct(false)
-	})
-	if err := query.prepareQuery(ctx); err != nil {
-		return err
+	if len(ids) == 0 {
+		return nil
 	}
-	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
-		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
-			assign := spec.Assign
-			values := spec.ScanValues
-			spec.ScanValues = func(columns []string) ([]any, error) {
-				values, err := values(columns[1:])
-				if err != nil {
-					return nil, err
-				}
-				return append([]any{new(uuid.UUID)}, values...), nil
-			}
-			spec.Assign = func(columns []string, values []any) error {
-				outValue := *values[0].(*uuid.UUID)
-				inValue := *values[1].(*uuid.UUID)
-				if nids[inValue] == nil {
-					nids[inValue] = map[*Instance]struct{}{byID[outValue]: {}}
-					return assign(columns[1:], values[1:])
-				}
-				nids[inValue][byID[outValue]] = struct{}{}
-				return nil
-			}
-		})
-	})
-	neighbors, err := withInterceptors[[]*User](ctx, query, qr, query.inters)
+	query.Where(user.IDIn(ids...))
+	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
 	}
 	for _, n := range neighbors {
-		nodes, ok := nids[n.ID]
+		nodes, ok := nodeids[n.ID]
 		if !ok {
-			return fmt.Errorf(`unexpected "owner" node returned %v`, n.ID)
+			return fmt.Errorf(`unexpected foreign-key "user_instances" returned %v`, n.ID)
 		}
-		for kn := range nodes {
-			assign(kn, n)
+		for i := range nodes {
+			assign(nodes[i], n)
 		}
 	}
 	return nil

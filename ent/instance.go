@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
+	"github.com/KHU-RETURN/rcp-server/ent/user"
 	"github.com/google/uuid"
 )
 
@@ -47,13 +48,14 @@ type Instance struct {
 	// The values are being populated by the InstanceQuery when eager-loading is set.
 	Edges              InstanceEdges `json:"edges"`
 	key_pair_instances *uuid.UUID
+	user_instances     *uuid.UUID
 	selectValues       sql.SelectValues
 }
 
 // InstanceEdges holds the relations/edges for other nodes in the graph.
 type InstanceEdges struct {
 	// Owner holds the value of the owner edge.
-	Owner []*User `json:"owner,omitempty"`
+	Owner *User `json:"owner,omitempty"`
 	// Keypair holds the value of the keypair edge.
 	Keypair *KeyPair `json:"keypair,omitempty"`
 	// loadedTypes holds the information for reporting if a
@@ -62,10 +64,12 @@ type InstanceEdges struct {
 }
 
 // OwnerOrErr returns the Owner value or an error if the edge
-// was not loaded in eager-loading.
-func (e InstanceEdges) OwnerOrErr() ([]*User, error) {
-	if e.loadedTypes[0] {
+// was not loaded in eager-loading, or loaded but was not found.
+func (e InstanceEdges) OwnerOrErr() (*User, error) {
+	if e.Owner != nil {
 		return e.Owner, nil
+	} else if e.loadedTypes[0] {
+		return nil, &NotFoundError{label: user.Label}
 	}
 	return nil, &NotLoadedError{edge: "owner"}
 }
@@ -93,6 +97,8 @@ func (*Instance) scanValues(columns []string) ([]any, error) {
 		case instance.FieldID:
 			values[i] = new(uuid.UUID)
 		case instance.ForeignKeys[0]: // key_pair_instances
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
+		case instance.ForeignKeys[1]: // user_instances
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
@@ -195,6 +201,13 @@ func (_m *Instance) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.key_pair_instances = new(uuid.UUID)
 				*_m.key_pair_instances = *value.S.(*uuid.UUID)
+			}
+		case instance.ForeignKeys[1]:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field user_instances", values[i])
+			} else if value.Valid {
+				_m.user_instances = new(uuid.UUID)
+				*_m.user_instances = *value.S.(*uuid.UUID)
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])

@@ -334,7 +334,7 @@ func (c *InstanceClient) QueryOwner(_m *Instance) *UserQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(instance.Table, instance.FieldID, id),
 			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, true, instance.OwnerTable, instance.OwnerPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.M2O, true, instance.OwnerTable, instance.OwnerColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -499,7 +499,7 @@ func (c *KeyPairClient) QueryOwner(_m *KeyPair) *UserQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(keypair.Table, keypair.FieldID, id),
 			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, true, keypair.OwnerTable, keypair.OwnerPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.M2O, true, keypair.OwnerTable, keypair.OwnerColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -664,7 +664,7 @@ func (c *UserClient) QueryInstances(_m *User) *InstanceQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(instance.Table, instance.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, user.InstancesTable, user.InstancesPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.InstancesTable, user.InstancesColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -680,7 +680,7 @@ func (c *UserClient) QueryKeypairs(_m *User) *KeyPairQuery {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(keypair.Table, keypair.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, user.KeypairsTable, user.KeypairsPrimaryKey...),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.KeypairsTable, user.KeypairsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil

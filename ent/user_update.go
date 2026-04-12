@@ -266,10 +266,10 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.InstancesCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.InstancesTable,
-			Columns: user.InstancesPrimaryKey,
+			Columns: []string{user.InstancesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(instance.FieldID, field.TypeUUID),
@@ -279,10 +279,10 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if nodes := _u.mutation.RemovedInstancesIDs(); len(nodes) > 0 && !_u.mutation.InstancesCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.InstancesTable,
-			Columns: user.InstancesPrimaryKey,
+			Columns: []string{user.InstancesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(instance.FieldID, field.TypeUUID),
@@ -295,10 +295,10 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if nodes := _u.mutation.InstancesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.InstancesTable,
-			Columns: user.InstancesPrimaryKey,
+			Columns: []string{user.InstancesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(instance.FieldID, field.TypeUUID),
@@ -311,10 +311,10 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.KeypairsCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.KeypairsTable,
-			Columns: user.KeypairsPrimaryKey,
+			Columns: []string{user.KeypairsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
@@ -324,10 +324,10 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if nodes := _u.mutation.RemovedKeypairsIDs(); len(nodes) > 0 && !_u.mutation.KeypairsCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.KeypairsTable,
-			Columns: user.KeypairsPrimaryKey,
+			Columns: []string{user.KeypairsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
@@ -340,10 +340,10 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if nodes := _u.mutation.KeypairsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.KeypairsTable,
-			Columns: user.KeypairsPrimaryKey,
+			Columns: []string{user.KeypairsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
@@ -639,10 +639,10 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.InstancesCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.InstancesTable,
-			Columns: user.InstancesPrimaryKey,
+			Columns: []string{user.InstancesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(instance.FieldID, field.TypeUUID),
@@ -652,10 +652,10 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if nodes := _u.mutation.RemovedInstancesIDs(); len(nodes) > 0 && !_u.mutation.InstancesCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.InstancesTable,
-			Columns: user.InstancesPrimaryKey,
+			Columns: []string{user.InstancesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(instance.FieldID, field.TypeUUID),
@@ -668,10 +668,10 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if nodes := _u.mutation.InstancesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.InstancesTable,
-			Columns: user.InstancesPrimaryKey,
+			Columns: []string{user.InstancesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(instance.FieldID, field.TypeUUID),
@@ -684,10 +684,10 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.KeypairsCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.KeypairsTable,
-			Columns: user.KeypairsPrimaryKey,
+			Columns: []string{user.KeypairsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
@@ -697,10 +697,10 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if nodes := _u.mutation.RemovedKeypairsIDs(); len(nodes) > 0 && !_u.mutation.KeypairsCleared() {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.KeypairsTable,
-			Columns: user.KeypairsPrimaryKey,
+			Columns: []string{user.KeypairsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
@@ -713,10 +713,10 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if nodes := _u.mutation.KeypairsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
+			Rel:     sqlgraph.O2M,
 			Inverse: false,
 			Table:   user.KeypairsTable,
-			Columns: user.KeypairsPrimaryKey,
+			Columns: []string{user.KeypairsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),

@@ -46,11 +46,13 @@ const (
 	EdgeKeypair = "keypair"
 	// Table holds the table name of the instance in the database.
 	Table = "instances"
-	// OwnerTable is the table that holds the owner relation/edge. The primary key declared below.
-	OwnerTable = "user_instances"
+	// OwnerTable is the table that holds the owner relation/edge.
+	OwnerTable = "instances"
 	// OwnerInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	OwnerInverseTable = "users"
+	// OwnerColumn is the table column denoting the owner relation/edge.
+	OwnerColumn = "user_instances"
 	// KeypairTable is the table that holds the keypair relation/edge.
 	KeypairTable = "instances"
 	// KeypairInverseTable is the table name for the KeyPair entity.
@@ -81,13 +83,8 @@ var Columns = []string{
 // table and are not defined as standalone fields in the schema.
 var ForeignKeys = []string{
 	"key_pair_instances",
+	"user_instances",
 }
-
-var (
-	// OwnerPrimaryKey and OwnerColumn2 are the table columns denoting the
-	// primary key for the owner relation (M2M).
-	OwnerPrimaryKey = []string{"user_id", "instance_id"}
-)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -210,17 +207,10 @@ func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
 }
 
-// ByOwnerCount orders the results by owner count.
-func ByOwnerCount(opts ...sql.OrderTermOption) OrderOption {
+// ByOwnerField orders the results by owner field.
+func ByOwnerField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newOwnerStep(), opts...)
-	}
-}
-
-// ByOwner orders the results by owner terms.
-func ByOwner(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newOwnerStep(), append([]sql.OrderTerm{term}, terms...)...)
+		sqlgraph.OrderByNeighborTerms(s, newOwnerStep(), sql.OrderByField(field, opts...))
 	}
 }
 
@@ -234,7 +224,7 @@ func newOwnerStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(OwnerInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2M, true, OwnerTable, OwnerPrimaryKey...),
+		sqlgraph.Edge(sqlgraph.M2O, true, OwnerTable, OwnerColumn),
 	)
 }
 func newKeypairStep() *sqlgraph.Step {

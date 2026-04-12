@@ -24,6 +24,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "key_pair_instances", Type: field.TypeUUID, Nullable: true},
+		{Name: "user_instances", Type: field.TypeUUID},
 	}
 	// InstancesTable holds the schema information for the "instances" table.
 	InstancesTable = &schema.Table{
@@ -37,6 +38,12 @@ var (
 				RefColumns: []*schema.Column{KeyPairsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
+			{
+				Symbol:     "instances_users_instances",
+				Columns:    []*schema.Column{InstancesColumns[14]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
 		},
 	}
 	// KeyPairsColumns holds the columns for the "key_pairs" table.
@@ -46,16 +53,23 @@ var (
 		{Name: "fingerprint", Type: field.TypeString},
 		{Name: "public_key", Type: field.TypeString},
 		{Name: "source_type", Type: field.TypeEnum, Enums: []string{"user_uploaded", "system_generated"}},
-		{Name: "sync_state", Type: field.TypeEnum, Enums: []string{"synced", "missing", "error"}, Default: "synced"},
-		{Name: "last_synced_at", Type: field.TypeTime},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_keypairs", Type: field.TypeUUID},
 	}
 	// KeyPairsTable holds the schema information for the "key_pairs" table.
 	KeyPairsTable = &schema.Table{
 		Name:       "key_pairs",
 		Columns:    KeyPairsColumns,
 		PrimaryKey: []*schema.Column{KeyPairsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "key_pairs_users_keypairs",
+				Columns:    []*schema.Column{KeyPairsColumns[7]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
 	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
@@ -75,70 +89,16 @@ var (
 		Columns:    UsersColumns,
 		PrimaryKey: []*schema.Column{UsersColumns[0]},
 	}
-	// UserInstancesColumns holds the columns for the "user_instances" table.
-	UserInstancesColumns = []*schema.Column{
-		{Name: "user_id", Type: field.TypeUUID},
-		{Name: "instance_id", Type: field.TypeUUID},
-	}
-	// UserInstancesTable holds the schema information for the "user_instances" table.
-	UserInstancesTable = &schema.Table{
-		Name:       "user_instances",
-		Columns:    UserInstancesColumns,
-		PrimaryKey: []*schema.Column{UserInstancesColumns[0], UserInstancesColumns[1]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "user_instances_user_id",
-				Columns:    []*schema.Column{UserInstancesColumns[0]},
-				RefColumns: []*schema.Column{UsersColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-			{
-				Symbol:     "user_instances_instance_id",
-				Columns:    []*schema.Column{UserInstancesColumns[1]},
-				RefColumns: []*schema.Column{InstancesColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-		},
-	}
-	// UserKeypairsColumns holds the columns for the "user_keypairs" table.
-	UserKeypairsColumns = []*schema.Column{
-		{Name: "user_id", Type: field.TypeUUID},
-		{Name: "key_pair_id", Type: field.TypeUUID},
-	}
-	// UserKeypairsTable holds the schema information for the "user_keypairs" table.
-	UserKeypairsTable = &schema.Table{
-		Name:       "user_keypairs",
-		Columns:    UserKeypairsColumns,
-		PrimaryKey: []*schema.Column{UserKeypairsColumns[0], UserKeypairsColumns[1]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "user_keypairs_user_id",
-				Columns:    []*schema.Column{UserKeypairsColumns[0]},
-				RefColumns: []*schema.Column{UsersColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-			{
-				Symbol:     "user_keypairs_key_pair_id",
-				Columns:    []*schema.Column{UserKeypairsColumns[1]},
-				RefColumns: []*schema.Column{KeyPairsColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-		},
-	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		InstancesTable,
 		KeyPairsTable,
 		UsersTable,
-		UserInstancesTable,
-		UserKeypairsTable,
 	}
 )
 
 func init() {
 	InstancesTable.ForeignKeys[0].RefTable = KeyPairsTable
-	UserInstancesTable.ForeignKeys[0].RefTable = UsersTable
-	UserInstancesTable.ForeignKeys[1].RefTable = InstancesTable
-	UserKeypairsTable.ForeignKeys[0].RefTable = UsersTable
-	UserKeypairsTable.ForeignKeys[1].RefTable = KeyPairsTable
+	InstancesTable.ForeignKeys[1].RefTable = UsersTable
+	KeyPairsTable.ForeignKeys[0].RefTable = UsersTable
 }

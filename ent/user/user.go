@@ -37,16 +37,20 @@ const (
 	EdgeKeypairs = "keypairs"
 	// Table holds the table name of the user in the database.
 	Table = "users"
-	// InstancesTable is the table that holds the instances relation/edge. The primary key declared below.
-	InstancesTable = "user_instances"
+	// InstancesTable is the table that holds the instances relation/edge.
+	InstancesTable = "instances"
 	// InstancesInverseTable is the table name for the Instance entity.
 	// It exists in this package in order to avoid circular dependency with the "instance" package.
 	InstancesInverseTable = "instances"
-	// KeypairsTable is the table that holds the keypairs relation/edge. The primary key declared below.
-	KeypairsTable = "user_keypairs"
+	// InstancesColumn is the table column denoting the instances relation/edge.
+	InstancesColumn = "user_instances"
+	// KeypairsTable is the table that holds the keypairs relation/edge.
+	KeypairsTable = "key_pairs"
 	// KeypairsInverseTable is the table name for the KeyPair entity.
 	// It exists in this package in order to avoid circular dependency with the "keypair" package.
 	KeypairsInverseTable = "key_pairs"
+	// KeypairsColumn is the table column denoting the keypairs relation/edge.
+	KeypairsColumn = "user_keypairs"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -61,15 +65,6 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
-
-var (
-	// InstancesPrimaryKey and InstancesColumn2 are the table columns denoting the
-	// primary key for the instances relation (M2M).
-	InstancesPrimaryKey = []string{"user_id", "instance_id"}
-	// KeypairsPrimaryKey and KeypairsColumn2 are the table columns denoting the
-	// primary key for the keypairs relation (M2M).
-	KeypairsPrimaryKey = []string{"user_id", "key_pair_id"}
-)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -171,13 +166,13 @@ func newInstancesStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(InstancesInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2M, false, InstancesTable, InstancesPrimaryKey...),
+		sqlgraph.Edge(sqlgraph.O2M, false, InstancesTable, InstancesColumn),
 	)
 }
 func newKeypairsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(KeypairsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2M, false, KeypairsTable, KeypairsPrimaryKey...),
+		sqlgraph.Edge(sqlgraph.O2M, false, KeypairsTable, KeypairsColumn),
 	)
 }
