@@ -30,16 +30,8 @@ type Instance struct {
 	ImageID string `json:"image_id,omitempty"`
 	// FlavorID holds the value of the "flavor_id" field.
 	FlavorID string `json:"flavor_id,omitempty"`
-	// FixedIP holds the value of the "fixed_ip" field.
-	FixedIP *string `json:"fixed_ip,omitempty"`
-	// FloatingIP holds the value of the "floating_ip" field.
-	FloatingIP *string `json:"floating_ip,omitempty"`
 	// ProviderCreatedAt holds the value of the "provider_created_at" field.
 	ProviderCreatedAt time.Time `json:"provider_created_at,omitempty"`
-	// SyncState holds the value of the "sync_state" field.
-	SyncState instance.SyncState `json:"sync_state,omitempty"`
-	// LastSyncedAt holds the value of the "last_synced_at" field.
-	LastSyncedAt time.Time `json:"last_synced_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -90,9 +82,9 @@ func (*Instance) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case instance.FieldOpenstackID, instance.FieldName, instance.FieldStatus, instance.FieldImageID, instance.FieldFlavorID, instance.FieldFixedIP, instance.FieldFloatingIP, instance.FieldSyncState:
+		case instance.FieldOpenstackID, instance.FieldName, instance.FieldStatus, instance.FieldImageID, instance.FieldFlavorID:
 			values[i] = new(sql.NullString)
-		case instance.FieldProviderCreatedAt, instance.FieldLastSyncedAt, instance.FieldCreatedAt, instance.FieldUpdatedAt:
+		case instance.FieldProviderCreatedAt, instance.FieldCreatedAt, instance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case instance.FieldID:
 			values[i] = new(uuid.UUID)
@@ -151,37 +143,11 @@ func (_m *Instance) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.FlavorID = value.String
 			}
-		case instance.FieldFixedIP:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field fixed_ip", values[i])
-			} else if value.Valid {
-				_m.FixedIP = new(string)
-				*_m.FixedIP = value.String
-			}
-		case instance.FieldFloatingIP:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field floating_ip", values[i])
-			} else if value.Valid {
-				_m.FloatingIP = new(string)
-				*_m.FloatingIP = value.String
-			}
 		case instance.FieldProviderCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field provider_created_at", values[i])
 			} else if value.Valid {
 				_m.ProviderCreatedAt = value.Time
-			}
-		case instance.FieldSyncState:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field sync_state", values[i])
-			} else if value.Valid {
-				_m.SyncState = instance.SyncState(value.String)
-			}
-		case instance.FieldLastSyncedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field last_synced_at", values[i])
-			} else if value.Valid {
-				_m.LastSyncedAt = value.Time
 			}
 		case instance.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -270,24 +236,8 @@ func (_m *Instance) String() string {
 	builder.WriteString("flavor_id=")
 	builder.WriteString(_m.FlavorID)
 	builder.WriteString(", ")
-	if v := _m.FixedIP; v != nil {
-		builder.WriteString("fixed_ip=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := _m.FloatingIP; v != nil {
-		builder.WriteString("floating_ip=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
 	builder.WriteString("provider_created_at=")
 	builder.WriteString(_m.ProviderCreatedAt.Format(time.ANSIC))
-	builder.WriteString(", ")
-	builder.WriteString("sync_state=")
-	builder.WriteString(fmt.Sprintf("%v", _m.SyncState))
-	builder.WriteString(", ")
-	builder.WriteString("last_synced_at=")
-	builder.WriteString(_m.LastSyncedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

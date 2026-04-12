@@ -43,11 +43,7 @@ type InstanceMutation struct {
 	status              *string
 	image_id            *string
 	flavor_id           *string
-	fixed_ip            *string
-	floating_ip         *string
 	provider_created_at *time.Time
-	sync_state          *instance.SyncState
-	last_synced_at      *time.Time
 	created_at          *time.Time
 	updated_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -344,104 +340,6 @@ func (m *InstanceMutation) ResetFlavorID() {
 	m.flavor_id = nil
 }
 
-// SetFixedIP sets the "fixed_ip" field.
-func (m *InstanceMutation) SetFixedIP(s string) {
-	m.fixed_ip = &s
-}
-
-// FixedIP returns the value of the "fixed_ip" field in the mutation.
-func (m *InstanceMutation) FixedIP() (r string, exists bool) {
-	v := m.fixed_ip
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldFixedIP returns the old "fixed_ip" field's value of the Instance entity.
-// If the Instance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *InstanceMutation) OldFixedIP(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldFixedIP is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldFixedIP requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldFixedIP: %w", err)
-	}
-	return oldValue.FixedIP, nil
-}
-
-// ClearFixedIP clears the value of the "fixed_ip" field.
-func (m *InstanceMutation) ClearFixedIP() {
-	m.fixed_ip = nil
-	m.clearedFields[instance.FieldFixedIP] = struct{}{}
-}
-
-// FixedIPCleared returns if the "fixed_ip" field was cleared in this mutation.
-func (m *InstanceMutation) FixedIPCleared() bool {
-	_, ok := m.clearedFields[instance.FieldFixedIP]
-	return ok
-}
-
-// ResetFixedIP resets all changes to the "fixed_ip" field.
-func (m *InstanceMutation) ResetFixedIP() {
-	m.fixed_ip = nil
-	delete(m.clearedFields, instance.FieldFixedIP)
-}
-
-// SetFloatingIP sets the "floating_ip" field.
-func (m *InstanceMutation) SetFloatingIP(s string) {
-	m.floating_ip = &s
-}
-
-// FloatingIP returns the value of the "floating_ip" field in the mutation.
-func (m *InstanceMutation) FloatingIP() (r string, exists bool) {
-	v := m.floating_ip
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldFloatingIP returns the old "floating_ip" field's value of the Instance entity.
-// If the Instance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *InstanceMutation) OldFloatingIP(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldFloatingIP is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldFloatingIP requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldFloatingIP: %w", err)
-	}
-	return oldValue.FloatingIP, nil
-}
-
-// ClearFloatingIP clears the value of the "floating_ip" field.
-func (m *InstanceMutation) ClearFloatingIP() {
-	m.floating_ip = nil
-	m.clearedFields[instance.FieldFloatingIP] = struct{}{}
-}
-
-// FloatingIPCleared returns if the "floating_ip" field was cleared in this mutation.
-func (m *InstanceMutation) FloatingIPCleared() bool {
-	_, ok := m.clearedFields[instance.FieldFloatingIP]
-	return ok
-}
-
-// ResetFloatingIP resets all changes to the "floating_ip" field.
-func (m *InstanceMutation) ResetFloatingIP() {
-	m.floating_ip = nil
-	delete(m.clearedFields, instance.FieldFloatingIP)
-}
-
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (m *InstanceMutation) SetProviderCreatedAt(t time.Time) {
 	m.provider_created_at = &t
@@ -476,78 +374,6 @@ func (m *InstanceMutation) OldProviderCreatedAt(ctx context.Context) (v time.Tim
 // ResetProviderCreatedAt resets all changes to the "provider_created_at" field.
 func (m *InstanceMutation) ResetProviderCreatedAt() {
 	m.provider_created_at = nil
-}
-
-// SetSyncState sets the "sync_state" field.
-func (m *InstanceMutation) SetSyncState(is instance.SyncState) {
-	m.sync_state = &is
-}
-
-// SyncState returns the value of the "sync_state" field in the mutation.
-func (m *InstanceMutation) SyncState() (r instance.SyncState, exists bool) {
-	v := m.sync_state
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSyncState returns the old "sync_state" field's value of the Instance entity.
-// If the Instance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *InstanceMutation) OldSyncState(ctx context.Context) (v instance.SyncState, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSyncState is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSyncState requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSyncState: %w", err)
-	}
-	return oldValue.SyncState, nil
-}
-
-// ResetSyncState resets all changes to the "sync_state" field.
-func (m *InstanceMutation) ResetSyncState() {
-	m.sync_state = nil
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (m *InstanceMutation) SetLastSyncedAt(t time.Time) {
-	m.last_synced_at = &t
-}
-
-// LastSyncedAt returns the value of the "last_synced_at" field in the mutation.
-func (m *InstanceMutation) LastSyncedAt() (r time.Time, exists bool) {
-	v := m.last_synced_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLastSyncedAt returns the old "last_synced_at" field's value of the Instance entity.
-// If the Instance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *InstanceMutation) OldLastSyncedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastSyncedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastSyncedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastSyncedAt: %w", err)
-	}
-	return oldValue.LastSyncedAt, nil
-}
-
-// ResetLastSyncedAt resets all changes to the "last_synced_at" field.
-func (m *InstanceMutation) ResetLastSyncedAt() {
-	m.last_synced_at = nil
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -734,7 +560,7 @@ func (m *InstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *InstanceMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 8)
 	if m.openstack_id != nil {
 		fields = append(fields, instance.FieldOpenstackID)
 	}
@@ -750,20 +576,8 @@ func (m *InstanceMutation) Fields() []string {
 	if m.flavor_id != nil {
 		fields = append(fields, instance.FieldFlavorID)
 	}
-	if m.fixed_ip != nil {
-		fields = append(fields, instance.FieldFixedIP)
-	}
-	if m.floating_ip != nil {
-		fields = append(fields, instance.FieldFloatingIP)
-	}
 	if m.provider_created_at != nil {
 		fields = append(fields, instance.FieldProviderCreatedAt)
-	}
-	if m.sync_state != nil {
-		fields = append(fields, instance.FieldSyncState)
-	}
-	if m.last_synced_at != nil {
-		fields = append(fields, instance.FieldLastSyncedAt)
 	}
 	if m.created_at != nil {
 		fields = append(fields, instance.FieldCreatedAt)
@@ -789,16 +603,8 @@ func (m *InstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageID()
 	case instance.FieldFlavorID:
 		return m.FlavorID()
-	case instance.FieldFixedIP:
-		return m.FixedIP()
-	case instance.FieldFloatingIP:
-		return m.FloatingIP()
 	case instance.FieldProviderCreatedAt:
 		return m.ProviderCreatedAt()
-	case instance.FieldSyncState:
-		return m.SyncState()
-	case instance.FieldLastSyncedAt:
-		return m.LastSyncedAt()
 	case instance.FieldCreatedAt:
 		return m.CreatedAt()
 	case instance.FieldUpdatedAt:
@@ -822,16 +628,8 @@ func (m *InstanceMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageID(ctx)
 	case instance.FieldFlavorID:
 		return m.OldFlavorID(ctx)
-	case instance.FieldFixedIP:
-		return m.OldFixedIP(ctx)
-	case instance.FieldFloatingIP:
-		return m.OldFloatingIP(ctx)
 	case instance.FieldProviderCreatedAt:
 		return m.OldProviderCreatedAt(ctx)
-	case instance.FieldSyncState:
-		return m.OldSyncState(ctx)
-	case instance.FieldLastSyncedAt:
-		return m.OldLastSyncedAt(ctx)
 	case instance.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case instance.FieldUpdatedAt:
@@ -880,40 +678,12 @@ func (m *InstanceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFlavorID(v)
 		return nil
-	case instance.FieldFixedIP:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetFixedIP(v)
-		return nil
-	case instance.FieldFloatingIP:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetFloatingIP(v)
-		return nil
 	case instance.FieldProviderCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProviderCreatedAt(v)
-		return nil
-	case instance.FieldSyncState:
-		v, ok := value.(instance.SyncState)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSyncState(v)
-		return nil
-	case instance.FieldLastSyncedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLastSyncedAt(v)
 		return nil
 	case instance.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -958,14 +728,7 @@ func (m *InstanceMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *InstanceMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(instance.FieldFixedIP) {
-		fields = append(fields, instance.FieldFixedIP)
-	}
-	if m.FieldCleared(instance.FieldFloatingIP) {
-		fields = append(fields, instance.FieldFloatingIP)
-	}
-	return fields
+	return nil
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -978,14 +741,6 @@ func (m *InstanceMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *InstanceMutation) ClearField(name string) error {
-	switch name {
-	case instance.FieldFixedIP:
-		m.ClearFixedIP()
-		return nil
-	case instance.FieldFloatingIP:
-		m.ClearFloatingIP()
-		return nil
-	}
 	return fmt.Errorf("unknown Instance nullable field %s", name)
 }
 
@@ -1008,20 +763,8 @@ func (m *InstanceMutation) ResetField(name string) error {
 	case instance.FieldFlavorID:
 		m.ResetFlavorID()
 		return nil
-	case instance.FieldFixedIP:
-		m.ResetFixedIP()
-		return nil
-	case instance.FieldFloatingIP:
-		m.ResetFloatingIP()
-		return nil
 	case instance.FieldProviderCreatedAt:
 		m.ResetProviderCreatedAt()
-		return nil
-	case instance.FieldSyncState:
-		m.ResetSyncState()
-		return nil
-	case instance.FieldLastSyncedAt:
-		m.ResetLastSyncedAt()
 		return nil
 	case instance.FieldCreatedAt:
 		m.ResetCreatedAt()

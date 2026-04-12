@@ -56,57 +56,9 @@ func (_c *InstanceCreate) SetFlavorID(v string) *InstanceCreate {
 	return _c
 }
 
-// SetFixedIP sets the "fixed_ip" field.
-func (_c *InstanceCreate) SetFixedIP(v string) *InstanceCreate {
-	_c.mutation.SetFixedIP(v)
-	return _c
-}
-
-// SetNillableFixedIP sets the "fixed_ip" field if the given value is not nil.
-func (_c *InstanceCreate) SetNillableFixedIP(v *string) *InstanceCreate {
-	if v != nil {
-		_c.SetFixedIP(*v)
-	}
-	return _c
-}
-
-// SetFloatingIP sets the "floating_ip" field.
-func (_c *InstanceCreate) SetFloatingIP(v string) *InstanceCreate {
-	_c.mutation.SetFloatingIP(v)
-	return _c
-}
-
-// SetNillableFloatingIP sets the "floating_ip" field if the given value is not nil.
-func (_c *InstanceCreate) SetNillableFloatingIP(v *string) *InstanceCreate {
-	if v != nil {
-		_c.SetFloatingIP(*v)
-	}
-	return _c
-}
-
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (_c *InstanceCreate) SetProviderCreatedAt(v time.Time) *InstanceCreate {
 	_c.mutation.SetProviderCreatedAt(v)
-	return _c
-}
-
-// SetSyncState sets the "sync_state" field.
-func (_c *InstanceCreate) SetSyncState(v instance.SyncState) *InstanceCreate {
-	_c.mutation.SetSyncState(v)
-	return _c
-}
-
-// SetNillableSyncState sets the "sync_state" field if the given value is not nil.
-func (_c *InstanceCreate) SetNillableSyncState(v *instance.SyncState) *InstanceCreate {
-	if v != nil {
-		_c.SetSyncState(*v)
-	}
-	return _c
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (_c *InstanceCreate) SetLastSyncedAt(v time.Time) *InstanceCreate {
-	_c.mutation.SetLastSyncedAt(v)
 	return _c
 }
 
@@ -217,10 +169,6 @@ func (_c *InstanceCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *InstanceCreate) defaults() {
-	if _, ok := _c.mutation.SyncState(); !ok {
-		v := instance.DefaultSyncState
-		_c.mutation.SetSyncState(v)
-	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := instance.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -254,17 +202,6 @@ func (_c *InstanceCreate) check() error {
 	}
 	if _, ok := _c.mutation.ProviderCreatedAt(); !ok {
 		return &ValidationError{Name: "provider_created_at", err: errors.New(`ent: missing required field "Instance.provider_created_at"`)}
-	}
-	if _, ok := _c.mutation.SyncState(); !ok {
-		return &ValidationError{Name: "sync_state", err: errors.New(`ent: missing required field "Instance.sync_state"`)}
-	}
-	if v, ok := _c.mutation.SyncState(); ok {
-		if err := instance.SyncStateValidator(v); err != nil {
-			return &ValidationError{Name: "sync_state", err: fmt.Errorf(`ent: validator failed for field "Instance.sync_state": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.LastSyncedAt(); !ok {
-		return &ValidationError{Name: "last_synced_at", err: errors.New(`ent: missing required field "Instance.last_synced_at"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Instance.created_at"`)}
@@ -331,25 +268,9 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 		_spec.SetField(instance.FieldFlavorID, field.TypeString, value)
 		_node.FlavorID = value
 	}
-	if value, ok := _c.mutation.FixedIP(); ok {
-		_spec.SetField(instance.FieldFixedIP, field.TypeString, value)
-		_node.FixedIP = &value
-	}
-	if value, ok := _c.mutation.FloatingIP(); ok {
-		_spec.SetField(instance.FieldFloatingIP, field.TypeString, value)
-		_node.FloatingIP = &value
-	}
 	if value, ok := _c.mutation.ProviderCreatedAt(); ok {
 		_spec.SetField(instance.FieldProviderCreatedAt, field.TypeTime, value)
 		_node.ProviderCreatedAt = value
-	}
-	if value, ok := _c.mutation.SyncState(); ok {
-		_spec.SetField(instance.FieldSyncState, field.TypeEnum, value)
-		_node.SyncState = value
-	}
-	if value, ok := _c.mutation.LastSyncedAt(); ok {
-		_spec.SetField(instance.FieldLastSyncedAt, field.TypeTime, value)
-		_node.LastSyncedAt = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(instance.FieldCreatedAt, field.TypeTime, value)
@@ -505,42 +426,6 @@ func (u *InstanceUpsert) UpdateFlavorID() *InstanceUpsert {
 	return u
 }
 
-// SetFixedIP sets the "fixed_ip" field.
-func (u *InstanceUpsert) SetFixedIP(v string) *InstanceUpsert {
-	u.Set(instance.FieldFixedIP, v)
-	return u
-}
-
-// UpdateFixedIP sets the "fixed_ip" field to the value that was provided on create.
-func (u *InstanceUpsert) UpdateFixedIP() *InstanceUpsert {
-	u.SetExcluded(instance.FieldFixedIP)
-	return u
-}
-
-// ClearFixedIP clears the value of the "fixed_ip" field.
-func (u *InstanceUpsert) ClearFixedIP() *InstanceUpsert {
-	u.SetNull(instance.FieldFixedIP)
-	return u
-}
-
-// SetFloatingIP sets the "floating_ip" field.
-func (u *InstanceUpsert) SetFloatingIP(v string) *InstanceUpsert {
-	u.Set(instance.FieldFloatingIP, v)
-	return u
-}
-
-// UpdateFloatingIP sets the "floating_ip" field to the value that was provided on create.
-func (u *InstanceUpsert) UpdateFloatingIP() *InstanceUpsert {
-	u.SetExcluded(instance.FieldFloatingIP)
-	return u
-}
-
-// ClearFloatingIP clears the value of the "floating_ip" field.
-func (u *InstanceUpsert) ClearFloatingIP() *InstanceUpsert {
-	u.SetNull(instance.FieldFloatingIP)
-	return u
-}
-
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (u *InstanceUpsert) SetProviderCreatedAt(v time.Time) *InstanceUpsert {
 	u.Set(instance.FieldProviderCreatedAt, v)
@@ -550,30 +435,6 @@ func (u *InstanceUpsert) SetProviderCreatedAt(v time.Time) *InstanceUpsert {
 // UpdateProviderCreatedAt sets the "provider_created_at" field to the value that was provided on create.
 func (u *InstanceUpsert) UpdateProviderCreatedAt() *InstanceUpsert {
 	u.SetExcluded(instance.FieldProviderCreatedAt)
-	return u
-}
-
-// SetSyncState sets the "sync_state" field.
-func (u *InstanceUpsert) SetSyncState(v instance.SyncState) *InstanceUpsert {
-	u.Set(instance.FieldSyncState, v)
-	return u
-}
-
-// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
-func (u *InstanceUpsert) UpdateSyncState() *InstanceUpsert {
-	u.SetExcluded(instance.FieldSyncState)
-	return u
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (u *InstanceUpsert) SetLastSyncedAt(v time.Time) *InstanceUpsert {
-	u.Set(instance.FieldLastSyncedAt, v)
-	return u
-}
-
-// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
-func (u *InstanceUpsert) UpdateLastSyncedAt() *InstanceUpsert {
-	u.SetExcluded(instance.FieldLastSyncedAt)
 	return u
 }
 
@@ -710,48 +571,6 @@ func (u *InstanceUpsertOne) UpdateFlavorID() *InstanceUpsertOne {
 	})
 }
 
-// SetFixedIP sets the "fixed_ip" field.
-func (u *InstanceUpsertOne) SetFixedIP(v string) *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetFixedIP(v)
-	})
-}
-
-// UpdateFixedIP sets the "fixed_ip" field to the value that was provided on create.
-func (u *InstanceUpsertOne) UpdateFixedIP() *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateFixedIP()
-	})
-}
-
-// ClearFixedIP clears the value of the "fixed_ip" field.
-func (u *InstanceUpsertOne) ClearFixedIP() *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.ClearFixedIP()
-	})
-}
-
-// SetFloatingIP sets the "floating_ip" field.
-func (u *InstanceUpsertOne) SetFloatingIP(v string) *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetFloatingIP(v)
-	})
-}
-
-// UpdateFloatingIP sets the "floating_ip" field to the value that was provided on create.
-func (u *InstanceUpsertOne) UpdateFloatingIP() *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateFloatingIP()
-	})
-}
-
-// ClearFloatingIP clears the value of the "floating_ip" field.
-func (u *InstanceUpsertOne) ClearFloatingIP() *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.ClearFloatingIP()
-	})
-}
-
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (u *InstanceUpsertOne) SetProviderCreatedAt(v time.Time) *InstanceUpsertOne {
 	return u.Update(func(s *InstanceUpsert) {
@@ -763,34 +582,6 @@ func (u *InstanceUpsertOne) SetProviderCreatedAt(v time.Time) *InstanceUpsertOne
 func (u *InstanceUpsertOne) UpdateProviderCreatedAt() *InstanceUpsertOne {
 	return u.Update(func(s *InstanceUpsert) {
 		s.UpdateProviderCreatedAt()
-	})
-}
-
-// SetSyncState sets the "sync_state" field.
-func (u *InstanceUpsertOne) SetSyncState(v instance.SyncState) *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetSyncState(v)
-	})
-}
-
-// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
-func (u *InstanceUpsertOne) UpdateSyncState() *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateSyncState()
-	})
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (u *InstanceUpsertOne) SetLastSyncedAt(v time.Time) *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetLastSyncedAt(v)
-	})
-}
-
-// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
-func (u *InstanceUpsertOne) UpdateLastSyncedAt() *InstanceUpsertOne {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateLastSyncedAt()
 	})
 }
 
@@ -1096,48 +887,6 @@ func (u *InstanceUpsertBulk) UpdateFlavorID() *InstanceUpsertBulk {
 	})
 }
 
-// SetFixedIP sets the "fixed_ip" field.
-func (u *InstanceUpsertBulk) SetFixedIP(v string) *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetFixedIP(v)
-	})
-}
-
-// UpdateFixedIP sets the "fixed_ip" field to the value that was provided on create.
-func (u *InstanceUpsertBulk) UpdateFixedIP() *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateFixedIP()
-	})
-}
-
-// ClearFixedIP clears the value of the "fixed_ip" field.
-func (u *InstanceUpsertBulk) ClearFixedIP() *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.ClearFixedIP()
-	})
-}
-
-// SetFloatingIP sets the "floating_ip" field.
-func (u *InstanceUpsertBulk) SetFloatingIP(v string) *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetFloatingIP(v)
-	})
-}
-
-// UpdateFloatingIP sets the "floating_ip" field to the value that was provided on create.
-func (u *InstanceUpsertBulk) UpdateFloatingIP() *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateFloatingIP()
-	})
-}
-
-// ClearFloatingIP clears the value of the "floating_ip" field.
-func (u *InstanceUpsertBulk) ClearFloatingIP() *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.ClearFloatingIP()
-	})
-}
-
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (u *InstanceUpsertBulk) SetProviderCreatedAt(v time.Time) *InstanceUpsertBulk {
 	return u.Update(func(s *InstanceUpsert) {
@@ -1149,34 +898,6 @@ func (u *InstanceUpsertBulk) SetProviderCreatedAt(v time.Time) *InstanceUpsertBu
 func (u *InstanceUpsertBulk) UpdateProviderCreatedAt() *InstanceUpsertBulk {
 	return u.Update(func(s *InstanceUpsert) {
 		s.UpdateProviderCreatedAt()
-	})
-}
-
-// SetSyncState sets the "sync_state" field.
-func (u *InstanceUpsertBulk) SetSyncState(v instance.SyncState) *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetSyncState(v)
-	})
-}
-
-// UpdateSyncState sets the "sync_state" field to the value that was provided on create.
-func (u *InstanceUpsertBulk) UpdateSyncState() *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateSyncState()
-	})
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (u *InstanceUpsertBulk) SetLastSyncedAt(v time.Time) *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.SetLastSyncedAt(v)
-	})
-}
-
-// UpdateLastSyncedAt sets the "last_synced_at" field to the value that was provided on create.
-func (u *InstanceUpsertBulk) UpdateLastSyncedAt() *InstanceUpsertBulk {
-	return u.Update(func(s *InstanceUpsert) {
-		s.UpdateLastSyncedAt()
 	})
 }
 

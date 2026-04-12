@@ -16,11 +16,7 @@ var (
 		{Name: "status", Type: field.TypeString},
 		{Name: "image_id", Type: field.TypeString},
 		{Name: "flavor_id", Type: field.TypeString},
-		{Name: "fixed_ip", Type: field.TypeString, Nullable: true},
-		{Name: "floating_ip", Type: field.TypeString, Nullable: true},
 		{Name: "provider_created_at", Type: field.TypeTime},
-		{Name: "sync_state", Type: field.TypeEnum, Enums: []string{"synced", "missing", "error"}, Default: "synced"},
-		{Name: "last_synced_at", Type: field.TypeTime},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "key_pair_instances", Type: field.TypeUUID, Nullable: true},
@@ -34,13 +30,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "instances_key_pairs_instances",
-				Columns:    []*schema.Column{InstancesColumns[13]},
+				Columns:    []*schema.Column{InstancesColumns[9]},
 				RefColumns: []*schema.Column{KeyPairsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "instances_users_instances",
-				Columns:    []*schema.Column{InstancesColumns[14]},
+				Columns:    []*schema.Column{InstancesColumns[10]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

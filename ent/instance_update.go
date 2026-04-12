@@ -101,46 +101,6 @@ func (_u *InstanceUpdate) SetNillableFlavorID(v *string) *InstanceUpdate {
 	return _u
 }
 
-// SetFixedIP sets the "fixed_ip" field.
-func (_u *InstanceUpdate) SetFixedIP(v string) *InstanceUpdate {
-	_u.mutation.SetFixedIP(v)
-	return _u
-}
-
-// SetNillableFixedIP sets the "fixed_ip" field if the given value is not nil.
-func (_u *InstanceUpdate) SetNillableFixedIP(v *string) *InstanceUpdate {
-	if v != nil {
-		_u.SetFixedIP(*v)
-	}
-	return _u
-}
-
-// ClearFixedIP clears the value of the "fixed_ip" field.
-func (_u *InstanceUpdate) ClearFixedIP() *InstanceUpdate {
-	_u.mutation.ClearFixedIP()
-	return _u
-}
-
-// SetFloatingIP sets the "floating_ip" field.
-func (_u *InstanceUpdate) SetFloatingIP(v string) *InstanceUpdate {
-	_u.mutation.SetFloatingIP(v)
-	return _u
-}
-
-// SetNillableFloatingIP sets the "floating_ip" field if the given value is not nil.
-func (_u *InstanceUpdate) SetNillableFloatingIP(v *string) *InstanceUpdate {
-	if v != nil {
-		_u.SetFloatingIP(*v)
-	}
-	return _u
-}
-
-// ClearFloatingIP clears the value of the "floating_ip" field.
-func (_u *InstanceUpdate) ClearFloatingIP() *InstanceUpdate {
-	_u.mutation.ClearFloatingIP()
-	return _u
-}
-
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (_u *InstanceUpdate) SetProviderCreatedAt(v time.Time) *InstanceUpdate {
 	_u.mutation.SetProviderCreatedAt(v)
@@ -151,34 +111,6 @@ func (_u *InstanceUpdate) SetProviderCreatedAt(v time.Time) *InstanceUpdate {
 func (_u *InstanceUpdate) SetNillableProviderCreatedAt(v *time.Time) *InstanceUpdate {
 	if v != nil {
 		_u.SetProviderCreatedAt(*v)
-	}
-	return _u
-}
-
-// SetSyncState sets the "sync_state" field.
-func (_u *InstanceUpdate) SetSyncState(v instance.SyncState) *InstanceUpdate {
-	_u.mutation.SetSyncState(v)
-	return _u
-}
-
-// SetNillableSyncState sets the "sync_state" field if the given value is not nil.
-func (_u *InstanceUpdate) SetNillableSyncState(v *instance.SyncState) *InstanceUpdate {
-	if v != nil {
-		_u.SetSyncState(*v)
-	}
-	return _u
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (_u *InstanceUpdate) SetLastSyncedAt(v time.Time) *InstanceUpdate {
-	_u.mutation.SetLastSyncedAt(v)
-	return _u
-}
-
-// SetNillableLastSyncedAt sets the "last_synced_at" field if the given value is not nil.
-func (_u *InstanceUpdate) SetNillableLastSyncedAt(v *time.Time) *InstanceUpdate {
-	if v != nil {
-		_u.SetLastSyncedAt(*v)
 	}
 	return _u
 }
@@ -274,11 +206,6 @@ func (_u *InstanceUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *InstanceUpdate) check() error {
-	if v, ok := _u.mutation.SyncState(); ok {
-		if err := instance.SyncStateValidator(v); err != nil {
-			return &ValidationError{Name: "sync_state", err: fmt.Errorf(`ent: validator failed for field "Instance.sync_state": %w`, err)}
-		}
-	}
 	if _u.mutation.OwnerCleared() && len(_u.mutation.OwnerIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Instance.owner"`)
 	}
@@ -312,26 +239,8 @@ func (_u *InstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.FlavorID(); ok {
 		_spec.SetField(instance.FieldFlavorID, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.FixedIP(); ok {
-		_spec.SetField(instance.FieldFixedIP, field.TypeString, value)
-	}
-	if _u.mutation.FixedIPCleared() {
-		_spec.ClearField(instance.FieldFixedIP, field.TypeString)
-	}
-	if value, ok := _u.mutation.FloatingIP(); ok {
-		_spec.SetField(instance.FieldFloatingIP, field.TypeString, value)
-	}
-	if _u.mutation.FloatingIPCleared() {
-		_spec.ClearField(instance.FieldFloatingIP, field.TypeString)
-	}
 	if value, ok := _u.mutation.ProviderCreatedAt(); ok {
 		_spec.SetField(instance.FieldProviderCreatedAt, field.TypeTime, value)
-	}
-	if value, ok := _u.mutation.SyncState(); ok {
-		_spec.SetField(instance.FieldSyncState, field.TypeEnum, value)
-	}
-	if value, ok := _u.mutation.LastSyncedAt(); ok {
-		_spec.SetField(instance.FieldLastSyncedAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(instance.FieldUpdatedAt, field.TypeTime, value)
@@ -484,46 +393,6 @@ func (_u *InstanceUpdateOne) SetNillableFlavorID(v *string) *InstanceUpdateOne {
 	return _u
 }
 
-// SetFixedIP sets the "fixed_ip" field.
-func (_u *InstanceUpdateOne) SetFixedIP(v string) *InstanceUpdateOne {
-	_u.mutation.SetFixedIP(v)
-	return _u
-}
-
-// SetNillableFixedIP sets the "fixed_ip" field if the given value is not nil.
-func (_u *InstanceUpdateOne) SetNillableFixedIP(v *string) *InstanceUpdateOne {
-	if v != nil {
-		_u.SetFixedIP(*v)
-	}
-	return _u
-}
-
-// ClearFixedIP clears the value of the "fixed_ip" field.
-func (_u *InstanceUpdateOne) ClearFixedIP() *InstanceUpdateOne {
-	_u.mutation.ClearFixedIP()
-	return _u
-}
-
-// SetFloatingIP sets the "floating_ip" field.
-func (_u *InstanceUpdateOne) SetFloatingIP(v string) *InstanceUpdateOne {
-	_u.mutation.SetFloatingIP(v)
-	return _u
-}
-
-// SetNillableFloatingIP sets the "floating_ip" field if the given value is not nil.
-func (_u *InstanceUpdateOne) SetNillableFloatingIP(v *string) *InstanceUpdateOne {
-	if v != nil {
-		_u.SetFloatingIP(*v)
-	}
-	return _u
-}
-
-// ClearFloatingIP clears the value of the "floating_ip" field.
-func (_u *InstanceUpdateOne) ClearFloatingIP() *InstanceUpdateOne {
-	_u.mutation.ClearFloatingIP()
-	return _u
-}
-
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (_u *InstanceUpdateOne) SetProviderCreatedAt(v time.Time) *InstanceUpdateOne {
 	_u.mutation.SetProviderCreatedAt(v)
@@ -534,34 +403,6 @@ func (_u *InstanceUpdateOne) SetProviderCreatedAt(v time.Time) *InstanceUpdateOn
 func (_u *InstanceUpdateOne) SetNillableProviderCreatedAt(v *time.Time) *InstanceUpdateOne {
 	if v != nil {
 		_u.SetProviderCreatedAt(*v)
-	}
-	return _u
-}
-
-// SetSyncState sets the "sync_state" field.
-func (_u *InstanceUpdateOne) SetSyncState(v instance.SyncState) *InstanceUpdateOne {
-	_u.mutation.SetSyncState(v)
-	return _u
-}
-
-// SetNillableSyncState sets the "sync_state" field if the given value is not nil.
-func (_u *InstanceUpdateOne) SetNillableSyncState(v *instance.SyncState) *InstanceUpdateOne {
-	if v != nil {
-		_u.SetSyncState(*v)
-	}
-	return _u
-}
-
-// SetLastSyncedAt sets the "last_synced_at" field.
-func (_u *InstanceUpdateOne) SetLastSyncedAt(v time.Time) *InstanceUpdateOne {
-	_u.mutation.SetLastSyncedAt(v)
-	return _u
-}
-
-// SetNillableLastSyncedAt sets the "last_synced_at" field if the given value is not nil.
-func (_u *InstanceUpdateOne) SetNillableLastSyncedAt(v *time.Time) *InstanceUpdateOne {
-	if v != nil {
-		_u.SetLastSyncedAt(*v)
 	}
 	return _u
 }
@@ -670,11 +511,6 @@ func (_u *InstanceUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *InstanceUpdateOne) check() error {
-	if v, ok := _u.mutation.SyncState(); ok {
-		if err := instance.SyncStateValidator(v); err != nil {
-			return &ValidationError{Name: "sync_state", err: fmt.Errorf(`ent: validator failed for field "Instance.sync_state": %w`, err)}
-		}
-	}
 	if _u.mutation.OwnerCleared() && len(_u.mutation.OwnerIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Instance.owner"`)
 	}
@@ -725,26 +561,8 @@ func (_u *InstanceUpdateOne) sqlSave(ctx context.Context) (_node *Instance, err 
 	if value, ok := _u.mutation.FlavorID(); ok {
 		_spec.SetField(instance.FieldFlavorID, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.FixedIP(); ok {
-		_spec.SetField(instance.FieldFixedIP, field.TypeString, value)
-	}
-	if _u.mutation.FixedIPCleared() {
-		_spec.ClearField(instance.FieldFixedIP, field.TypeString)
-	}
-	if value, ok := _u.mutation.FloatingIP(); ok {
-		_spec.SetField(instance.FieldFloatingIP, field.TypeString, value)
-	}
-	if _u.mutation.FloatingIPCleared() {
-		_spec.ClearField(instance.FieldFloatingIP, field.TypeString)
-	}
 	if value, ok := _u.mutation.ProviderCreatedAt(); ok {
 		_spec.SetField(instance.FieldProviderCreatedAt, field.TypeTime, value)
-	}
-	if value, ok := _u.mutation.SyncState(); ok {
-		_spec.SetField(instance.FieldSyncState, field.TypeEnum, value)
-	}
-	if value, ok := _u.mutation.LastSyncedAt(); ok {
-		_spec.SetField(instance.FieldLastSyncedAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(instance.FieldUpdatedAt, field.TypeTime, value)

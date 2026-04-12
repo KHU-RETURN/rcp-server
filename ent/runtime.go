@@ -19,11 +19,11 @@ func init() {
 	instanceFields := schema.Instance{}.Fields()
 	_ = instanceFields
 	// instanceDescCreatedAt is the schema descriptor for created_at field.
-	instanceDescCreatedAt := instanceFields[11].Descriptor()
+	instanceDescCreatedAt := instanceFields[7].Descriptor()
 	// instance.DefaultCreatedAt holds the default value on creation for the created_at field.
 	instance.DefaultCreatedAt = instanceDescCreatedAt.Default.(func() time.Time)
 	// instanceDescUpdatedAt is the schema descriptor for updated_at field.
-	instanceDescUpdatedAt := instanceFields[12].Descriptor()
+	instanceDescUpdatedAt := instanceFields[8].Descriptor()
 	// instance.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	instance.DefaultUpdatedAt = instanceDescUpdatedAt.Default.(func() time.Time)
 	// instance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

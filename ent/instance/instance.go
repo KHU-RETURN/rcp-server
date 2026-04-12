@@ -3,7 +3,6 @@
 package instance
 
 import (
-	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -26,16 +25,8 @@ const (
 	FieldImageID = "image_id"
 	// FieldFlavorID holds the string denoting the flavor_id field in the database.
 	FieldFlavorID = "flavor_id"
-	// FieldFixedIP holds the string denoting the fixed_ip field in the database.
-	FieldFixedIP = "fixed_ip"
-	// FieldFloatingIP holds the string denoting the floating_ip field in the database.
-	FieldFloatingIP = "floating_ip"
 	// FieldProviderCreatedAt holds the string denoting the provider_created_at field in the database.
 	FieldProviderCreatedAt = "provider_created_at"
-	// FieldSyncState holds the string denoting the sync_state field in the database.
-	FieldSyncState = "sync_state"
-	// FieldLastSyncedAt holds the string denoting the last_synced_at field in the database.
-	FieldLastSyncedAt = "last_synced_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -70,11 +61,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldImageID,
 	FieldFlavorID,
-	FieldFixedIP,
-	FieldFloatingIP,
 	FieldProviderCreatedAt,
-	FieldSyncState,
-	FieldLastSyncedAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -112,33 +99,6 @@ var (
 	DefaultID func() uuid.UUID
 )
 
-// SyncState defines the type for the "sync_state" enum field.
-type SyncState string
-
-// SyncStateSynced is the default value of the SyncState enum.
-const DefaultSyncState = SyncStateSynced
-
-// SyncState values.
-const (
-	SyncStateSynced  SyncState = "synced"
-	SyncStateMissing SyncState = "missing"
-	SyncStateError   SyncState = "error"
-)
-
-func (ss SyncState) String() string {
-	return string(ss)
-}
-
-// SyncStateValidator is a validator for the "sync_state" field enum values. It is called by the builders before save.
-func SyncStateValidator(ss SyncState) error {
-	switch ss {
-	case SyncStateSynced, SyncStateMissing, SyncStateError:
-		return nil
-	default:
-		return fmt.Errorf("instance: invalid enum value for sync_state field: %q", ss)
-	}
-}
-
 // OrderOption defines the ordering options for the Instance queries.
 type OrderOption func(*sql.Selector)
 
@@ -172,29 +132,9 @@ func ByFlavorID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFlavorID, opts...).ToFunc()
 }
 
-// ByFixedIP orders the results by the fixed_ip field.
-func ByFixedIP(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldFixedIP, opts...).ToFunc()
-}
-
-// ByFloatingIP orders the results by the floating_ip field.
-func ByFloatingIP(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldFloatingIP, opts...).ToFunc()
-}
-
 // ByProviderCreatedAt orders the results by the provider_created_at field.
 func ByProviderCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProviderCreatedAt, opts...).ToFunc()
-}
-
-// BySyncState orders the results by the sync_state field.
-func BySyncState(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSyncState, opts...).ToFunc()
-}
-
-// ByLastSyncedAt orders the results by the last_synced_at field.
-func ByLastSyncedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLastSyncedAt, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
