@@ -80,6 +80,7 @@ func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User
 	user := &User{
 		Email:        email,
 		Name:         name,
+		GoogleID:     payload.Subject,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		Expiry:       expiry,

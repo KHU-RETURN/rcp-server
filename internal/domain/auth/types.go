@@ -1,8 +1,10 @@
 package auth
 
 import (
-	"github.com/golang-jwt/jwt/v5"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type AuthResponse struct {
@@ -12,9 +14,10 @@ type AuthResponse struct {
 }
 
 type User struct {
-	ID           int64
+	ID           uuid.UUID
 	Email        string
 	Name         string
+	GoogleID     string
 	AccessToken  string
 	RefreshToken string
 	Expiry       time.Time

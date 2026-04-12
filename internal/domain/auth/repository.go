@@ -2,92 +2,81 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"time"
+
+	"entgo.io/ent/dialect/sql"
+	"github.com/KHU-RETURN/rcp-server/ent"
+	entuser "github.com/KHU-RETURN/rcp-server/ent/user"
 )
 
-// Repository는 *sql.DB를 통해 유저 데이터를 저장합니다.
+// Repository는 *ent.Client를 통해 유저 데이터를 저장합니다.
 type Repository struct {
-	db *sql.DB
+	db *ent.Client
 }
 
-// NewRepository는 DB 연결을 주입받고 초기 테이블을 생성합니다.
-func NewRepository(db *sql.DB) (*Repository, error) {
-	schema := `
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE,
-        name TEXT,
-        access_token TEXT,       -- 우리 서비스용
-        refresh_token TEXT,      -- 우리 서비스용
-        expiry DATETIME,         -- 우리 서비스용 만료
-        google_access_token TEXT, -- 구글 API용
-        google_refresh_token TEXT,-- 구글 API용
-        google_expiry DATETIME    -- 구글 토큰 만료
-    );`
-	if _, err := db.Exec(schema); err != nil {
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-	return &Repository{db: db}, nil
+// NewRepository는 ent 클라이언트를 주입받습니다.
+func NewRepository(db *ent.Client) *Repository {
+	return &Repository{db: db}
 }
 
 // UpsertUser는 Google에서 받은 정보를 DB에 저장하거나 업데이트합니다.
 func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
-	query := `
-    INSERT INTO users (
-        email, name, access_token, refresh_token, expiry,
-        google_access_token, google_refresh_token, google_expiry
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(email) DO UPDATE SET
-        name = excluded.name,
-        access_token = excluded.access_token,
-        refresh_token = excluded.refresh_token,
-        expiry = excluded.expiry,
-        google_access_token = excluded.google_access_token,
-        google_refresh_token = excluded.google_refresh_token,
-        google_expiry = excluded.google_expiry;`
 	var googleAccessToken, googleRefreshToken string
-	var googleExpiry sql.NullTime
+	var googleExpiry time.Time
 
 	if user.GoogleAuth != nil {
 		googleAccessToken = user.GoogleAuth.AccessToken
 		googleRefreshToken = user.GoogleAuth.RefreshToken
-		googleExpiry = sql.NullTime{
-			Time:  user.GoogleAuth.Expiry,
-			Valid: true,
-		}
-	} else {
-		googleExpiry = sql.NullTime{
-			Valid: false,
-		}
+		googleExpiry = user.GoogleAuth.Expiry
 	}
-	_, err := r.db.ExecContext(ctx, query,
-		user.Email,
-		user.Name,
-		user.AccessToken,
-		user.RefreshToken,
-		user.Expiry,
-		googleAccessToken,
-		googleRefreshToken,
-		googleExpiry)
-	return err
+
+	err := r.db.User.Create().
+		SetEmail(user.Email).
+		SetName(user.Name).
+		SetGoogleID(user.GoogleID).
+		SetGoogleAccessToken(googleAccessToken).
+		SetGoogleRefreshToken(googleRefreshToken).
+		SetGoogleTokenExpiry(googleExpiry).
+		OnConflict(
+			sql.ConflictColumns(entuser.FieldEmail),
+		).
+		Update(func(u *ent.UserUpsert) {
+			u.SetName(user.Name)
+			u.SetGoogleID(user.GoogleID)
+			u.SetGoogleAccessToken(googleAccessToken)
+			u.SetGoogleRefreshToken(googleRefreshToken)
+			u.SetGoogleTokenExpiry(googleExpiry)
+			u.SetUpdatedAt(time.Now())
+		}).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to upsert user: %w", err)
+	}
+	return nil
 }
 
 // FindByEmail은 이메일로 기존 유저를 조회합니다.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, error) {
-	query := `SELECT id, email, name, access_token, refresh_token, expiry FROM users WHERE email = ?`
-
-	row := r.db.QueryRowContext(ctx, query, email)
-
-	u := &User{}
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AccessToken, &u.RefreshToken, &u.Expiry)
+	u, err := r.db.User.Query().
+		Where(entuser.Email(email)).
+		Only(ctx)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if ent.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
-	return u, nil
+	return &User{
+		ID:       u.ID,
+		Email:    u.Email,
+		Name:     u.Name,
+		GoogleID: u.GoogleID,
+		GoogleAuth: &GoogleInfo{
+			AccessToken:  u.GoogleAccessToken,
+			RefreshToken: u.GoogleRefreshToken,
+			Expiry:       u.GoogleTokenExpiry,
+		},
+	}, nil
 }
