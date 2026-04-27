@@ -2,12 +2,17 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/KHU-RETURN/rcp-server/ent"
 	_ "github.com/lib/pq"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
+
+func init() {
+	sql.Register("sqlite3", &sqlite.Driver{})
+}
 
 type Config struct {
 	Driver string // "sqlite3" | "postgres"
