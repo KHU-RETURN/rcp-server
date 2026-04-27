@@ -1,23 +1,20 @@
 package auth
 
 import (
-	"github.com/golang-jwt/jwt/v5"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
-type AuthResponse struct {
+type User struct {
+	ID           uuid.UUID `json:"id"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	GoogleID     string    `json:"-"`
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
 	Expiry       time.Time `json:"expiry"`
-}
-
-type User struct {
-	ID           int64
-	Email        string
-	Name         string
-	AccessToken  string
-	RefreshToken string
-	Expiry       time.Time
 	// 구글 전용 정보 (서버 내부에서만 사용, 클라이언트에 노출 안 함)
 	GoogleAuth *GoogleInfo `json:"-"`
 }

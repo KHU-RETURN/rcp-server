@@ -1,26 +1,36 @@
 package compute
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+
+	"github.com/google/uuid"
 )
 
-// computeClient는 OpenStack compute API 접근 인터페이스입니다.
-// 구현체는 client.go의 Client입니다.
 type computeClient interface {
 	FetchFlavors() ([]Flavor, error)
 	GetComputeQuota(projectID string) (*QuotaDetailSet, error)
 	CreateServer(opts CreateServerOpts) (*Server, error)
-	FetchInstances() ([]Server, error)
-	FetchInstanceDetail(id string) (*Server, map[string]any, error)
 	DeleteServer(id string) error
+	FetchInstances() ([]Server, error)
+	FetchInstance(id string) (*Server, error)
+	FetchDiagnostics(id string) (map[string]any, error)
 }
 
-// Service는 비즈니스 로직을 담당합니다.
+type instanceRepo interface {
+	SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
+	DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error
+	ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Instance, error)
+	FindByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
+}
+
 type Service struct {
 	client    computeClient
+	repo      instanceRepo
 	projectID string
 }
 
@@ -28,14 +38,14 @@ var (
 	ErrCreateInstanceNameRequired   = errors.New("name is required")
 	ErrCreateInstanceImageRequired  = errors.New("image_id is required")
 	ErrCreateInstanceFlavorRequired = errors.New("flavor_id is required")
+	ErrInstanceNotFound             = errors.New("instance not found")
+	ErrInstanceOperationFailed      = errors.New("instance operation failed")
 )
 
-// NewService는 새로운 서비스를 생성합니다.
-func NewService(client computeClient, projectID string) *Service {
-	return &Service{client: client, projectID: projectID}
+func NewService(client computeClient, repo instanceRepo, projectID string) *Service {
+	return &Service{client: client, repo: repo, projectID: projectID}
 }
 
-// GetFlavors는 Repo에서 가져온 데이터를 우리 규격(FlavorResponse)으로 변환합니다.
 func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 	rawFlavors, err := s.client.FetchFlavors()
 	if err != nil {
@@ -49,7 +59,6 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 	return res, nil
 }
 
-// GetAvailableFlavorsWithLimit는 남은 자원량을 계산하여 각 Flavor별 가용 대수를 포함해 반환합니다.
 func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, error) {
 	rawFlavors, err := s.client.FetchFlavors()
 	if err != nil {
@@ -91,112 +100,143 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 	return res, nil
 }
 
-// GetInstances는 VM 전체 목록을 가져와 변환하며, 각 VM의 Flavor 상세 정보도 포함합니다.
-func (s *Service) GetInstances() ([]InstanceDetailResponse, error) {
-	rawServers, err := s.client.FetchInstances()
-	if err != nil {
-		return nil, err
+// GetInstances는 DB(소유권)와 OpenStack(가변 상태)을 병렬로 읽어 조합하여 반환합니다.
+func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]InstanceDetailResponse, error) {
+	var (
+		dbInstances          []Instance
+		osServers            []Server
+		flavorMap            map[string]FlavorResponse
+		dbErr, osErr, flvErr error
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		dbInstances, dbErr = s.repo.ListByOwner(ctx, ownerID)
+	}()
+	go func() {
+		defer wg.Done()
+		osServers, osErr = s.client.FetchInstances()
+	}()
+	go func() {
+		defer wg.Done()
+		flavorMap, flvErr = s.fetchFlavorMap()
+	}()
+	wg.Wait()
+
+	if dbErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, dbErr)
+	}
+	if osErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, osErr)
+	}
+	if flvErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, flvErr)
 	}
 
-	allFlavors, err := s.client.FetchFlavors()
-	if err != nil {
-		return nil, err
-	}
-	flavorMap := make(map[string]FlavorResponse)
-	for _, f := range allFlavors {
-		flavorMap[f.ID] = FlavorResponse(f)
+	serverMap := make(map[string]Server, len(osServers))
+	for _, srv := range osServers {
+		serverMap[srv.ID] = srv
 	}
 
-	var res []InstanceDetailResponse
-	for _, srv := range rawServers {
-		addrMap := make(map[string]string)
-		for netName, addrs := range srv.Addresses {
-			if addrList, ok := addrs.([]any); ok && len(addrList) > 0 {
-				if firstAddr, ok := addrList[0].(map[string]any); ok {
-					if addr, ok := firstAddr["addr"].(string); ok {
-						addrMap[netName] = addr
-					}
-				}
-			}
-		}
-
-		var targetFlavor FlavorResponse
-		if srvFlavorID, ok := srv.Flavor["id"].(string); ok {
-			if f, exists := flavorMap[srvFlavorID]; exists {
-				targetFlavor = f
-			}
-		}
-
+	res := make([]InstanceDetailResponse, 0, len(dbInstances))
+	for _, inst := range dbInstances {
+		srv := serverMap[inst.OpenstackID]
+		fixedIP, floatingIP := extractServerIPs(&srv)
 		res = append(res, InstanceDetailResponse{
-			ID:        srv.ID,
-			Name:      srv.Name,
-			Status:    srv.Status,
-			Created:   srv.Created,
-			Image:     extractResourceID(srv.Image),
-			Addresses: addrMap,
-			Flavor:    targetFlavor,
+			ID:         inst.OpenstackID,
+			Name:       inst.Name,
+			Status:     srv.Status,
+			Image:      inst.ImageID,
+			Flavor:     flavorMap[inst.FlavorID],
+			FixedIP:    fixedIP,
+			FloatingIP: floatingIP,
+			Created:    inst.Created,
 		})
 	}
 	return res, nil
 }
 
-// GetInstanceDetail은 특정 VM의 상세 정보와 실시간 사용량을 반환합니다.
-func (s *Service) GetInstanceDetail(id string) (*InstanceDetailResponse, error) {
-	server, diag, err := s.client.FetchInstanceDetail(id)
-	if err != nil {
-		return nil, err
+// GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
+func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id string) (*InstanceDetailResponse, error) {
+	var (
+		inst                 *Instance
+		srv                  *Server
+		diag                 map[string]any
+		flavorMap            map[string]FlavorResponse
+		dbErr, osErr, flvErr error
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		inst, dbErr = s.repo.FindByOpenstackID(ctx, ownerID, id)
+	}()
+	go func() {
+		defer wg.Done()
+		srv, osErr = s.client.FetchInstance(id)
+	}()
+	go func() {
+		defer wg.Done()
+		// diagnostics 실패는 non-fatal — 사용량 미표시로 처리
+		diag, _ = s.client.FetchDiagnostics(id)
+	}()
+	go func() {
+		defer wg.Done()
+		flavorMap, flvErr = s.fetchFlavorMap()
+	}()
+	wg.Wait()
+
+	if dbErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, dbErr)
+	}
+	if inst == nil {
+		return nil, ErrInstanceNotFound
+	}
+	if osErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, osErr)
+	}
+	if flvErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, flvErr)
 	}
 
-	allFlavors, err := s.client.FetchFlavors()
-	if err != nil {
-		return nil, err
-	}
-	var targetFlavor FlavorResponse
-	serverFlavorID, _ := server.Flavor["id"].(string)
-	for _, f := range allFlavors {
-		if f.ID == serverFlavorID {
-			targetFlavor = FlavorResponse(f)
-			break
-		}
-	}
-
-	addrMap := make(map[string]string)
-	for netName, addrs := range server.Addresses {
-		if addrList, ok := addrs.([]any); ok && len(addrList) > 0 {
-			if firstAddr, ok := addrList[0].(map[string]any); ok {
-				addrMap[netName], _ = firstAddr["addr"].(string)
-			}
-		}
-	}
-
-	usage := UsageStats{}
-	if diag != nil {
-		if cpu, ok := diag["cpu0_time"].(float64); ok {
-			usage.CPUUsage = cpu
-		}
-		if mem, ok := diag["memory"].(float64); ok {
-			usage.MemoryUsage = int(mem / 1024)
-		}
-	}
-
+	fixedIP, floatingIP := extractServerIPs(srv)
 	return &InstanceDetailResponse{
-		ID:        server.ID,
-		Name:      server.Name,
-		Status:    server.Status,
-		Addresses: addrMap,
-		Flavor:    targetFlavor,
-		Usage:     usage,
-		Created:   server.Created,
-		Image:     extractResourceID(server.Image),
+		ID:         inst.OpenstackID,
+		Name:       inst.Name,
+		Status:     srv.Status,
+		Image:      inst.ImageID,
+		Flavor:     flavorMap[inst.FlavorID],
+		FixedIP:    fixedIP,
+		FloatingIP: floatingIP,
+		Usage:      extractUsageStats(diag),
+		Created:    inst.Created,
 	}, nil
 }
 
-// DeleteInstance는 지정된 ID의 서버를 삭제합니다.
-func (s *Service) DeleteInstance(id string) error {
-	return s.client.DeleteServer(id)
+// DeleteInstance는 owner 소유 인스턴스를 OpenStack과 DB에서 삭제합니다.
+func (s *Service) DeleteInstance(ctx context.Context, ownerID uuid.UUID, id string) error {
+	inst, err := s.repo.FindByOpenstackID(ctx, ownerID, id)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	if inst == nil {
+		return ErrInstanceNotFound
+	}
+
+	if err := s.client.DeleteServer(id); err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+
+	if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	return nil
 }
 
-func (s *Service) CreateInstance(opts CreateServerOpts) (*CreateInstanceResponse, error) {
+func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts CreateServerOpts) (*CreateInstanceResponse, error) {
 	normalizedOpts := normalizeCreateServerOpts(opts)
 	if err := validateCreateServerOpts(normalizedOpts); err != nil {
 		return nil, err
@@ -207,7 +247,31 @@ func (s *Service) CreateInstance(opts CreateServerOpts) (*CreateInstanceResponse
 		return nil, err
 	}
 
+	inst := &Instance{
+		OpenstackID: server.ID,
+		Name:        firstNonEmpty(strings.TrimSpace(server.Name), normalizedOpts.Name),
+		ImageID:     firstNonEmpty(extractResourceID(server.Image), normalizedOpts.ImageRef),
+		FlavorID:    firstNonEmpty(extractResourceID(server.Flavor), normalizedOpts.FlavorRef),
+		Created:     server.Created,
+	}
+
+	if err := s.repo.SaveInstance(ctx, ownerID, inst); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+
 	return buildCreateInstanceResponse(server, normalizedOpts), nil
+}
+
+func (s *Service) fetchFlavorMap() (map[string]FlavorResponse, error) {
+	rawFlavors, err := s.client.FetchFlavors()
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]FlavorResponse, len(rawFlavors))
+	for _, f := range rawFlavors {
+		m[f.ID] = FlavorResponse(f)
+	}
+	return m, nil
 }
 
 type serverAddress struct {
@@ -269,11 +333,11 @@ func normalizeCreateServerOpts(opts CreateServerOpts) CreateServerOpts {
 
 func validateCreateServerOpts(opts CreateServerOpts) error {
 	switch {
-	case strings.TrimSpace(opts.Name) == "":
+	case opts.Name == "":
 		return ErrCreateInstanceNameRequired
-	case strings.TrimSpace(opts.ImageRef) == "":
+	case opts.ImageRef == "":
 		return ErrCreateInstanceImageRequired
-	case strings.TrimSpace(opts.FlavorRef) == "":
+	case opts.FlavorRef == "":
 		return ErrCreateInstanceFlavorRequired
 	default:
 		return nil
@@ -403,6 +467,20 @@ func extractSecurityGroupNames(groups []map[string]any, fallback []string) []str
 	cloned := make([]string, len(fallback))
 	copy(cloned, fallback)
 	return cloned
+}
+
+func extractUsageStats(diag map[string]any) UsageStats {
+	if diag == nil {
+		return UsageStats{}
+	}
+	var usage UsageStats
+	if cpu, ok := diag["cpu0_time"].(float64); ok {
+		usage.CPUUsage = cpu
+	}
+	if mem, ok := diag["memory"].(float64); ok {
+		usage.MemoryUsage = int(mem / 1024)
+	}
+	return usage
 }
 
 func firstNonEmpty(values ...string) string {
