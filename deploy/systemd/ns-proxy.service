@@ -1,0 +1,35 @@
+[Unit]
+Description=RCP ns-proxy (SOCKS5 transport in qrouter netns)
+After=network-online.target openvswitch-switch.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rcp
+Group=rcp
+
+EnvironmentFile=/etc/rcp/ns-proxy.env
+NetworkNamespacePath=/var/run/netns/${RCP_NS_PROXY_NETNS}
+
+ExecStart=/usr/local/bin/ns-proxy
+
+# /run/rcp/ 자동 생성 + 권한 (재부팅 후에도 유지)
+RuntimeDirectory=rcp
+RuntimeDirectoryMode=0750
+
+# 보안 강화
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/rcp
+
+Restart=on-failure
+RestartSec=2s
+
+# graceful shutdown (앱 grace 30s + 약간의 여유)
+TimeoutStopSec=35s
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
