@@ -10,6 +10,7 @@ require (
 	github.com/gophercloud/gophercloud v1.14.1
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
+	github.com/things-go/go-socks5 v0.1.1
 	golang.org/x/crypto v0.49.0
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.272.0
