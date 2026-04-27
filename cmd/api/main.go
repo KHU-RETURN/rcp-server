@@ -43,7 +43,7 @@ func main() {
 	}
 	dbDSN := os.Getenv("DB_DSN")
 	if dbDSN == "" {
-		dbDSN = "file:rcp.db?cache=shared&_fk=1"
+		dbDSN = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)"
 	}
 	db, err := database.NewEntClient(database.Config{
 		Driver: dbDriver,

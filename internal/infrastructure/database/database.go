@@ -16,7 +16,7 @@ func init() {
 
 type Config struct {
 	Driver string // "sqlite3" | "postgres"
-	DSN    string // sqlite3: "file:rcp.db?cache=shared&_fk=1" | postgres: "host=localhost port=5432 user=rcp password=secret dbname=rcp sslmode=disable"
+	DSN    string // sqlite3: "file:rcp.db?cache=shared&_pragma=foreign_keys(1)" | postgres: "host=localhost port=5432 user=rcp password=secret dbname=rcp sslmode=disable"
 }
 
 func NewEntClient(cfg Config) (*ent.Client, error) {
