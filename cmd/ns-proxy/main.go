@@ -33,7 +33,8 @@ func main() {
 	if err != nil {
 		fatal("listen %s: %v", cfg.SockPath, err)
 	}
-	if err := os.Chmod(cfg.SockPath, 0o660); err != nil {
+	// 0o660: 같은 그룹의 클라이언트가 Unix 소켓에 connect할 수 있도록 group write 허용.
+	if err := os.Chmod(cfg.SockPath, 0o660); err != nil { //nolint:gosec // G302: socket needs group rw for peer access
 		fatal("chmod %s: %v", cfg.SockPath, err)
 	}
 

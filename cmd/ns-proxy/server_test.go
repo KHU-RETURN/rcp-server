@@ -31,12 +31,12 @@ func startEcho(t *testing.T) (addr string, stop func()) {
 				return // listener closed
 			}
 			go func(c net.Conn) {
-				defer c.Close()
-				io.Copy(c, c) //nolint:errcheck
+				defer func() { _ = c.Close() }()
+				_, _ = io.Copy(c, c)
 			}(conn)
 		}
 	}()
-	return ln.Addr().String(), func() { ln.Close() }
+	return ln.Addr().String(), func() { _ = ln.Close() }
 }
 
 type testServerHandles struct {
@@ -73,7 +73,7 @@ func newTestServerFull(t *testing.T, cidr string, maxConns int, dialTimeout time
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 
 	sockPath := fmt.Sprintf("%s/p.sock", dir)
 	ln, err := net.Listen("unix", sockPath)
@@ -94,7 +94,7 @@ func newTestServerFull(t *testing.T, cidr string, maxConns int, dialTimeout time
 		close(serveDone)
 	}()
 
-	closeLn := sync.OnceFunc(func() { ln.Close() })
+	closeLn := sync.OnceFunc(func() { _ = ln.Close() })
 	waitServe := func() { <-serveDone }
 
 	t.Cleanup(func() {
@@ -161,7 +161,7 @@ func TestServer_DialsAllowedDestination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial via SOCKS5: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	payload := []byte("ping-from-socks5")
 	if _, err := conn.Write(payload); err != nil {
@@ -183,7 +183,7 @@ func TestServer_RejectsDeniedDestination(t *testing.T) {
 
 	conn, err := socks5Dialer(t, h.sockPath).Dial("tcp", "8.8.8.8:53")
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		t.Fatal("expected error dialing denied destination, got nil")
 	}
 }
@@ -203,14 +203,14 @@ func TestServer_RejectsAtMaxConns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first dial: %v", err)
 	}
-	defer conn1.Close()
+	defer func() { _ = conn1.Close() }()
 
 	waitActiveConns(t, h.srv, 1)
 
 	// 두 번째 dial은 실패 — 서버가 SOCKS5 전에 raw TCP를 끊어 proxy가 EOF/reset을 받음.
 	conn2, err := d.Dial("tcp", echoAddr)
 	if err == nil {
-		conn2.Close()
+		_ = conn2.Close()
 		t.Fatal("expected error dialing at max conns, got nil")
 	}
 
@@ -240,7 +240,7 @@ func TestServer_StatsCountersIncrement(t *testing.T) {
 		t.Errorf("totalDials = %d; want >= 1", total)
 	}
 
-	conn.Close()
+	_ = conn.Close()
 
 	// 종료 후 activeConns가 0으로 떨어지는지 폴링.
 	deadline := time.Now().Add(2 * time.Second)
@@ -303,7 +303,7 @@ func TestServer_ShutdownDrainsActiveConns(t *testing.T) {
 	// 100ms 후 conn 해제 → Shutdown이 drain 가능하도록.
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		conn.Close()
+		_ = conn.Close()
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -337,7 +337,7 @@ func TestServer_ShutdownGraceTimeout(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	// Shutdown 타임아웃 이후까지 conn을 의도적으로 유지; 끝에서 닫아 Serve의 wg.Wait이 풀리게.
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	waitActiveConns(t, h.srv, 1)
 

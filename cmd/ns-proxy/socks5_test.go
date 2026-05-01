@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"testing"
 	"time"
@@ -152,8 +154,9 @@ func socks5CommandReply(conn net.Conn, cmd byte, ip [4]byte, port uint16) (byte,
 	req := []byte{
 		0x05, cmd, 0x00,
 		0x01, ip[0], ip[1], ip[2], ip[3],
-		byte(port >> 8), byte(port),
+		0, 0,
 	}
+	binary.BigEndian.PutUint16(req[8:], port)
 	if _, err := conn.Write(req); err != nil {
 		return 0, err
 	}
@@ -186,7 +189,7 @@ func runServerConn(srv *socks5.Server, srvConn net.Conn) {
 func TestNewSOCKS5Server_RejectsAssociate(t *testing.T) {
 	srv := newTestServer(t)
 	client, server := net.Pipe()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	go runServerConn(srv, server)
 
 	if err := socks5Handshake(client); err != nil {
@@ -205,7 +208,7 @@ func TestNewSOCKS5Server_RejectsAssociate(t *testing.T) {
 func TestNewSOCKS5Server_RejectsBind(t *testing.T) {
 	srv := newTestServer(t)
 	client, server := net.Pipe()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	go runServerConn(srv, server)
 
 	if err := socks5Handshake(client); err != nil {
@@ -227,27 +230,30 @@ func TestNewSOCKS5Server_AllowsConnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("echo listen: %v", err)
 	}
-	defer echo.Close()
+	defer func() { _ = echo.Close() }()
 	go func() {
 		conn, err := echo.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
-		io.Copy(conn, conn) //nolint:errcheck
+		defer func() { _ = conn.Close() }()
+		_, _ = io.Copy(conn, conn)
 	}()
 
 	echoPort := echo.Addr().(*net.TCPAddr).Port
+	if echoPort < 0 || echoPort > math.MaxUint16 {
+		t.Fatalf("echo port out of range: %d", echoPort)
+	}
 
 	srv := newTestServer(t)
 	client, server := net.Pipe()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	go runServerConn(srv, server)
 
 	if err := socks5Handshake(client); err != nil {
 		t.Fatalf("handshake failed: %v", err)
 	}
-	reply, err := socks5CommandReply(client, statute.CommandConnect, [4]byte{127, 0, 0, 1}, uint16(echoPort))
+	reply, err := socks5CommandReply(client, statute.CommandConnect, [4]byte{127, 0, 0, 1}, uint16(echoPort)) //nolint:gosec // bounds checked above
 	if err != nil {
 		t.Fatalf("read reply failed: %v", err)
 	}
