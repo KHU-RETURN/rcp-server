@@ -27,7 +27,7 @@ func main() {
 	if err := os.MkdirAll(filepath.Dir(cfg.SockPath), 0o750); err != nil {
 		fatal("mkdir socket dir: %v", err)
 	}
-	_ = os.Remove(cfg.SockPath) // tolerate stale socket from prior crash; recreated below
+	_ = os.Remove(cfg.SockPath) // 이전 크래시로 남은 stale 소켓 허용 — 아래에서 재생성
 
 	ln, err := net.Listen("unix", cfg.SockPath)
 	if err != nil {
@@ -49,38 +49,32 @@ func main() {
 
 	ctx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 
-	// Stats logger: emit once at startup + every statsInterval until ctx cancels.
 	statsCtx, statsCancel := context.WithCancel(ctx)
 	defer statsCancel()
 	go statsLoop(statsCtx, srv, log, statsInterval)
 
-	// Serve in a goroutine so we can react to signals.
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ctx, ln) }()
 
-	// Track whether Serve already returned during the first select so we don't
-	// wait for it a second time (the channel has already been drained).
+	// Serve가 첫 select에서 이미 끝났는지 — 끝났다면 채널이 비어 있어 두 번째 대기를 건너뜀.
 	var serveExited bool
 	select {
 	case <-ctx.Done():
-		// Signal received, fall through to shutdown.
 	case err := <-serveErr:
 		serveExited = true
 		if err != nil {
 			log.Error("serve aborted", "err", err)
 			os.Exit(1)
 		}
-		// Serve returned nil unexpectedly (listener closed externally?). Still graceful.
 	}
 
-	// Restore default signal behavior so a second SIGTERM/SIGINT kills immediately
-	// instead of being absorbed by the (already-cancelled) signal context.
+	// 신호 컨텍스트가 이미 cancel된 상태라 두 번째 SIGTERM/SIGINT는 흡수됨.
+	// 기본 핸들러를 복원해 두 번째 시그널이 즉시 프로세스를 죽이도록.
 	stopSignals()
 
 	active, _, _ := srv.Stats()
 	log.Info("shutting down", "active_conns", active)
 
-	// Stop accepting new conns; drain in-flight.
 	_ = ln.Close()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGrace)
@@ -91,9 +85,6 @@ func main() {
 		log.Info("drained gracefully")
 	}
 
-	// Wait for Serve goroutine to publish its final return — but only if it
-	// hadn't already exited during the first select above (otherwise serveErr
-	// is empty and we'd spuriously hit the timeout branch).
 	if !serveExited {
 		select {
 		case err := <-serveErr:
@@ -106,8 +97,6 @@ func main() {
 	}
 }
 
-// statsLoop logs counter snapshots once at startup and then on every interval
-// until ctx is cancelled.
 func statsLoop(ctx context.Context, srv *Server, log *slog.Logger, interval time.Duration) {
 	emit := func() {
 		active, total, denied := srv.Stats()

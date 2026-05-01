@@ -13,8 +13,7 @@ import (
 	"github.com/things-go/go-socks5/statute"
 )
 
-// makeRequestWithCmd builds a *socks5.Request with a command and DestAddr,
-// for testing RuleSet command gating.
+// makeRequestWithCmd는 RuleSet 커맨드 게이팅 검사용 *socks5.Request를 만든다.
 func makeRequestWithCmd(cmd byte, ip net.IP) *socks5.Request {
 	req := &socks5.Request{
 		DestAddr: &statute.AddrSpec{IP: ip},
@@ -82,7 +81,7 @@ func TestCidrRuleSet_DeniesAssociateCommand(t *testing.T) {
 	}
 	r := &cidrRuleSet{allow: al}
 
-	// IP is inside the allowlist, but ASSOCIATE must be rejected regardless.
+	// IP는 allowlist 안이지만 ASSOCIATE는 무조건 거부돼야 함.
 	_, ok := r.Allow(context.Background(), makeRequestWithCmd(statute.CommandAssociate, net.ParseIP("192.168.1.10")))
 	if ok {
 		t.Error("expected deny for UDP ASSOCIATE command even with allowed IP")
@@ -96,25 +95,22 @@ func TestCidrRuleSet_DeniesBindCommand(t *testing.T) {
 	}
 	r := &cidrRuleSet{allow: al}
 
-	// IP is inside the allowlist, but BIND must be rejected regardless.
+	// IP는 allowlist 안이지만 BIND는 무조건 거부돼야 함.
 	_, ok := r.Allow(context.Background(), makeRequestWithCmd(statute.CommandBind, net.ParseIP("192.168.1.10")))
 	if ok {
 		t.Error("expected deny for BIND command even with allowed IP")
 	}
 }
 
-// TestIpv4OnlyResolver_ResolvesLocalhost uses "localhost" rather than a literal
-// IP. The pure-Go resolver (CGO_ENABLED=0) can fail for literal IPs because it
-// tries to resolve them as hostnames; "localhost" is handled by /etc/hosts on
-// both Linux and macOS and always returns an IPv4 address.
+// pure-Go resolver(CGO_ENABLED=0)는 IP literal을 hostname으로 해석하려다 실패할
+// 수 있어 "localhost" 사용 — Linux/macOS 모두 /etc/hosts에서 IPv4로 해석됨.
 func TestIpv4OnlyResolver_ResolvesLocalhost(t *testing.T) {
 	r := ipv4OnlyResolver{}
 	_, ip, err := r.Resolve(context.Background(), "localhost")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Don't assert exact IP — localhost may be 127.0.0.1 or 127.0.1.1
-	// depending on /etc/hosts.
+	// /etc/hosts에 따라 127.0.0.1 또는 127.0.1.1일 수 있어 정확한 IP는 검사 안 함.
 	if ip.To4() == nil {
 		t.Errorf("got %v, want IPv4", ip)
 	}
@@ -128,19 +124,13 @@ func TestIpv4OnlyResolver_RejectsIPv6Literal(t *testing.T) {
 	}
 }
 
-// TODO: the "no IPv4 in resolver results" branch in ipv4OnlyResolver.Resolve is
-// unreachable from these tests because net.DefaultResolver isn't injectable.
-// If the resolver becomes injectable later (e.g. for testability), add a test
-// using a fake that returns only IPv6 addresses.
+// TODO: ipv4OnlyResolver.Resolve의 "결과에 IPv4 없음" 분기는 net.DefaultResolver를
+// 주입할 수 없어 현재 테스트로 못 닿음. 주입 가능해지면 IPv6만 반환하는 fake로 추가.
 
-// ---------- integration tests: command gating via live SOCKS5 server ----------
-//
-// These tests spin up a real NewSOCKS5Server and send raw SOCKS5 bytes through
-// net.Pipe to verify that the server rejects BIND/ASSOCIATE at the protocol
-// level and accepts CONNECT to an allowed destination.
+// ---------- integration tests: 실제 SOCKS5 서버에 raw 바이트로 BIND/ASSOCIATE/CONNECT 검증 ----------
 
-// socks5Handshake sends the SOCKS5 NoAuth greeting and reads the method
-// selection reply. Returns an error if the server did not select NoAuth (0x00).
+// socks5Handshake는 NoAuth greeting을 보내고 method selection 응답을 읽는다.
+// 서버가 NoAuth(0x00)를 선택하지 않으면 에러.
 func socks5Handshake(conn net.Conn) error {
 	// ClientGreeting: VER=5, NMETHODS=1, METHOD=0x00 (NoAuth)
 	_, err := conn.Write([]byte{0x05, 0x01, 0x00})
@@ -157,9 +147,7 @@ func socks5Handshake(conn net.Conn) error {
 	return nil
 }
 
-// socks5CommandReply sends a SOCKS5 command request to 127.0.0.1:<port> using
-// the given command byte and returns the server's reply code (byte [1] of the
-// response).
+// socks5CommandReply는 127.0.0.1:<port>에 대한 커맨드 요청을 보내고 reply byte를 반환.
 func socks5CommandReply(conn net.Conn, cmd byte, ip [4]byte, port uint16) (byte, error) {
 	req := []byte{
 		0x05, cmd, 0x00,
@@ -169,7 +157,7 @@ func socks5CommandReply(conn net.Conn, cmd byte, ip [4]byte, port uint16) (byte,
 	if _, err := conn.Write(req); err != nil {
 		return 0, err
 	}
-	// SOCKS5 reply: VER RSP RSV ATYP BND.ADDR(4) BND.PORT(2) = 10 bytes for IPv4
+	// SOCKS5 reply: VER RSP RSV ATYP BND.ADDR(4) BND.PORT(2) = IPv4의 경우 10 bytes.
 	resp := make([]byte, 10)
 	if _, err := io.ReadFull(conn, resp); err != nil {
 		return 0, err
@@ -177,8 +165,7 @@ func socks5CommandReply(conn net.Conn, cmd byte, ip [4]byte, port uint16) (byte,
 	return resp[1], nil
 }
 
-// newTestServer creates a NewSOCKS5Server configured with 127.0.0.0/8 allowlist
-// and a short dial timeout (used by integration tests).
+// newTestServer는 127.0.0.0/8 allowlist + 짧은 dial timeout으로 구성된 SOCKS5 서버를 만든다.
 func newTestServer(t *testing.T) *socks5.Server {
 	t.Helper()
 	al, err := ParseCIDRs("127.0.0.0/8")
@@ -192,7 +179,6 @@ func newTestServer(t *testing.T) *socks5.Server {
 	return NewSOCKS5Server(cfg, slog.Default())
 }
 
-// runServerConn spins up the server on one end of a net.Pipe connection.
 func runServerConn(srv *socks5.Server, srvConn net.Conn) {
 	_ = srv.ServeConn(srvConn)
 }
@@ -206,12 +192,11 @@ func TestNewSOCKS5Server_RejectsAssociate(t *testing.T) {
 	if err := socks5Handshake(client); err != nil {
 		t.Fatalf("handshake failed: %v", err)
 	}
-	// Send ASSOCIATE for 127.0.0.1:0 — IP is in allowlist but command must be rejected.
+	// IP는 allowlist 안이지만 ASSOCIATE는 거부돼야 함.
 	reply, err := socks5CommandReply(client, statute.CommandAssociate, [4]byte{127, 0, 0, 1}, 0)
 	if err != nil {
 		t.Fatalf("read reply failed: %v", err)
 	}
-	// Expect RepRuleFailure (0x02) — cidrRuleSet.Allow rejects non-CONNECT commands.
 	if reply == statute.RepSuccess {
 		t.Errorf("ASSOCIATE was allowed (reply=0x%02x); expected non-success", reply)
 	}
@@ -226,7 +211,7 @@ func TestNewSOCKS5Server_RejectsBind(t *testing.T) {
 	if err := socks5Handshake(client); err != nil {
 		t.Fatalf("handshake failed: %v", err)
 	}
-	// Send BIND for 127.0.0.1:0 — IP is in allowlist but command must be rejected.
+	// IP는 allowlist 안이지만 BIND는 거부돼야 함.
 	reply, err := socks5CommandReply(client, statute.CommandBind, [4]byte{127, 0, 0, 1}, 0)
 	if err != nil {
 		t.Fatalf("read reply failed: %v", err)
@@ -237,7 +222,7 @@ func TestNewSOCKS5Server_RejectsBind(t *testing.T) {
 }
 
 func TestNewSOCKS5Server_AllowsConnect(t *testing.T) {
-	// Start a small in-process echo server to CONNECT to.
+	// CONNECT 대상으로 in-process echo 서버 기동.
 	echo, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("echo listen: %v", err)
@@ -270,7 +255,7 @@ func TestNewSOCKS5Server_AllowsConnect(t *testing.T) {
 		t.Fatalf("CONNECT denied (reply=0x%02x); expected RepSuccess", reply)
 	}
 
-	// Verify the tunnel works: send a payload and read it back.
+	// 터널 동작 확인: payload 보내고 그대로 받기.
 	payload := []byte("hello-ns-proxy")
 	if _, err := client.Write(payload); err != nil {
 		t.Fatalf("write: %v", err)

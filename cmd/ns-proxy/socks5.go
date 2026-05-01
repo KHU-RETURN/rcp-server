@@ -10,22 +10,15 @@ import (
 	"github.com/things-go/go-socks5/statute"
 )
 
-// cidrRuleSet allows a destination only when its IPv4 address falls in the
-// configured Allowlist. Non-IPv4 destinations are always rejected as
-// defense-in-depth (the Resolver should already strip IPv6, but a malicious or
-// misconfigured client could send a literal IPv6 ATYP).
+// cidrRuleSet은 Allowlist에 포함된 IPv4 목적지만 허용.
+// IPv6는 항상 거부 — resolver가 1차로 막지만 literal IPv6 ATYP 우회 대비.
 type cidrRuleSet struct {
 	allow *Allowlist
 }
 
-// Allow implements socks5.RuleSet. Spec §3 limits supported commands to CONNECT
-// only; BIND and UDP ASSOCIATE are rejected here before the IP/CIDR check.
-// Without this guard, a ASSOCIATE handshake whose hint IP passes the allowlist
-// would let the client relay UDP to arbitrary destinations — the RuleSet is only
-// called once at handshake time, not per-datagram.
-//
-// Note: req.DestAddr.IP is 16-byte (IPv4-in-IPv6) for IPv4 ATYP and 4-byte for
-// domain ATYP. The .To4() call normalises both forms before the allowlist check.
+// Allow는 IP/CIDR 검사 전에 CONNECT가 아닌 커맨드를 차단한다.
+// RuleSet은 handshake에 1회만 호출되므로, ASSOCIATE를 통과시키면
+// 이후 UDP 데이터그램은 검증 없이 임의 목적지로 릴레이된다.
 func (r *cidrRuleSet) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
 	if req.Command != statute.CommandConnect {
 		return ctx, false
@@ -37,12 +30,10 @@ func (r *cidrRuleSet) Allow(ctx context.Context, req *socks5.Request) (context.C
 	return ctx, r.allow.Contains(ip.To4())
 }
 
-// ipv4OnlyResolver resolves a hostname to its first IPv4 address. IPv6-only
-// hosts return an error, which the lib translates to SOCKS5 reply
-// RepHostUnreachable — it does not silently pick an IPv6 address.
+// ipv4OnlyResolver는 hostname을 첫 IPv4 주소로 해석.
+// IPv6-only 호스트는 에러 → lib이 RepHostUnreachable 응답.
 type ipv4OnlyResolver struct{}
 
-// Resolve implements socks5.NameResolver.
 func (ipv4OnlyResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
 	ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", name)
 	if err != nil {
@@ -56,25 +47,17 @@ func (ipv4OnlyResolver) Resolve(ctx context.Context, name string) (context.Conte
 	return ctx, nil, fmt.Errorf("no IPv4 address for %s", name)
 }
 
-// slogLogger adapts a *slog.Logger to the things-go/go-socks5 Logger
-// interface (a single Errorf method).
+// slogLogger는 lib의 printf 스타일 Errorf를 slog로 어댑트.
 type slogLogger struct {
 	log *slog.Logger
 }
 
-// Errorf implements socks5.Logger. Errorf forwards lib log lines to slog. We
-// pre-format with fmt.Sprintf because the lib uses printf-style varargs, not
-// slog-style key/value pairs — collapsing to a single message is the only
-// sensible adapter shape here.
 func (l *slogLogger) Errorf(format string, args ...any) {
 	l.log.Error(fmt.Sprintf(format, args...))
 }
 
-// NewSOCKS5Server wires the lib server with our adapters. Only No-Auth is
-// accepted; Unix socket file permissions are the real authentication boundary.
-// WithDial injects cfg.DialTimeout so that CONNECT to black-holed-but-allowed
-// destinations fails within the configured bound instead of hanging for the
-// kernel default (~75 s).
+// NewSOCKS5Server: No-Auth만 허용 (Unix 소켓 권한이 실제 인증 경계).
+// DialTimeout으로 black-hole 목적지에서 커널 기본(~75s) 대신 빠르게 실패시킴.
 func NewSOCKS5Server(cfg *Config, log *slog.Logger) *socks5.Server {
 	dialer := &net.Dialer{Timeout: cfg.DialTimeout}
 	return socks5.NewServer(

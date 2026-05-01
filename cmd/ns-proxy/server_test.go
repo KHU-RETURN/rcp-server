@@ -17,8 +17,7 @@ import (
 
 // ---------- helpers ----------
 
-// startEcho starts a TCP echo server on 127.0.0.1:0. The returned addr is the
-// address clients should connect to; stop must be called to shut it down.
+// startEcho는 127.0.0.1:0에 TCP echo 서버를 띄운다.
 func startEcho(t *testing.T) (addr string, stop func()) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -40,30 +39,22 @@ func startEcho(t *testing.T) (addr string, stop func()) {
 	return ln.Addr().String(), func() { ln.Close() }
 }
 
-// testServerHandles groups the handles returned by newTestServerFull.
 type testServerHandles struct {
 	srv      *Server
 	sockPath string
-	// closeLn closes the Unix listener immediately (non-blocking).
-	// After closeLn, Serve's accept loop will see net.ErrClosed and call
-	// s.wg.Wait() before returning via serveDone.
+	// closeLn은 listener를 즉시 닫는다 (non-blocking). 닫으면 Serve의 accept
+	// loop가 net.ErrClosed → wg.Wait → serveDone 순으로 정리.
 	closeLn func()
-	// waitServe blocks until Serve returns (use after closeLn + all conns
-	// closed). Registering as t.Cleanup ensures goroutine-leak-free tests.
+	// waitServe는 Serve goroutine이 실제로 종료될 때까지 블록.
 	waitServe func()
-	// serveErr receives the error returned by Serve exactly once (buffered,
-	// capacity 1). The channel is closed after the error is placed so it is
-	// safe to read via a select with a timeout.
+	// serveErr는 Serve의 리턴값 1회 수신 (capacity 1 buffered).
 	serveErr <-chan error
 }
 
-// newTestServerFull creates a Server + Unix-socket listener, starts Serve in a
-// goroutine, and returns handles for fine-grained control. The caller is
-// responsible for eventually calling closeLn (to stop accepting) and
-// waitServe (to confirm the goroutine exited).
+// newTestServerFull은 Server + Unix 소켓 listener를 만들고 Serve를 goroutine으로
+// 띄운다. 호출자는 closeLn(수신 중단) + waitServe(goroutine 종료 확인) 책임.
 //
-// macOS limits Unix socket paths to 104 chars, so we create a short temp dir
-// under /tmp rather than using t.TempDir() (whose paths exceed that limit).
+// macOS는 Unix 소켓 경로 길이를 104자로 제한하므로 t.TempDir() 대신 짧은 /tmp 하위 디렉터리를 사용.
 func newTestServerFull(t *testing.T, cidr string, maxConns int, dialTimeout time.Duration) testServerHandles {
 	t.Helper()
 	al, err := ParseCIDRs(cidr)
@@ -90,8 +81,8 @@ func newTestServerFull(t *testing.T, cidr string, maxConns int, dialTimeout time
 		t.Fatalf("listen unix %s: %v", sockPath, err)
 	}
 
-	// errCh receives Serve's return value. The intermediary goroutine reads it,
-	// puts it back (so tests can inspect it), and closes serveDone.
+	// 중간 goroutine이 Serve의 리턴값을 받아 errCh에 다시 넣고 serveDone을 닫음
+	// → 테스트가 errCh를 select로 검사 가능.
 	rawErrCh := make(chan error, 1)
 	go func() { rawErrCh <- srv.Serve(context.Background(), ln) }()
 
@@ -106,13 +97,10 @@ func newTestServerFull(t *testing.T, cidr string, maxConns int, dialTimeout time
 	closeLn := sync.OnceFunc(func() { ln.Close() })
 	waitServe := func() { <-serveDone }
 
-	// Guarantee cleanup even if the test forgets.
 	t.Cleanup(func() {
 		closeLn()
-		// Don't call waitServe here because Serve blocks in wg.Wait until all
-		// active goroutines finish — tests that hold connections open past
-		// t.Cleanup would deadlock. Leaking the goroutine at test-process exit
-		// is acceptable.
+		// 여기서 waitServe를 부르지 않음 — 테스트가 conn을 닫지 않은 채 t.Cleanup에
+		// 진입하면 Serve의 wg.Wait이 무한 대기 → deadlock. 프로세스 종료 시 leak 허용.
 	})
 
 	return testServerHandles{
@@ -124,13 +112,11 @@ func newTestServerFull(t *testing.T, cidr string, maxConns int, dialTimeout time
 	}
 }
 
-// socks5Dialer returns a proxy.Dialer that tunnels through the Unix-socket
-// SOCKS5 server at sockPath.
+// socks5Dialer는 Unix 소켓 SOCKS5 서버를 거쳐 dial하는 proxy.Dialer를 반환.
 func socks5Dialer(t *testing.T, sockPath string) proxy.Dialer {
 	t.Helper()
-	// golang.org/x/net/proxy.SOCKS5 needs a network+address for the proxy, but
-	// we intercept the underlying Dial via a custom forwarder that actually
-	// connects to the Unix socket — the "address" field is ignored.
+	// proxy.SOCKS5는 network+address를 요구하지만 forward dialer로 Unix 소켓을
+	// 직접 잡으므로 "address"는 무시됨.
 	forward := &unixDialer{path: sockPath}
 	d, err := proxy.SOCKS5("tcp", "unused", nil, forward)
 	if err != nil {
@@ -139,16 +125,14 @@ func socks5Dialer(t *testing.T, sockPath string) proxy.Dialer {
 	return d
 }
 
-// unixDialer is a proxy.Dialer that ignores its address argument and always
-// connects to the named Unix socket. This lets golang.org/x/net/proxy reach
-// our Unix-socket SOCKS5 server.
+// unixDialer는 address 인자를 무시하고 항상 지정된 Unix 소켓에 연결.
 type unixDialer struct{ path string }
 
 func (u *unixDialer) Dial(_, _ string) (net.Conn, error) {
 	return net.Dial("unix", u.path)
 }
 
-// waitActiveConns polls srv.Stats until active >= n or 2 s elapses.
+// waitActiveConns는 srv.Stats의 active가 n 이상이 될 때까지 폴링 (max 2초).
 func waitActiveConns(t *testing.T, srv *Server, n int64) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -165,8 +149,7 @@ func waitActiveConns(t *testing.T, srv *Server, n int64) {
 
 // ---------- tests ----------
 
-// TestServer_DialsAllowedDestination verifies that a SOCKS5 client can reach
-// an echo server whose IP falls in the allowlist, and that data flows through.
+// SOCKS5 클라이언트가 allowlist 안의 echo 서버에 닿고 데이터가 양방향으로 흐르는지 검증.
 func TestServer_DialsAllowedDestination(t *testing.T) {
 	echoAddr, stopEcho := startEcho(t)
 	defer stopEcho()
@@ -193,9 +176,7 @@ func TestServer_DialsAllowedDestination(t *testing.T) {
 	}
 }
 
-// TestServer_RejectsDeniedDestination verifies that a dial to an IP outside
-// the allowlist fails at the SOCKS5 level (lib sends a non-success reply;
-// golang.org/x/net/proxy surfaces it as an error).
+// allowlist 밖 IP는 SOCKS5 레벨에서 거부 (lib이 non-success reply, proxy는 에러로 surface).
 func TestServer_RejectsDeniedDestination(t *testing.T) {
 	h := newTestServerFull(t, "127.0.0.0/8", 10, 2*time.Second)
 	defer h.closeLn()
@@ -207,9 +188,7 @@ func TestServer_RejectsDeniedDestination(t *testing.T) {
 	}
 }
 
-// TestServer_RejectsAtMaxConns verifies that when the semaphore is full the
-// server closes new connections without doing SOCKS5 negotiation, and the
-// deniedDials counter increments.
+// sem이 가득 차면 서버는 SOCKS5 협상 없이 raw TCP를 끊고 deniedDials를 증가.
 func TestServer_RejectsAtMaxConns(t *testing.T) {
 	echoAddr, stopEcho := startEcho(t)
 	defer stopEcho()
@@ -219,18 +198,16 @@ func TestServer_RejectsAtMaxConns(t *testing.T) {
 
 	d := socks5Dialer(t, h.sockPath)
 
-	// Open the first connection and hold it open so the slot stays occupied.
+	// 첫 연결을 점유 상태로 유지.
 	conn1, err := d.Dial("tcp", echoAddr)
 	if err != nil {
 		t.Fatalf("first dial: %v", err)
 	}
 	defer conn1.Close()
 
-	// Wait for the first conn to be accounted for.
 	waitActiveConns(t, h.srv, 1)
 
-	// Second dial must fail: server closes the raw TCP conn before SOCKS5, so
-	// golang.org/x/net/proxy gets EOF or a reset during the handshake.
+	// 두 번째 dial은 실패 — 서버가 SOCKS5 전에 raw TCP를 끊어 proxy가 EOF/reset을 받음.
 	conn2, err := d.Dial("tcp", echoAddr)
 	if err == nil {
 		conn2.Close()
@@ -243,8 +220,7 @@ func TestServer_RejectsAtMaxConns(t *testing.T) {
 	}
 }
 
-// TestServer_StatsCountersIncrement verifies that a successful dial increments
-// totalDials, and that activeConns returns to zero after the connection closes.
+// 성공한 dial은 totalDials를 증가, 연결 종료 후 activeConns는 0으로 복귀.
 func TestServer_StatsCountersIncrement(t *testing.T) {
 	echoAddr, stopEcho := startEcho(t)
 	defer stopEcho()
@@ -266,7 +242,7 @@ func TestServer_StatsCountersIncrement(t *testing.T) {
 
 	conn.Close()
 
-	// After closing, activeConns should drop back to zero.
+	// 종료 후 activeConns가 0으로 떨어지는지 폴링.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		active, _, _ := h.srv.Stats()
@@ -279,12 +255,11 @@ func TestServer_StatsCountersIncrement(t *testing.T) {
 	t.Errorf("activeConns = %d after connection close; want 0", active)
 }
 
-// TestServer_ShutdownReturnsWhenIdle verifies that Shutdown returns immediately
-// (nil) when no connections are active.
+// active 연결이 없을 때 Shutdown은 즉시 nil 반환.
 func TestServer_ShutdownReturnsWhenIdle(t *testing.T) {
 	h := newTestServerFull(t, "127.0.0.0/8", 10, 2*time.Second)
 
-	// Close listener first so Serve can exit and serveDone fires.
+	// listener를 먼저 닫아야 Serve가 종료되고 serveDone이 fire됨.
 	h.closeLn()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -294,8 +269,7 @@ func TestServer_ShutdownReturnsWhenIdle(t *testing.T) {
 		t.Fatalf("Shutdown: %v", err)
 	}
 
-	// Shutdown waited on s.serveDone, so the accept loop has already exited
-	// and serveErr is available without blocking.
+	// Shutdown이 serveDone을 기다렸으므로 accept loop는 이미 종료, serveErr는 즉시 가용.
 	h.waitServe()
 	select {
 	case err := <-h.serveErr:
@@ -307,8 +281,7 @@ func TestServer_ShutdownReturnsWhenIdle(t *testing.T) {
 	}
 }
 
-// TestServer_ShutdownDrainsActiveConns verifies that Shutdown waits for an
-// in-flight connection and returns nil once it closes.
+// in-flight 연결이 있으면 Shutdown은 그것이 닫힐 때까지 대기 후 nil 반환.
 func TestServer_ShutdownDrainsActiveConns(t *testing.T) {
 	echoAddr, stopEcho := startEcho(t)
 	defer stopEcho()
@@ -323,13 +296,11 @@ func TestServer_ShutdownDrainsActiveConns(t *testing.T) {
 
 	waitActiveConns(t, h.srv, 1)
 
-	// Close the listener — stops accepting new connections.
-	// Serve will call s.wg.Wait() and block until all active goroutines finish.
-	// We do NOT call h.waitServe here because Serve is blocked until conn is
-	// closed, which happens below.
+	// listener를 닫으면 Serve는 wg.Wait로 진입해 active goroutine을 기다림.
+	// conn이 아래에서 닫히기 전까지 Serve가 블록되므로 여기서는 waitServe를 호출하지 않음.
 	h.closeLn()
 
-	// Release the connection after 100 ms so Shutdown can drain it.
+	// 100ms 후 conn 해제 → Shutdown이 drain 가능하도록.
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		conn.Close()
@@ -342,8 +313,6 @@ func TestServer_ShutdownDrainsActiveConns(t *testing.T) {
 		t.Fatalf("Shutdown returned error: %v", err)
 	}
 
-	// Shutdown waited on s.serveDone, so the accept loop has already exited
-	// and serveErr is available without blocking.
 	h.waitServe()
 	select {
 	case err := <-h.serveErr:
@@ -355,9 +324,7 @@ func TestServer_ShutdownDrainsActiveConns(t *testing.T) {
 	}
 }
 
-// TestServer_ShutdownGraceTimeout verifies that Shutdown returns
-// context.DeadlineExceeded when the context expires before all connections
-// drain.
+// drain 완료 전 ctx가 만료되면 Shutdown은 context.DeadlineExceeded 반환.
 func TestServer_ShutdownGraceTimeout(t *testing.T) {
 	echoAddr, stopEcho := startEcho(t)
 	defer stopEcho()
@@ -369,8 +336,7 @@ func TestServer_ShutdownGraceTimeout(t *testing.T) {
 		h.closeLn()
 		t.Fatalf("dial: %v", err)
 	}
-	// Deliberately hold the connection open past Shutdown's timeout; close it
-	// at the end so Serve's wg.Wait eventually unblocks.
+	// Shutdown 타임아웃 이후까지 conn을 의도적으로 유지; 끝에서 닫아 Serve의 wg.Wait이 풀리게.
 	defer conn.Close()
 
 	waitActiveConns(t, h.srv, 1)

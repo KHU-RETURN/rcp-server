@@ -6,13 +6,13 @@ import (
 	"strings"
 )
 
-// Allowlist holds a set of CIDR networks that destinations must match.
+// Allowlist는 목적지가 매치해야 하는 CIDR 집합.
 type Allowlist struct {
 	cidrs []*net.IPNet
 }
 
-// ParseCIDRs parses a comma-separated CIDR list. An empty or whitespace-only
-// spec is rejected (fail closed: empty must not silently allow everything).
+// ParseCIDRs는 콤마 구분 CIDR 리스트를 파싱. 빈/공백 spec은 거부
+// (fail closed: 빈 값을 "모두 허용"으로 해석하면 안 됨).
 func ParseCIDRs(spec string) (*Allowlist, error) {
 	if strings.TrimSpace(spec) == "" {
 		return nil, fmt.Errorf("CIDR spec is empty (fail closed)")
@@ -33,7 +33,7 @@ func ParseCIDRs(spec string) (*Allowlist, error) {
 	return &Allowlist{cidrs: cidrs}, nil
 }
 
-// Contains returns true when ip falls inside any of the allowed networks.
+// Contains는 ip가 허용 네트워크 중 하나에 속하면 true.
 func (a *Allowlist) Contains(ip net.IP) bool {
 	for _, n := range a.cidrs {
 		if n.Contains(ip) {

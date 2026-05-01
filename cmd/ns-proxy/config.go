@@ -17,8 +17,8 @@ type Config struct {
 	LogLevel      string
 }
 
-// LoadConfig reads configuration from a getenv function (typically os.Getenv).
-// The getenv parameter makes the function trivially testable.
+// LoadConfig는 getenv 함수(보통 os.Getenv)에서 설정을 읽는다.
+// getenv를 파라미터로 받아 테스트가 단순해짐.
 func LoadConfig(getenv func(string) string) (*Config, error) {
 	al, err := ParseCIDRs(getenv("RCP_NS_PROXY_ALLOW_CIDR"))
 	if err != nil {
@@ -96,7 +96,7 @@ func envSockPath(get func(string) string, key, def string) (string, error) {
 	raw := get(key)
 	v := strings.TrimSpace(raw)
 	if raw != "" && v == "" {
-		// env var was set but contained only whitespace
+		// 값은 설정됐지만 공백만 있는 경우.
 		return "", fmt.Errorf("%s: must be an absolute path, got %q", key, raw)
 	}
 	if v == "" {
