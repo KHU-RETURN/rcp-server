@@ -22,7 +22,6 @@ const shutdownPollInterval = 50 * time.Millisecond
 // lifecycle: close the listener to stop the accept loop, then call Shutdown to
 // drain in-flight connections.
 type Server struct {
-	cfg         *Config
 	log         *slog.Logger
 	socksServer *socks5.Server
 	sem         chan struct{}
@@ -40,7 +39,6 @@ type Server struct {
 // validation, so sem always has positive capacity.
 func NewServer(cfg *Config, log *slog.Logger) *Server {
 	return &Server{
-		cfg:         cfg,
 		log:         log,
 		socksServer: NewSOCKS5Server(cfg, log),
 		sem:         make(chan struct{}, cfg.MaxConns),
