@@ -58,10 +58,14 @@ func main() {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ctx, ln) }()
 
+	// Track whether Serve already returned during the first select so we don't
+	// wait for it a second time (the channel has already been drained).
+	var serveExited bool
 	select {
 	case <-ctx.Done():
 		// Signal received, fall through to shutdown.
 	case err := <-serveErr:
+		serveExited = true
 		if err != nil {
 			log.Error("serve aborted", "err", err)
 			os.Exit(1)
@@ -87,14 +91,18 @@ func main() {
 		log.Info("drained gracefully")
 	}
 
-	// Wait for Serve goroutine to publish its final return.
-	select {
-	case err := <-serveErr:
-		if err != nil && !errors.Is(err, net.ErrClosed) {
-			log.Warn("serve returned error", "err", err)
+	// Wait for Serve goroutine to publish its final return — but only if it
+	// hadn't already exited during the first select above (otherwise serveErr
+	// is empty and we'd spuriously hit the timeout branch).
+	if !serveExited {
+		select {
+		case err := <-serveErr:
+			if err != nil && !errors.Is(err, net.ErrClosed) {
+				log.Warn("serve returned error", "err", err)
+			}
+		case <-time.After(2 * time.Second):
+			log.Warn("serve goroutine did not return after shutdown")
 		}
-	case <-time.After(2 * time.Second):
-		log.Warn("serve goroutine did not return after shutdown")
 	}
 }
 

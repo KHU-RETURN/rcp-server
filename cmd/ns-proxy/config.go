@@ -57,13 +57,6 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 	}, nil
 }
 
-func envString(get func(string) string, key, def string) string {
-	if v := get(key); v != "" {
-		return v
-	}
-	return def
-}
-
 func envInt(get func(string) string, key string, def int) (int, error) {
 	v := get(key)
 	if v == "" {
