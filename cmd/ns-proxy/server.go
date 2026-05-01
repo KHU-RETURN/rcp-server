@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"sync"
@@ -108,7 +109,13 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 				//   - patch lib to expose a handshake hook
 				// Defer to a separate issue; do not attempt here.
 				if err := s.socksServer.ServeConn(conn); err != nil {
-					s.log.Info("serve conn closed", "err", err)
+					// EOF / ErrClosed are normal client-disconnect signals; log at
+					// debug to keep the info stream focused on real failures.
+					if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+						s.log.Debug("serve conn closed", "err", err)
+					} else {
+						s.log.Info("serve conn closed", "err", err)
+					}
 				}
 			}()
 		default:
