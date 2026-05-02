@@ -11,6 +11,8 @@ func NewRouter(app *App) *gin.Engine {
 	v1 := r.Group(api.BasePath)
 	{
 		app.Auth.InitRoutes(v1)
+		app.Access.InitPublicRoutes(v1)
+		app.Access.InitInternalRoutes(v1)
 
 		protected := v1.Group("/")
 		if app.Auth != nil {

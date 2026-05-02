@@ -2,30 +2,38 @@ package access
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
 
 var (
-	ErrNameRequired           = errors.New("name is required")
-	ErrPublicKeyRequired      = errors.New("public_key is required")
-	ErrInvalidSSHKeyFormat    = errors.New("invalid SSH public key format")
-	ErrKeyPairAlreadyExists   = errors.New("name already exists")
-	ErrKeyPairNotFound        = errors.New("keypair not found")
-	ErrInvalidKeyPairRequest  = errors.New("invalid keypair request")
-	ErrKeyPairAccessDenied    = errors.New("keypair access denied")
-	ErrKeyPairOperationFailed = errors.New("failed to create keypair")
-	ErrKeyPairDeleteFailed    = errors.New("failed to delete keypair")
+	ErrNameRequired              = errors.New("name is required")
+	ErrPublicKeyRequired         = errors.New("public_key is required")
+	ErrInvalidSSHKeyFormat       = errors.New("invalid SSH public key format")
+	ErrKeyPairAlreadyExists      = errors.New("name already exists")
+	ErrKeyPairNotFound           = errors.New("keypair not found")
+	ErrInvalidKeyPairRequest     = errors.New("invalid keypair request")
+	ErrKeyPairAccessDenied       = errors.New("keypair access denied")
+	ErrKeyPairOperationFailed    = errors.New("failed to create keypair")
+	ErrKeyPairDeleteFailed       = errors.New("failed to delete keypair")
+	ErrConsoleInstanceIDRequired = errors.New("instance_id is required")
+	ErrConsoleInstanceNotFound   = errors.New("instance not found")
+	ErrConsoleInstanceNoIP       = errors.New("instance has no reachable IP")
+	ErrConsoleOperationFailed    = errors.New("failed to create console session")
 )
 
 type keyPairClient interface {
 	CreateKeyPair(name, publicKey string) (*KeyPair, error)
 	DeleteKeyPair(name string) error
+	GetInstance(id string) (*ConsoleInstance, error)
 }
 
 type keyPairRepo interface {
@@ -33,15 +41,21 @@ type keyPairRepo interface {
 	DeleteByName(ctx context.Context, ownerID uuid.UUID, name string) error
 	ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]KeyPair, error)
 	FindByName(ctx context.Context, ownerID uuid.UUID, name string) (*KeyPair, error)
+	FindConsoleTarget(ctx context.Context, ownerID uuid.UUID, openstackID string) (*ConsoleTarget, error)
 }
 
 type Service struct {
-	client keyPairClient
-	repo   keyPairRepo
+	client       keyPairClient
+	repo         keyPairRepo
+	consoleStore *consoleSessionStore
 }
 
 func NewService(client keyPairClient, repo keyPairRepo) *Service {
-	return &Service{client: client, repo: repo}
+	return &Service{
+		client:       client,
+		repo:         repo,
+		consoleStore: newConsoleSessionStore(2 * time.Minute),
+	}
 }
 
 func (s *Service) CreateKeyPair(ctx context.Context, ownerID uuid.UUID, req CreateKeyPairRequest) (*KeyPairResponse, error) {
@@ -136,6 +150,73 @@ func (s *Service) DeleteKeyPair(ctx context.Context, ownerID uuid.UUID, name str
 	return nil
 }
 
+func (s *Service) CreateConsoleSession(ctx context.Context, ownerID uuid.UUID, instanceID string, req CreateConsoleSessionRequest, basePath string) (*CreateConsoleSessionResponse, error) {
+	instanceID = strings.TrimSpace(instanceID)
+	if instanceID == "" {
+		return nil, ErrConsoleInstanceIDRequired
+	}
+
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		username = "ubuntu"
+	}
+
+	target, err := s.repo.FindConsoleTarget(ctx, ownerID, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrConsoleOperationFailed, err)
+	}
+	if target == nil {
+		return nil, ErrConsoleInstanceNotFound
+	}
+
+	instance, err := s.client.GetInstance(instanceID)
+	if err != nil {
+		if isNotFoundError(err) {
+			return nil, ErrConsoleInstanceNotFound
+		}
+		return nil, fmt.Errorf("%w: %v", ErrConsoleOperationFailed, err)
+	}
+
+	host := firstNonEmpty(instance.FixedIP, instance.FloatingIP)
+	if host == "" {
+		return nil, ErrConsoleInstanceNoIP
+	}
+
+	signer, authorizedKey, err := generateEphemeralSSHKey()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrConsoleOperationFailed, err)
+	}
+
+	session, err := s.consoleStore.Create(consoleSession{
+		OwnerID:       ownerID,
+		InstanceID:    instanceID,
+		Host:          host,
+		Username:      username,
+		Signer:        signer,
+		AuthorizedKey: authorizedKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrConsoleOperationFailed, err)
+	}
+
+	return &CreateConsoleSessionResponse{
+		URL:       strings.TrimRight(basePath, "/") + "/access/console/ws?token=" + session.Token,
+		ExpiresAt: session.ExpiresAt,
+	}, nil
+}
+
+func (s *Service) TakeConsoleSession(token string) (*consoleSession, bool) {
+	return s.consoleStore.Take(token)
+}
+
+func (s *Service) AuthorizedKeys(instanceID, username string) string {
+	return s.consoleStore.AuthorizedKeys(strings.TrimSpace(instanceID), strings.TrimSpace(username))
+}
+
+func (s *Service) DeleteAuthorizedKey(instanceID, username, key string) {
+	s.consoleStore.DeleteAuthorizedKey(strings.TrimSpace(instanceID), strings.TrimSpace(username), key)
+}
+
 func isNotFoundError(err error) bool {
 	return hasStatusCode(err, http.StatusNotFound)
 }
@@ -158,4 +239,25 @@ func normalizeKeyPairError(err error) error {
 func hasStatusCode(err error, expected int) bool {
 	var se *StatusError
 	return errors.As(err, &se) && se.Code == expected
+}
+
+func generateEphemeralSSHKey() (ssh.Signer, string, error) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, "", err
+	}
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		return nil, "", err
+	}
+	return signer, strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

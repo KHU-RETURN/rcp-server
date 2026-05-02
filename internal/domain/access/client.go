@@ -1,12 +1,15 @@
 package access
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 )
 
 type Client struct {
@@ -98,6 +101,26 @@ func (c *Client) CreateKeyPair(name, publicKey string) (*KeyPair, error) {
 	}, nil
 }
 
+func (c *Client) GetInstance(id string) (*ConsoleInstance, error) {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return nil, err
+	}
+
+	server, err := servers.Get(sc, id).Extract()
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+
+	fixedIP, floatingIP := extractServerIPs(server.Addresses, server.AccessIPv4)
+	return &ConsoleInstance{
+		ID:         server.ID,
+		Name:       server.Name,
+		FixedIP:    fixedIP,
+		FloatingIP: floatingIP,
+	}, nil
+}
+
 func toStatusError(err error) error {
 	if err == nil {
 		return nil
@@ -146,4 +169,57 @@ func isGophercloudStatus(err error, code int) bool {
 
 	var codeErr gophercloud.StatusCodeError
 	return errors.As(err, &codeErr) && codeErr.GetStatusCode() == code
+}
+
+type serverAddress struct {
+	Address string `json:"addr"`
+	Type    string `json:"OS-EXT-IPS:type"`
+}
+
+func extractServerIPs(addresses map[string]interface{}, accessIPv4 string) (string, string) {
+	var fixedIP string
+	var floatingIP string
+
+	for _, rawAddresses := range addresses {
+		for _, address := range decodeServerAddresses(rawAddresses) {
+			ip := strings.TrimSpace(address.Address)
+			if ip == "" {
+				continue
+			}
+
+			switch strings.TrimSpace(address.Type) {
+			case "fixed":
+				if fixedIP == "" {
+					fixedIP = ip
+				}
+			case "floating":
+				if floatingIP == "" {
+					floatingIP = ip
+				}
+			}
+		}
+	}
+
+	if floatingIP == "" {
+		floatingIP = strings.TrimSpace(accessIPv4)
+	}
+
+	return fixedIP, floatingIP
+}
+
+func decodeServerAddresses(rawAddresses interface{}) []serverAddress {
+	if rawAddresses == nil {
+		return nil
+	}
+
+	b, err := json.Marshal(rawAddresses)
+	if err != nil {
+		return nil
+	}
+
+	var decoded []serverAddress
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		return nil
+	}
+	return decoded
 }

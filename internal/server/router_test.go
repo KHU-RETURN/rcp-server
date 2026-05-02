@@ -23,6 +23,8 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	var foundFlavors bool
 	var foundCreateInstance bool
 	var foundAuthLogin bool
+	var foundConsoleWebSocket bool
+	var foundAuthorizedKeys bool
 
 	for _, route := range routes {
 		if route.Method == "GET" && route.Path == api.BasePath+"/auth/oauth/google" {
@@ -34,6 +36,12 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 		if route.Method == "POST" && route.Path == api.BasePath+"/compute/instances" {
 			foundCreateInstance = true
 		}
+		if route.Method == "GET" && route.Path == api.BasePath+"/access/console/ws" {
+			foundConsoleWebSocket = true
+		}
+		if route.Method == "GET" && route.Path == api.BasePath+"/internal/ssh/authorized-keys" {
+			foundAuthorizedKeys = true
+		}
 	}
 
 	if !foundFlavors {
@@ -44,6 +52,12 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	}
 	if !foundAuthLogin {
 		t.Fatalf("GET %s/auth/oauth/google route was not registered", api.BasePath)
+	}
+	if !foundConsoleWebSocket {
+		t.Fatalf("GET %s/access/console/ws route was not registered", api.BasePath)
+	}
+	if !foundAuthorizedKeys {
+		t.Fatalf("GET %s/internal/ssh/authorized-keys route was not registered", api.BasePath)
 	}
 }
 
