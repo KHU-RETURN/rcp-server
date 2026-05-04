@@ -21,9 +21,13 @@ type Config struct {
 }
 
 func LoadConfig(getenv func(string) string) (*Config, error) {
+	// Bind to localhost by default. External exposure is expected to go
+	// through cloudflared (or another tunnel running on the same host) so the
+	// SSH port is never reachable from the internet directly. To bind to all
+	// interfaces, set RCP_SSH_GW_LISTEN=:2222 explicitly.
 	listen := strings.TrimSpace(getenv("RCP_SSH_GW_LISTEN"))
 	if listen == "" {
-		listen = ":2222"
+		listen = "127.0.0.1:2222"
 	}
 
 	hostKey, err := utils.EnvSockPath(getenv, "RCP_SSH_GW_HOST_KEY_PATH", "/etc/rcp/ssh-gateway/host_ed25519")

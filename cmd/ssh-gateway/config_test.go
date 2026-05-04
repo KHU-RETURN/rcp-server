@@ -19,8 +19,8 @@ func TestLoadConfig_AllDefaultsExceptRequired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if cfg.Listen != ":2222" {
-		t.Errorf("Listen default: got %q want :2222", cfg.Listen)
+	if cfg.Listen != "127.0.0.1:2222" {
+		t.Errorf("Listen default: got %q want 127.0.0.1:2222", cfg.Listen)
 	}
 	if cfg.HostKeyPath != "/etc/rcp/ssh-gateway/host_ed25519" {
 		t.Errorf("HostKeyPath default: got %q", cfg.HostKeyPath)

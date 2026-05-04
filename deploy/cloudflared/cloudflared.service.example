@@ -1,0 +1,28 @@
+[Unit]
+Description=Cloudflare Tunnel for RCP ssh-gateway (rcp-gw.return.dev → 127.0.0.1:2222)
+After=network-online.target ssh-gateway.service
+Wants=network-online.target
+Requires=ssh-gateway.service
+
+[Service]
+Type=notify
+User=cloudflared
+Group=cloudflared
+
+# tunnel + credentials는 /etc/cloudflared 아래에 둔다.
+# 생성: `cloudflared tunnel create rcp-gw` → JSON credential을 같은 위치로.
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate \
+  --config /etc/cloudflared/config.yml tunnel run
+
+# /etc/cloudflared만 read, 그 외 시스템은 격리.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/etc/cloudflared
+
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
