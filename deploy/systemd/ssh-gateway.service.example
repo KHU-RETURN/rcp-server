@@ -1,0 +1,44 @@
+[Unit]
+Description=RCP ssh-gateway (SSH bastion bridging users to tenant VMs via ns-proxy)
+After=network-online.target ns-proxy.service
+Wants=network-online.target
+Requires=ns-proxy.service
+
+[Service]
+Type=simple
+User=rcp
+Group=rcp
+
+EnvironmentFile=/etc/rcp/ssh-gateway.env
+
+ExecStart=/usr/local/bin/ssh-gateway
+
+# /run/rcp/ 자동 생성 + 권한 (재부팅 후에도 유지)
+RuntimeDirectory=rcp
+RuntimeDirectoryMode=0750
+
+# host key 영구 저장 디렉토리 (사용자 known_hosts 안전을 위해 재부팅·재배포 시 보존되어야 함)
+# 사전에 mkdir -p /etc/rcp/ssh-gateway && chown rcp:rcp /etc/rcp/ssh-gateway && chmod 0700
+# 첫 실행 시 host_ed25519이 없으면 자동 생성한다.
+
+# 보안 강화
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/rcp /etc/rcp/ssh-gateway
+
+# Linux capability — 1024 미만 포트(예: 22)에 listen할 경우에만 필요.
+# 기본 2222 포트면 제거 가능.
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+# CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+Restart=on-failure
+RestartSec=2s
+
+# graceful shutdown
+TimeoutStopSec=35s
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
