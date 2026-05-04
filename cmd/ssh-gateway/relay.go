@@ -1,0 +1,186 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"strconv"
+	"sync"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/net/proxy"
+)
+
+// vmAddressResolver returns the dial-target IPv4 for an openstack_id. The PoC
+// implementation lives in main.go and uses gophercloud; tests can stub this.
+type vmAddressResolver interface {
+	ResolveFixedIPv4(ctx context.Context, openstackID string) (string, error)
+}
+
+// nsProxyDialer wraps the SOCKS5 client over a Unix-socket transport.
+type nsProxyDialer struct {
+	sockPath string
+	timeout  time.Duration
+}
+
+func newNsProxyDialer(sockPath string, timeout time.Duration) *nsProxyDialer {
+	return &nsProxyDialer{sockPath: sockPath, timeout: timeout}
+}
+
+// Dial opens a TCP-equivalent connection to host:port via the ns-proxy SOCKS5
+// server reachable on the local Unix socket.
+func (d *nsProxyDialer) Dial(ctx context.Context, host string, port int) (net.Conn, error) {
+	unix := &unixDialer{path: d.sockPath, timeout: d.timeout}
+	socks, err := proxy.SOCKS5("unix", d.sockPath, nil, unix)
+	if err != nil {
+		return nil, fmt.Errorf("socks5 setup: %w", err)
+	}
+	dctx, ok := socks.(proxy.ContextDialer)
+	if !ok {
+		return nil, errors.New("socks5 dialer missing context support")
+	}
+	return dctx.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+}
+
+// unixDialer satisfies proxy.Dialer/proxy.ContextDialer by always dialing a
+// preset Unix socket regardless of the host:port argument from the SOCKS5 lib.
+type unixDialer struct {
+	path    string
+	timeout time.Duration
+}
+
+func (u *unixDialer) Dial(network, address string) (net.Conn, error) {
+	return u.DialContext(context.Background(), network, address)
+}
+
+func (u *unixDialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
+	dctx := ctx
+	if u.timeout > 0 {
+		var cancel context.CancelFunc
+		dctx, cancel = context.WithTimeout(ctx, u.timeout)
+		defer cancel()
+	}
+	var d net.Dialer
+	return d.DialContext(dctx, "unix", u.path)
+}
+
+// agentClientFromOuter opens an auth-agent@openssh.com channel back to the
+// outer SSH client. Caller MUST have accepted the auth-agent-req on the
+// outer session channel before calling this. Returns the agent client and a
+// closer that tears the channel down.
+func agentClientFromOuter(outer ssh.Conn) (agent.ExtendedAgent, io.Closer, error) {
+	ch, reqs, err := outer.OpenChannel("auth-agent@openssh.com", nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open agent channel: %w", err)
+	}
+	go ssh.DiscardRequests(reqs)
+	return agent.NewClient(ch), ch, nil
+}
+
+// dialInnerSSH performs the inner SSH handshake to the VM using the user's
+// forwarded agent for publickey auth. Phase 1 uses InsecureIgnoreHostKey;
+// Phase 2 swaps in a TOFU-from-console-log callback.
+func dialInnerSSH(ctx context.Context, raw net.Conn, user string, ag agent.ExtendedAgent) (*ssh.Client, error) {
+	cfg := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeysCallback(ag.Signers),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec // PoC; tenant net is the 1st guard
+		Timeout:         15 * time.Second,
+	}
+	if dl, ok := ctx.Deadline(); ok {
+		_ = raw.SetDeadline(dl)
+		defer func() { _ = raw.SetDeadline(time.Time{}) }()
+	}
+	c, chans, reqs, err := ssh.NewClientConn(raw, raw.RemoteAddr().String(), cfg)
+	if err != nil {
+		return nil, fmt.Errorf("inner ssh handshake: %w", err)
+	}
+	return ssh.NewClient(c, chans, reqs), nil
+}
+
+// pipeSession shuttles bytes + window changes between the outer session
+// channel and the inner session. Closes innerSess and inner once the outer
+// session ends.
+func pipeSession(log *slog.Logger, outerChan ssh.Channel, outerReqs <-chan *ssh.Request, inner *ssh.Client, ptyReq pendingPty) error {
+	innerSess, err := inner.NewSession()
+	if err != nil {
+		return fmt.Errorf("inner session: %w", err)
+	}
+	defer innerSess.Close()
+
+	if ptyReq.set {
+		if err := innerSess.RequestPty(ptyReq.term, ptyReq.rows, ptyReq.cols, ssh.TerminalModes{}); err != nil {
+			return fmt.Errorf("request pty: %w", err)
+		}
+	}
+	innerStdin, err := innerSess.StdinPipe()
+	if err != nil {
+		return err
+	}
+	innerStdout, err := innerSess.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	innerStderr, err := innerSess.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := innerSess.Shell(); err != nil {
+		return fmt.Errorf("inner shell: %w", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { defer wg.Done(); _, _ = io.Copy(innerStdin, outerChan); _ = innerStdin.Close() }()
+	go func() { defer wg.Done(); _, _ = io.Copy(outerChan, innerStdout) }()
+	go func() { defer wg.Done(); _, _ = io.Copy(outerChan.Stderr(), innerStderr) }()
+
+	// Forward window-change requests from outer to inner.
+	go func() {
+		for req := range outerReqs {
+			switch req.Type {
+			case "window-change":
+				if len(req.Payload) >= 16 {
+					cols := int(beUint32(req.Payload[0:4]))
+					rows := int(beUint32(req.Payload[4:8]))
+					_ = innerSess.WindowChange(rows, cols)
+				}
+				if req.WantReply {
+					_ = req.Reply(true, nil)
+				}
+			default:
+				if req.WantReply {
+					_ = req.Reply(false, nil)
+				}
+			}
+		}
+	}()
+
+	exitErr := innerSess.Wait()
+	wg.Wait()
+	if exitErr != nil {
+		log.Debug("inner session exited", "err", exitErr)
+	}
+	_ = outerChan.Close()
+	return nil
+}
+
+// pendingPty captures the outer client's pty-req so the gateway can replay it
+// against the inner session. server.go fills this in.
+type pendingPty struct {
+	set        bool
+	term       string
+	rows, cols int
+}
+
+func beUint32(b []byte) uint32 {
+	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+}
