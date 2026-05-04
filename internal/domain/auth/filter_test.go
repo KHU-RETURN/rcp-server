@@ -53,7 +53,7 @@ func TestAuthRequired(t *testing.T) {
 
 	newProtectedRouter := func(repo userRepository) (*gin.Engine, string) {
 		tokenSvc := NewTokenService("test-secret")
-		handler := NewHandler(NewService(repo, &oauth2.Config{}, tokenSvc))
+		handler := NewHandler(NewService(repo, &oauth2.Config{}, tokenSvc), nil)
 
 		r := gin.New()
 		protected := r.Group("/protected")
@@ -103,7 +103,7 @@ func TestAuthRequired(t *testing.T) {
 			"user@khu.ac.kr": {Email: "user@khu.ac.kr"},
 		}}
 		tokenSvc := NewTokenService("test-secret")
-		handler := NewHandler(NewService(repo, &oauth2.Config{}, tokenSvc))
+		handler := NewHandler(NewService(repo, &oauth2.Config{}, tokenSvc), nil)
 
 		_, refreshToken, _, err := tokenSvc.GenerateAuthTokens("user@khu.ac.kr")
 		if err != nil {

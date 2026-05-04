@@ -107,3 +107,38 @@ func (s *Service) generateState(n int) string {
 	}
 	return base64.URLEncoding.EncodeToString(b)
 }
+
+// BuildLoginURL returns Google's auth URL using the provided state as-is. When
+// stateOverride is empty, falls back to a CSRF-safe random state (matching the
+// legacy GetGoogleLoginURL behavior).
+func (s *Service) BuildLoginURL(stateOverride string) string {
+	state := stateOverride
+	if state == "" {
+		state = s.generateState(16)
+	}
+	return s.OauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
+}
+
+// VerifyGoogleCode exchanges the OAuth code, validates the id_token, enforces
+// the @khu.ac.kr domain, and returns the verified email. Used by flows that
+// only need the identity (e.g. SSH session resolution) and don't need our
+// service tokens.
+func (s *Service) VerifyGoogleCode(ctx context.Context, code string) (string, error) {
+	token, err := s.OauthConfig.Exchange(ctx, code)
+	if err != nil {
+		return "", fmt.Errorf("token exchange failed: %w", err)
+	}
+	rawIDToken, _ := token.Extra("id_token").(string)
+	payload, err := idtoken.Validate(ctx, rawIDToken, s.OauthConfig.ClientID)
+	if err != nil {
+		return "", fmt.Errorf("id_token invalid: %w", err)
+	}
+	email, ok := payload.Claims["email"].(string)
+	if !ok || email == "" {
+		return "", errors.New("email claim not found in id_token")
+	}
+	if !strings.HasSuffix(email, "@khu.ac.kr") {
+		return "", errors.New("경희대학교 계정(@khu.ac.kr)으로만 로그인할 수 있습니다")
+	}
+	return email, nil
+}
