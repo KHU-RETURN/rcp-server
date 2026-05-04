@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/database"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
@@ -63,7 +64,18 @@ func main() {
 		log.Fatalf("google oauth 연결 실패: %v", err)
 	}
 
-	myApp, err := server.NewApp(provider, db, oauth, os.Getenv("OS_PROJECT_ID"), jwtSecret)
+	notifySock := strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SOCK"))
+	notifySecret := []byte(strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SECRET")))
+
+	myApp, err := server.NewApp(server.AppDeps{
+		Provider:         provider,
+		EntClient:        db,
+		OAuthConfig:      oauth,
+		OpenStackProject: os.Getenv("OS_PROJECT_ID"),
+		JWTSecret:        jwtSecret,
+		SSHGatewaySock:   notifySock,
+		SSHGatewaySecret: notifySecret,
+	})
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
 	}

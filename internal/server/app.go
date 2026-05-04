@@ -7,6 +7,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
+	rcpssh "github.com/KHU-RETURN/rcp-server/internal/domain/ssh"
 	"github.com/gophercloud/gophercloud"
 	"golang.org/x/oauth2"
 )
@@ -17,21 +18,29 @@ type App struct {
 	Auth    *auth.Handler
 }
 
-func NewApp(
-	p *gophercloud.ProviderClient,
-	client *ent.Client,
-	oauthConfig *oauth2.Config,
-	projectID string,
-	jwtSecret string,
-) (*App, error) {
-	authHandler, err := auth.Init(client, oauthConfig, jwtSecret)
+type AppDeps struct {
+	Provider         *gophercloud.ProviderClient
+	EntClient        *ent.Client
+	OAuthConfig      *oauth2.Config
+	OpenStackProject string
+	JWTSecret        string
+	SSHGatewaySock   string
+	SSHGatewaySecret []byte
+}
+
+func NewApp(deps AppDeps) (*App, error) {
+	var sshSvc *rcpssh.Service
+	if deps.SSHGatewaySock != "" && len(deps.SSHGatewaySecret) > 0 {
+		sshSvc = rcpssh.Init(deps.SSHGatewaySock, deps.SSHGatewaySecret)
+	}
+
+	authHandler, err := auth.Init(deps.EntClient, deps.OAuthConfig, deps.JWTSecret, sshSvc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
-
 	return &App{
-		Compute: compute.Init(p, client, projectID),
-		Access:  access.Init(p, client),
+		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject),
+		Access:  access.Init(deps.Provider, deps.EntClient),
 		Auth:    authHandler,
 	}, nil
 }
