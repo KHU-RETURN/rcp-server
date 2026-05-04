@@ -105,12 +105,14 @@ func runNotifyServer(ctx context.Context, ln net.Listener, h http.Handler, log *
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
+	log.Debug("notify server started")
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 		<-errCh
+		log.Debug("notify server stopped")
 		return nil
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
