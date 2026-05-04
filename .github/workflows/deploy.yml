@@ -1,8 +1,8 @@
-name: Go CD
+name: Go CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]  # main 브랜치에 푸시될 때 실행
+    branches: [ "main" ]
 
 jobs:
   deploy:
@@ -11,7 +11,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Tailscale
+      - name: Setup Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
@@ -19,33 +19,31 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26' # 최신 버전 반영
+
+      - name: Run Tests
+        run: go test ./... -v # 배포 전 테스트 (지성님 제안)
 
       - name: Build
-        # 서버와 동일한 아키텍처(Linux)로 빌드합니다.
         run: GOOS=linux GOARCH=amd64 go build -v -o server ./cmd/api/main.go
 
       - name: Transfer Binary (SCP)
-        uses: appleboy/scp-action@master
+        uses: appleboy/scp-action@v0.1.7 # 버전 명시
         with:
-          host: ${{ secrets.SERVER_HOST }}
+          host: ${{ secrets.SERVER_HOST }} # Tailscale IP(100.x.y.z) 권장
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_KEY }}
-          password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SERVER_KEY }}   # Key 방식 선택 (Password 제거 가능)
           source: "server"
           target: "~/rcp-server/"
 
-      - name: Restart Server (SSH)
-        uses: appleboy/ssh-action@master
+      - name: Restart Service (SSH)
+        uses: appleboy/ssh-action@v0.1.10 # 버전 명시
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
-          password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             cd ~/rcp-server
-            # 기존 프로세스 종료 (8080 포트)
-            sudo fuser -k 8080/tcp || true
-            # 새 서버 실행
             chmod +x server
-            nohup ./server > app.log 2>&1 &
+            # systemd 서비스 재시작 (없으면 새로 등록 필요)
+            sudo systemctl restart rcp-server || (echo "Service not found, using nohup for now" && nohup ./server > app.log 2>&1 &)
