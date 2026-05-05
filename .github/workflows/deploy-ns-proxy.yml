@@ -1,0 +1,115 @@
+name: ns-proxy CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'cmd/ns-proxy/**'
+      - 'deploy/systemd/ns-proxy.service'
+      - '.github/workflows/deploy-ns-proxy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Build
+        run: GOOS=linux GOARCH=amd64 go build -v -o ns-proxy ./cmd/ns-proxy
+
+      - name: Transfer artifacts (SCP)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          source: "ns-proxy,deploy/systemd/ns-proxy.service"
+          target: "/tmp/ns-proxy-deploy"
+
+      - name: Install binary
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -m 0755 -o root -g root \
+              /tmp/ns-proxy-deploy/ns-proxy \
+              /usr/local/bin/ns-proxy
+
+      - name: Write env file
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          envs: RCP_NS_PROXY_ALLOW_CIDR
+          script: |
+            set -euo pipefail
+
+            NETNS=$(ip netns list | awk '/^qrouter-/ {print $1; exit}')
+            if [ -z "$NETNS" ]; then
+              echo "ERROR: qrouter netns not found on host" >&2
+              exit 1
+            fi
+
+            sudo install -d -o root -g root -m 0755 /etc/rcp
+
+            sudo tee /etc/rcp/ns-proxy.env > /dev/null <<EOF
+            RCP_NS_PROXY_NETNS=$NETNS
+            RCP_NS_PROXY_SOCK=/run/rcp/ns-proxy.sock
+            RCP_NS_PROXY_ALLOW_CIDR=$RCP_NS_PROXY_ALLOW_CIDR
+            RCP_NS_PROXY_MAX_CONNS=1024
+            RCP_NS_PROXY_DIAL_TIMEOUT=5s
+            RCP_NS_PROXY_SHUTDOWN_GRACE=30s
+            RCP_NS_PROXY_LOG_LEVEL=info
+            EOF
+            sudo chown root:return /etc/rcp/ns-proxy.env
+            sudo chmod 0640 /etc/rcp/ns-proxy.env
+
+      - name: Install systemd unit
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -m 0644 -o root -g root \
+              /tmp/ns-proxy-deploy/deploy/systemd/ns-proxy.service \
+              /etc/systemd/system/ns-proxy.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable ns-proxy
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo systemctl restart ns-proxy
+
+      - name: Cleanup deploy artifacts
+        if: always()
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            rm -rf /tmp/ns-proxy-deploy
