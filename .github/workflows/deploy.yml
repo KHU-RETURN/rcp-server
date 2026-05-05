@@ -21,6 +21,9 @@ jobs:
         with:
           go-version: '1.26'
 
+      - name: Run Tests
+        run: go test ./... -v
+
       - name: Build
         run: GOOS=linux GOARCH=amd64 go build -v -o server ./cmd/api/main.go
 
@@ -56,21 +59,21 @@ jobs:
             mkdir -p ~/rcp-server
             umask 077
             {
-              printf 'RCP_JWT_SECRET=%s\n' "$RCP_JWT_SECRET"
-              printf 'OS_AUTH_URL=%s\n' "$OS_AUTH_URL"
-              printf 'OS_USERNAME=%s\n' "$OS_USERNAME"
-              printf 'OS_PASSWORD=%s\n' "$OS_PASSWORD"
-              printf 'OS_PROJECT_NAME=%s\n' "$OS_PROJECT_NAME"
-              printf 'OS_USER_DOMAIN_NAME=%s\n' "$OS_USER_DOMAIN_NAME"
-              printf 'OS_PROJECT_ID=%s\n' "$OS_PROJECT_ID"
-              printf 'CF_ACCESS_CLIENT_ID=%s\n' "$CF_ACCESS_CLIENT_ID"
-              printf 'CF_ACCESS_CLIENT_SECRET=%s\n' "$CF_ACCESS_CLIENT_SECRET"
-              printf 'GG_OAUTH_CLIENT=%s\n' "$GG_OAUTH_CLIENT"
-              printf 'GG_OAUTH_SECRET=%s\n' "$GG_OAUTH_SECRET"
-              printf 'GG_REDIRECT_URL=%s\n' "$GG_REDIRECT_URL"
-              printf 'DB_DRIVER=%s\n' "$DB_DRIVER"
-              printf 'DB_DSN=%s\n' "$DB_DSN"
-              printf 'PORT=%s\n' "$PORT"
+              printf '%s\n' "RCP_JWT_SECRET=$RCP_JWT_SECRET"
+              printf '%s\n' "OS_AUTH_URL=$OS_AUTH_URL"
+              printf '%s\n' "OS_USERNAME=$OS_USERNAME"
+              printf '%s\n' "OS_PASSWORD=$OS_PASSWORD"
+              printf '%s\n' "OS_PROJECT_NAME=$OS_PROJECT_NAME"
+              printf '%s\n' "OS_USER_DOMAIN_NAME=$OS_USER_DOMAIN_NAME"
+              printf '%s\n' "OS_PROJECT_ID=$OS_PROJECT_ID"
+              printf '%s\n' "CF_ACCESS_CLIENT_ID=$CF_ACCESS_CLIENT_ID"
+              printf '%s\n' "CF_ACCESS_CLIENT_SECRET=$CF_ACCESS_CLIENT_SECRET"
+              printf '%s\n' "GG_OAUTH_CLIENT=$GG_OAUTH_CLIENT"
+              printf '%s\n' "GG_OAUTH_SECRET=$GG_OAUTH_SECRET"
+              printf '%s\n' "GG_REDIRECT_URL=$GG_REDIRECT_URL"
+              printf '%s\n' "DB_DRIVER=$DB_DRIVER"
+              printf '%s\n' "DB_DSN=$DB_DSN"
+              printf '%s\n' "PORT=$PORT"
             } > ~/rcp-server/.env
             chmod 0600 ~/rcp-server/.env
 
@@ -106,4 +109,5 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
+            set -euo pipefail
             rm -rf /tmp/rcp-deploy
