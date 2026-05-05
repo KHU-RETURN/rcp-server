@@ -1,0 +1,15 @@
+[Unit]
+Description=RCP Server Go Application
+After=network.target
+
+[Service]
+User=return
+WorkingDirectory=/home/return/rcp-server
+ExecStart=/home/return/rcp-server/server
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/return/rcp-server/app.log
+StandardError=append:/home/return/rcp-server/app.log
+
+[Install]
+WantedBy=multi-user.target

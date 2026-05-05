@@ -19,31 +19,91 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26' # 최신 버전 반영
-
-      - name: Run Tests
-        run: go test ./... -v # 배포 전 테스트 (지성님 제안)
+          go-version: '1.26'
 
       - name: Build
         run: GOOS=linux GOARCH=amd64 go build -v -o server ./cmd/api/main.go
 
-      - name: Transfer Binary (SCP)
-        uses: appleboy/scp-action@v0.1.7 # 버전 명시
+      - name: Transfer artifacts (SCP)
+        uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.SERVER_HOST }} # Tailscale IP(100.x.y.z) 권장
+          host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_KEY }}   # Key 방식 선택 (Password 제거 가능)
-          source: "server"
-          target: "~/rcp-server/"
+          key: ${{ secrets.SERVER_KEY }}
+          source: "server,deploy/systemd/rcp-server.service"
+          target: "/tmp/rcp-deploy"
 
-      - name: Restart Service (SSH)
-        uses: appleboy/ssh-action@v0.1.10 # 버전 명시
+      - name: Install binary
+        uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
-            cd ~/rcp-server
-            chmod +x server
-            # systemd 서비스 재시작 (없으면 새로 등록 필요)
-            sudo systemctl restart rcp-server || (echo "Service not found, using nohup for now" && nohup ./server > app.log 2>&1 &)
+            set -euo pipefail
+            mkdir -p ~/rcp-server
+            install -m 0755 /tmp/rcp-deploy/server ~/rcp-server/server
+
+      - name: Write .env file
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          envs: RCP_JWT_SECRET,OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,OS_PROJECT_ID,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,GG_OAUTH_CLIENT,GG_OAUTH_SECRET,GG_REDIRECT_URL,DB_DRIVER,DB_DSN,PORT
+          script: |
+            set -euo pipefail
+            mkdir -p ~/rcp-server
+            umask 077
+            {
+              printf 'RCP_JWT_SECRET=%s\n' "$RCP_JWT_SECRET"
+              printf 'OS_AUTH_URL=%s\n' "$OS_AUTH_URL"
+              printf 'OS_USERNAME=%s\n' "$OS_USERNAME"
+              printf 'OS_PASSWORD=%s\n' "$OS_PASSWORD"
+              printf 'OS_PROJECT_NAME=%s\n' "$OS_PROJECT_NAME"
+              printf 'OS_USER_DOMAIN_NAME=%s\n' "$OS_USER_DOMAIN_NAME"
+              printf 'OS_PROJECT_ID=%s\n' "$OS_PROJECT_ID"
+              printf 'CF_ACCESS_CLIENT_ID=%s\n' "$CF_ACCESS_CLIENT_ID"
+              printf 'CF_ACCESS_CLIENT_SECRET=%s\n' "$CF_ACCESS_CLIENT_SECRET"
+              printf 'GG_OAUTH_CLIENT=%s\n' "$GG_OAUTH_CLIENT"
+              printf 'GG_OAUTH_SECRET=%s\n' "$GG_OAUTH_SECRET"
+              printf 'GG_REDIRECT_URL=%s\n' "$GG_REDIRECT_URL"
+              printf 'DB_DRIVER=%s\n' "$DB_DRIVER"
+              printf 'DB_DSN=%s\n' "$DB_DSN"
+              printf 'PORT=%s\n' "$PORT"
+            } > ~/rcp-server/.env
+            chmod 0600 ~/rcp-server/.env
+
+      - name: Install systemd unit
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -m 0644 -o root -g root \
+              /tmp/rcp-deploy/deploy/systemd/rcp-server.service \
+              /etc/systemd/system/rcp-server.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable rcp-server
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo systemctl restart rcp-server
+
+      - name: Cleanup deploy artifacts
+        if: always()
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            rm -rf /tmp/rcp-deploy
