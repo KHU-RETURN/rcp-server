@@ -26,6 +26,9 @@ jobs:
         with:
           go-version: '1.26'
 
+      - name: Run Tests
+        run: go test ./... -v
+
       - name: Build
         run: GOOS=linux GOARCH=amd64 go build -v -o ns-proxy ./cmd/ns-proxy
 
@@ -56,13 +59,13 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
-          envs: RCP_NS_PROXY_ALLOW_CIDR
+          envs: RCP_NS_PROXY_ALLOW_CIDR,RCP_NS_PROXY_ROUTER_ID
           script: |
             set -euo pipefail
 
-            NETNS=$(ip netns list | awk '/^qrouter-/ {print $1; exit}')
-            if [ -z "$NETNS" ]; then
-              echo "ERROR: qrouter netns not found on host" >&2
+            NETNS="qrouter-${RCP_NS_PROXY_ROUTER_ID}"
+            if ! ip netns list | awk '{print $1}' | grep -qx "$NETNS"; then
+              echo "ERROR: netns $NETNS not found on host" >&2
               exit 1
             fi
 
@@ -112,4 +115,5 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
+            set -euo pipefail
             rm -rf /tmp/ns-proxy-deploy
