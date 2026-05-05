@@ -4,12 +4,18 @@ After=network.target
 
 [Service]
 User=return
+Group=return
 WorkingDirectory=/home/return/rcp-server
+EnvironmentFile=/home/return/rcp-server/.env
 ExecStart=/home/return/rcp-server/server
 Restart=always
 RestartSec=3
-StandardOutput=append:/home/return/rcp-server/app.log
-StandardError=append:/home/return/rcp-server/app.log
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
