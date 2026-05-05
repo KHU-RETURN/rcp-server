@@ -32,6 +32,13 @@ jobs:
       - name: Build
         run: GOOS=linux GOARCH=amd64 go build -v -o ns-proxy ./cmd/ns-proxy
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ns-proxy-${{ github.sha }}
+          path: ns-proxy
+          retention-days: 1
+
       - name: Transfer artifacts (SCP)
         uses: appleboy/scp-action@v0.1.7
         with:

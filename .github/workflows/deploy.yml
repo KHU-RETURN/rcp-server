@@ -27,6 +27,13 @@ jobs:
       - name: Build
         run: GOOS=linux GOARCH=amd64 go build -v -o server ./cmd/api/main.go
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rcp-server-${{ github.sha }}
+          path: server
+          retention-days: 1
+
       - name: Transfer artifacts (SCP)
         uses: appleboy/scp-action@v0.1.7
         with:
