@@ -1,0 +1,21 @@
+[Unit]
+Description=RCP Server Go Application
+After=network.target
+
+[Service]
+User=return
+Group=return
+WorkingDirectory=/home/return/rcp-server
+EnvironmentFile=/home/return/rcp-server/.env
+ExecStart=/home/return/rcp-server/server
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
