@@ -15,12 +15,13 @@ type sshCallbackHandler interface {
 }
 
 type Handler struct {
-	Svc *Service
-	ssh sshCallbackHandler // optional: nil disables the ssh:<nonce> branch
+	Svc             *Service
+	ssh             sshCallbackHandler // optional: nil disables the ssh:<nonce> branch
+	frontendBaseURL string             // origin used to redirect after ssh:<nonce> callback completes
 }
 
-func NewHandler(svc *Service, ssh sshCallbackHandler) *Handler {
-	return &Handler{Svc: svc, ssh: ssh}
+func NewHandler(svc *Service, ssh sshCallbackHandler, frontendBaseURL string) *Handler {
+	return &Handler{Svc: svc, ssh: ssh, frontendBaseURL: frontendBaseURL}
 }
 
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
@@ -66,11 +67,7 @@ func (h *Handler) Callback(c *gin.Context) {
 			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 			return
 		}
-		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(`<!doctype html>
-<title>RCP SSH</title>
-<style>body{font-family:sans-serif;padding:32px}</style>
-<h1>로그인 완료</h1>
-<p>SSH 터미널로 돌아가세요.</p>`))
+		c.Redirect(http.StatusFound, h.frontendBaseURL+"/ssh/complete")
 		return
 	}
 

@@ -26,6 +26,7 @@ type AppDeps struct {
 	JWTSecret        string
 	SSHGatewaySock   string
 	SSHGatewaySecret []byte
+	FrontendBaseURL  string
 }
 
 func NewApp(deps AppDeps) (*App, error) {
@@ -34,7 +35,7 @@ func NewApp(deps AppDeps) (*App, error) {
 		sshSvc = rcpssh.Init(deps.SSHGatewaySock, deps.SSHGatewaySecret)
 	}
 
-	authHandler, err := auth.Init(deps.EntClient, deps.OAuthConfig, deps.JWTSecret, sshSvc)
+	authHandler, err := auth.Init(deps.EntClient, deps.OAuthConfig, deps.JWTSecret, sshSvc, deps.FrontendBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}

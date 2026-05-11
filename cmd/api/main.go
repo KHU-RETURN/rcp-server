@@ -67,6 +67,11 @@ func main() {
 	notifySock := strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SOCK"))
 	notifySecret := []byte(strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SECRET")))
 
+	frontendBaseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("RCP_FRONTEND_BASE_URL")), "/")
+	if frontendBaseURL == "" {
+		log.Fatalf("RCP_FRONTEND_BASE_URL: required (e.g. https://rcp.return.dev)")
+	}
+
 	myApp, err := server.NewApp(server.AppDeps{
 		Provider:         provider,
 		EntClient:        db,
@@ -75,6 +80,7 @@ func main() {
 		JWTSecret:        jwtSecret,
 		SSHGatewaySock:   notifySock,
 		SSHGatewaySecret: notifySecret,
+		FrontendBaseURL:  frontendBaseURL,
 	})
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
