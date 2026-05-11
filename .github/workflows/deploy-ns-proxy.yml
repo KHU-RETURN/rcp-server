@@ -95,14 +95,22 @@ jobs:
 
       - name: Install systemd unit
         uses: appleboy/ssh-action@v0.1.10
+        env:
+          RCP_NS_PROXY_ROUTER_ID: ${{ secrets.RCP_NS_PROXY_ROUTER_ID }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
+          envs: RCP_NS_PROXY_ROUTER_ID
           script: |
             set -euo pipefail
+
+            NETNS="${RCP_NS_PROXY_ROUTER_ID}"
+
             sudo install -m 0644 -o root -g root \
               /tmp/ns-proxy-deploy/deploy/systemd/ns-proxy.service \
+              /etc/systemd/system/ns-proxy.service
+            sudo sed -i "s|/var/run/netns/\${RCP_NS_PROXY_NETNS}|/var/run/netns/${NETNS}|g" \
               /etc/systemd/system/ns-proxy.service
             sudo systemctl daemon-reload
             sudo systemctl enable ns-proxy
