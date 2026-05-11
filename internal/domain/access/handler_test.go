@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/net/websocket"
 )
 
 var testUser = &auth.User{ID: testOwnerID}
@@ -23,6 +25,96 @@ func withTestUser(r *gin.RouterGroup) {
 		c.Set(auth.ContextKeyUser, testUser)
 		c.Next()
 	})
+}
+
+func TestWebsocketBaseURLUsesConfiguredURL(t *testing.T) {
+	t.Setenv(envWebConsoleBaseURL, "https://console.example.test/")
+
+	c := newTestGinContext("http://internal.local/console")
+
+	got := websocketBaseURL(c)
+	want := "wss://console.example.test" + api.BasePath
+	if got != want {
+		t.Fatalf("websocketBaseURL() = %q, want %q", got, want)
+	}
+}
+
+func TestWebsocketBaseURLIgnoresForwardedHost(t *testing.T) {
+	c := newTestGinContext("http://api.example.test/console")
+	c.Request.Header.Set("X-Forwarded-Host", "attacker.example.test")
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	got := websocketBaseURL(c)
+	want := "ws://api.example.test" + api.BasePath
+	if got != want {
+		t.Fatalf("websocketBaseURL() = %q, want %q", got, want)
+	}
+}
+
+func TestValidateWebSocketOrigin(t *testing.T) {
+	tests := []struct {
+		name           string
+		allowedOrigins string
+		origin         string
+		host           string
+		wantAllowed    bool
+	}{
+		{
+			name:        "allows same host when allowed origins are not configured",
+			origin:      "https://api.example.test",
+			host:        "api.example.test",
+			wantAllowed: true,
+		},
+		{
+			name:        "rejects different host when allowed origins are not configured",
+			origin:      "https://attacker.example.test",
+			host:        "api.example.test",
+			wantAllowed: false,
+		},
+		{
+			name:           "allows configured origin",
+			allowedOrigins: "https://console.example.test",
+			origin:         "https://console.example.test",
+			host:           "api.example.test",
+			wantAllowed:    true,
+		},
+		{
+			name:           "rejects unconfigured origin",
+			allowedOrigins: "https://console.example.test",
+			origin:         "https://attacker.example.test",
+			host:           "api.example.test",
+			wantAllowed:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(envWebConsoleAllowedOrigins, tt.allowedOrigins)
+
+			origin, err := url.Parse(tt.origin)
+			if err != nil {
+				t.Fatalf("parse origin: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodGet, "http://"+tt.host+"/console", nil)
+			cfg := &websocket.Config{Origin: origin}
+
+			err = validateWebSocketOrigin(cfg, req)
+			if tt.wantAllowed && err != nil {
+				t.Fatalf("expected origin to be allowed, got %v", err)
+			}
+			if !tt.wantAllowed && err == nil {
+				t.Fatal("expected origin to be rejected")
+			}
+		})
+	}
+}
+
+func newTestGinContext(target string) *gin.Context {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, target, nil)
+	return c
 }
 
 func TestHandlerCreateKeyPair(t *testing.T) {
