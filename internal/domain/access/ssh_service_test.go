@@ -1,4 +1,4 @@
-package ssh
+package access
 
 import (
 	"context"
@@ -6,20 +6,20 @@ import (
 	"testing"
 )
 
-type fakeNotifier struct {
+type fakeSSHNotifier struct {
 	gotNonce, gotEmail string
 	err                error
 }
 
-func (f *fakeNotifier) Notify(_ context.Context, nonce, email string) error {
+func (f *fakeSSHNotifier) Notify(_ context.Context, nonce, email string) error {
 	f.gotNonce = nonce
 	f.gotEmail = email
 	return f.err
 }
 
-func TestService_HandleSSHCallback_Forwards(t *testing.T) {
-	f := &fakeNotifier{}
-	s := NewService(f)
+func TestSSHService_HandleSSHCallback_Forwards(t *testing.T) {
+	f := &fakeSSHNotifier{}
+	s := NewSSHService(f)
 	if err := s.HandleSSHCallback(context.Background(), "n1", "u@khu.ac.kr"); err != nil {
 		t.Fatal(err)
 	}
@@ -28,8 +28,8 @@ func TestService_HandleSSHCallback_Forwards(t *testing.T) {
 	}
 }
 
-func TestService_RejectsEmpty(t *testing.T) {
-	s := NewService(&fakeNotifier{})
+func TestSSHService_RejectsEmpty(t *testing.T) {
+	s := NewSSHService(&fakeSSHNotifier{})
 	if err := s.HandleSSHCallback(context.Background(), "", "u@khu.ac.kr"); !errors.Is(err, ErrInvalidNonce) {
 		t.Fatalf("got %v", err)
 	}
@@ -38,9 +38,9 @@ func TestService_RejectsEmpty(t *testing.T) {
 	}
 }
 
-func TestService_PropagatesNotifierErr(t *testing.T) {
-	f := &fakeNotifier{err: errors.New("boom")}
-	s := NewService(f)
+func TestSSHService_PropagatesNotifierErr(t *testing.T) {
+	f := &fakeSSHNotifier{err: errors.New("boom")}
+	s := NewSSHService(f)
 	if err := s.HandleSSHCallback(context.Background(), "n", "u@khu.ac.kr"); err == nil {
 		t.Fatal("expected error")
 	}

@@ -1,4 +1,4 @@
-package ssh
+package access
 
 import (
 	"context"
@@ -10,18 +10,18 @@ var (
 	ErrInvalidEmail = errors.New("invalid email")
 )
 
-// notifier is the package-private contract. *NotifyClient satisfies it.
-type notifier interface {
+// sshNotifier is the package-private contract. *NotifyClient satisfies it.
+type sshNotifier interface {
 	Notify(ctx context.Context, nonce, userEmail string) error
 }
 
-type Service struct {
-	n notifier
+type SSHService struct {
+	n sshNotifier
 }
 
-func NewService(n notifier) *Service { return &Service{n: n} }
+func NewSSHService(n sshNotifier) *SSHService { return &SSHService{n: n} }
 
-func (s *Service) HandleSSHCallback(ctx context.Context, nonce, userEmail string) error {
+func (s *SSHService) HandleSSHCallback(ctx context.Context, nonce, userEmail string) error {
 	if nonce == "" {
 		return ErrInvalidNonce
 	}

@@ -1,4 +1,4 @@
-package ssh
+package access
 
 // NotifyRequest is the payload posted to the gateway's /notify endpoint.
 type NotifyRequest struct {

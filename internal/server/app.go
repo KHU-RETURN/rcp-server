@@ -7,7 +7,6 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
-	rcpssh "github.com/KHU-RETURN/rcp-server/internal/domain/ssh"
 	"github.com/gophercloud/gophercloud"
 	"golang.org/x/oauth2"
 )
@@ -30,9 +29,9 @@ type AppDeps struct {
 }
 
 func NewApp(deps AppDeps) (*App, error) {
-	var sshSvc *rcpssh.Service
+	var sshSvc *access.SSHService
 	if deps.SSHGatewaySock != "" && len(deps.SSHGatewaySecret) > 0 {
-		sshSvc = rcpssh.Init(deps.SSHGatewaySock, deps.SSHGatewaySecret)
+		sshSvc = access.InitSSH(deps.SSHGatewaySock, deps.SSHGatewaySecret)
 	}
 
 	authHandler, err := auth.Init(deps.EntClient, deps.OAuthConfig, deps.JWTSecret, sshSvc, deps.FrontendBaseURL)
