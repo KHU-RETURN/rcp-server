@@ -156,13 +156,52 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 
 ## 7. 환경 변수
 
-| 변수 | 설명 |
-|------|------|
-| `PORT` | 서버 포트 (기본값 `8080`) |
-| `OS_AUTH_URL` | OpenStack Identity 엔드포인트 |
-| `OS_USERNAME` | OpenStack 사용자 이름 |
-| `OS_PASSWORD` | OpenStack 비밀번호 |
-| `OS_PROJECT_NAME` | OpenStack 프로젝트 이름 |
-| `OS_USER_DOMAIN_NAME` | OpenStack 사용자 도메인 이름 |
-| `CF_ACCESS_CLIENT_ID` | Cloudflare Access Client ID |
-| `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access Client Secret |
+바이너리별로 분리해 표기합니다. **필수** 표시가 없는 항목은 기본값이 있어 생략 가능합니다.
+
+### 7.1 `cmd/api`
+
+| 변수 | 의무 | 설명 |
+|------|------|------|
+| `PORT` | optional (기본 `8080`) | HTTP 리스닝 포트 |
+| `RCP_JWT_SECRET` | optional (dev 폴백 있음) | JWT 서명 시크릿. 운영에서는 반드시 설정 |
+| `OS_AUTH_URL` | **필수** | OpenStack Identity 엔드포인트 |
+| `OS_USERNAME` | **필수** | OpenStack 사용자 이름 |
+| `OS_PASSWORD` | **필수** | OpenStack 비밀번호 |
+| `OS_PROJECT_NAME` | **필수** | OpenStack 프로젝트 이름 |
+| `OS_PROJECT_ID` | **필수** | OpenStack 프로젝트 ID (API에서 scope 지정용) |
+| `OS_USER_DOMAIN_NAME` | **필수** | OpenStack 사용자 도메인 |
+| `CF_ACCESS_CLIENT_ID` | **필수** | Cloudflare Access Client ID (OpenStack 프록시용) |
+| `CF_ACCESS_CLIENT_SECRET` | **필수** | Cloudflare Access Client Secret |
+| `GG_OAUTH_CLIENT` | **필수** | Google OAuth Client ID |
+| `GG_OAUTH_SECRET` | **필수** | Google OAuth Client Secret |
+| `GG_REDIRECT_URL` | **필수** | Google OAuth Redirect URL |
+| `DB_DRIVER` | optional (기본 `sqlite3`) | ent DB 드라이버 |
+| `DB_DSN` | optional (기본 `file:rcp.db?...`) | DB DSN |
+| `RCP_FRONTEND_BASE_URL` | **필수** | OAuth 콜백의 SSH 분기에서 redirect할 프런트엔드 origin (예: `https://rcp.return.dev`). 미설정 시 부팅 fail-fast |
+| `RCP_SSH_GW_NOTIFY_SOCK` | optional | ssh-gateway notify Unix socket 경로. 미설정 시 SSH 분기 비활성 |
+| `RCP_SSH_GW_NOTIFY_SECRET` | optional | ssh-gateway와 공유하는 HMAC-SHA256 시크릿 |
+
+### 7.2 `cmd/ns-proxy`
+
+| 변수 | 의무 | 설명 |
+|------|------|------|
+| `RCP_NS_PROXY_SOCK` | optional (기본 `/run/rcp/ns-proxy.sock`) | SOCKS5 Unix socket 경로 |
+| `RCP_NS_PROXY_ALLOW_CIDR` | optional | dial 허용 CIDR 리스트 (쉼표 구분). 미지정 시 모두 허용 |
+| `RCP_NS_PROXY_MAX_CONNS` | optional (기본 `1024`) | 동시 연결 상한 |
+| `RCP_NS_PROXY_DIAL_TIMEOUT` | optional (기본 `5s`) | 백엔드 dial 타임아웃 |
+| `RCP_NS_PROXY_SHUTDOWN_GRACE` | optional (기본 `30s`) | graceful shutdown 대기 |
+| `RCP_NS_PROXY_LOG_LEVEL` | optional (기본 `info`) | |
+
+### 7.3 `cmd/ssh-gateway`
+
+| 변수 | 의무 | 설명 |
+|------|------|------|
+| `RCP_SSH_GW_LISTEN` | optional (기본 `127.0.0.1:2222`) | outer SSH 리스닝. 외부 직접 노출하려면 `:2222`로 override (cloudflared 사용 권장) |
+| `RCP_SSH_GW_HOST_KEY_PATH` | optional (기본 `/etc/rcp/ssh-gateway/host_ed25519`) | host ed25519 key 영속화 경로 (없으면 생성) |
+| `RCP_SSH_GW_NOTIFY_SOCK` | optional (기본 `/run/rcp/ssh-gateway-notify.sock`) | api ↔ gateway notify 소켓 |
+| `RCP_SSH_GW_NOTIFY_SECRET` | **필수** | api와 공유 HMAC 시크릿 |
+| `RCP_SSH_GW_AUTH_URL_BASE` | **필수** | 사용자 터미널에 출력할 프런트 origin (예: `https://rcp.return.dev`) |
+| `RCP_SSH_GW_DB_PATH` | **필수** | ent SQLite 경로 (read-only) |
+| `RCP_SSH_GW_NONCE_TTL` | optional (기본 `5m`) | pending-session 만료 |
+| `RCP_NS_PROXY_SOCK` | optional (기본 `/run/rcp/ns-proxy.sock`) | ns-proxy SOCKS5 소켓 |
+| `RCP_SSH_GW_LOG_LEVEL` | optional (기본 `info`) | |
