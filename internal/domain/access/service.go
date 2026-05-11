@@ -200,7 +200,7 @@ func (s *Service) CreateConsoleSession(ctx context.Context, ownerID uuid.UUID, i
 	}
 
 	return &CreateConsoleSessionResponse{
-		URL:       strings.TrimRight(basePath, "/") + "/access/console/ws?token=" + session.Token,
+		URL:       strings.TrimRight(basePath, "/") + routeAccessPrefix + pathConsoleWebSocket + "?token=" + session.Token,
 		ExpiresAt: session.ExpiresAt,
 	}, nil
 }

@@ -16,6 +16,11 @@ type Client struct {
 	provider *gophercloud.ProviderClient
 }
 
+type serverAddress struct {
+	Address string `json:"addr"`
+	Type    string `json:"OS-EXT-IPS:type"`
+}
+
 func NewClient(provider *gophercloud.ProviderClient) *Client {
 	return &Client{provider: provider}
 }
@@ -169,11 +174,6 @@ func isGophercloudStatus(err error, code int) bool {
 
 	var codeErr gophercloud.StatusCodeError
 	return errors.As(err, &codeErr) && codeErr.GetStatusCode() == code
-}
-
-type serverAddress struct {
-	Address string `json:"addr"`
-	Type    string `json:"OS-EXT-IPS:type"`
 }
 
 func extractServerIPs(addresses map[string]interface{}, accessIPv4 string) (string, string) {

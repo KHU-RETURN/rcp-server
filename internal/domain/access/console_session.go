@@ -78,8 +78,8 @@ func (s *consoleSessionStore) AuthorizedKeys(instanceID, username string) string
 
 	s.deleteExpiredLocked(time.Now())
 	scope := authorizedKeyScope{InstanceID: instanceID, Username: username}
-	keys := s.authorizedKeys[scope]
-	if len(keys) == 0 {
+	keys, ok := s.authorizedKeys[scope]
+	if !ok || len(keys) == 0 {
 		return ""
 	}
 
@@ -95,8 +95,8 @@ func (s *consoleSessionStore) DeleteAuthorizedKey(instanceID, username, key stri
 	defer s.mu.Unlock()
 
 	scope := authorizedKeyScope{InstanceID: instanceID, Username: username}
-	keys := s.authorizedKeys[scope]
-	if len(keys) == 0 {
+	keys, ok := s.authorizedKeys[scope]
+	if !ok || len(keys) == 0 {
 		return
 	}
 	delete(keys, key)

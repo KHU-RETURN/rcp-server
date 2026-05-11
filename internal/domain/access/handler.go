@@ -3,14 +3,32 @@ package access
 import (
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/websocket"
+)
+
+const (
+	routeAccessPrefix      = "/access"
+	routeInternalSSHPrefix = "/internal/ssh"
+
+	pathConsoleWebSocket = "/console/ws"
+	pathConsoleSessions  = "/instances/:id/console-sessions"
+	pathAuthorizedKeys   = "/authorized-keys"
+
+	envWebConsoleBaseURL        = "RCP_WEB_CONSOLE_BASE_URL"
+	envWebConsoleAllowedOrigins = "RCP_WEB_CONSOLE_ALLOWED_ORIGINS"
+	envNSProxySock              = "RCP_NS_PROXY_SOCK"
+
+	defaultNSProxySock = "/run/rcp/ns-proxy.sock"
 )
 
 type Handler struct {
@@ -26,28 +44,28 @@ func NewHandler(svc *Service) *Handler {
 }
 
 func (h *Handler) InitPublicRoutes(rg *gin.RouterGroup) {
-	accessGroup := rg.Group("/access")
+	accessGroup := rg.Group(routeAccessPrefix)
 	{
-		accessGroup.GET("/console/ws", h.WebConsole)
+		accessGroup.GET(pathConsoleWebSocket, h.WebConsole)
 	}
 }
 
 func (h *Handler) InitInternalRoutes(rg *gin.RouterGroup) {
-	internalGroup := rg.Group("/internal/ssh")
+	internalGroup := rg.Group(routeInternalSSHPrefix)
 	{
-		internalGroup.GET("/authorized-keys", h.GetAuthorizedKeys)
+		internalGroup.GET(pathAuthorizedKeys, h.GetAuthorizedKeys)
 	}
 }
 
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
-	accessGroup := rg.Group("/access")
+	accessGroup := rg.Group(routeAccessPrefix)
 	{
 		accessGroup.GET("/keypairs", h.ListKeyPairs)
 		accessGroup.POST("/keypairs", h.CreateKeyPair)
 		accessGroup.GET("/keypairs/:name", h.GetKeyPair)
 		accessGroup.DELETE("/keypairs/:name", h.DeleteKeyPair)
 		// PUT/PATCH 미제공: SSH 키페어는 수정이 불가능하며, 변경 시 삭제 후 재생성이 표준입니다.
-		accessGroup.POST("/instances/:id/console-sessions", h.CreateConsoleSession)
+		accessGroup.POST(pathConsoleSessions, h.CreateConsoleSession)
 	}
 }
 
@@ -187,9 +205,7 @@ func (h *Handler) WebConsole(c *gin.Context) {
 	}
 
 	server := websocket.Server{
-		Handshake: func(*websocket.Config, *http.Request) error {
-			return nil
-		},
+		Handshake: validateWebSocketOrigin,
 		Handler: func(ws *websocket.Conn) {
 			defer func() { _ = ws.Close() }()
 			_ = h.bridgeWebConsole(ws, session)
@@ -300,20 +316,149 @@ func copyWebSocketToSSH(ws *websocket.Conn, w io.WriteCloser, done <-chan struct
 }
 
 func websocketBaseURL(c *gin.Context) string {
+	if baseURL := configuredWebConsoleBaseURL(); baseURL != "" {
+		return baseURL + api.BasePath
+	}
+
 	scheme := "ws"
-	if c.GetHeader("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
+	if c.Request.TLS != nil {
 		scheme = "wss"
 	}
-	host := c.Request.Host
-	if forwardedHost := c.GetHeader("X-Forwarded-Host"); forwardedHost != "" {
-		host = forwardedHost
+	return scheme + "://" + c.Request.Host + api.BasePath
+}
+
+func configuredWebConsoleBaseURL() string {
+	rawURL := strings.TrimSpace(os.Getenv(envWebConsoleBaseURL))
+	if rawURL == "" {
+		return ""
 	}
-	return scheme + "://" + host + api.BasePath
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return strings.TrimRight(rawURL, "/")
+	}
+	switch parsed.Scheme {
+	case "http":
+		parsed.Scheme = "ws"
+	case "https":
+		parsed.Scheme = "wss"
+	}
+	return strings.TrimRight(parsed.String(), "/")
+}
+
+func validateWebSocketOrigin(config *websocket.Config, req *http.Request) error {
+	if isWebSocketOriginAllowed(config, req) {
+		return nil
+	}
+	return errors.New("websocket origin is not allowed")
+}
+
+func isWebSocketOriginAllowed(config *websocket.Config, req *http.Request) bool {
+	origin, ok := websocketOrigin(config, req)
+	if !ok {
+		return true
+	}
+	if origin == nil {
+		return false
+	}
+
+	if allowedOrigins := configuredWebConsoleAllowedOrigins(); len(allowedOrigins) > 0 {
+		for _, allowedOrigin := range allowedOrigins {
+			if allowedOrigin == "*" || allowedOrigin == origin.String() {
+				return true
+			}
+		}
+		return false
+	}
+
+	return sameHost(origin.Host, req.Host)
+}
+
+func websocketOrigin(config *websocket.Config, req *http.Request) (*url.URL, bool) {
+	if config != nil && config.Origin != nil {
+		return normalizeOrigin(config.Origin), true
+	}
+
+	rawOrigin := strings.TrimSpace(req.Header.Get("Origin"))
+	if rawOrigin == "" {
+		return nil, false
+	}
+	origin, err := url.Parse(rawOrigin)
+	if err != nil {
+		return nil, true
+	}
+	return normalizeOrigin(origin), true
+}
+
+func normalizeOrigin(origin *url.URL) *url.URL {
+	if origin == nil || origin.Scheme == "" || origin.Host == "" {
+		return nil
+	}
+	return &url.URL{
+		Scheme: strings.ToLower(origin.Scheme),
+		Host:   strings.ToLower(origin.Host),
+	}
+}
+
+func configuredWebConsoleAllowedOrigins() []string {
+	rawOrigins := strings.TrimSpace(os.Getenv(envWebConsoleAllowedOrigins))
+	if rawOrigins == "" {
+		return nil
+	}
+
+	origins := strings.Split(rawOrigins, ",")
+	allowedOrigins := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			allowedOrigins = append(allowedOrigins, origin)
+			continue
+		}
+		parsed, err := url.Parse(origin)
+		if err != nil {
+			continue
+		}
+		normalized := normalizeOrigin(parsed)
+		if normalized == nil {
+			continue
+		}
+		allowedOrigins = append(allowedOrigins, normalized.String())
+	}
+	return allowedOrigins
+}
+
+func sameHost(left, right string) bool {
+	leftHost, leftPort, leftHasPort := splitHostPort(left)
+	rightHost, rightPort, rightHasPort := splitHostPort(right)
+	if leftHost != rightHost {
+		return false
+	}
+	if leftHasPort != rightHasPort {
+		return false
+	}
+	return !leftHasPort || leftPort == rightPort
+}
+
+func splitHostPort(host string) (string, string, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return "", "", false
+	}
+
+	parsedHost, parsedPort, err := net.SplitHostPort(host)
+	if err == nil {
+		return parsedHost, parsedPort, true
+	}
+
+	return host, "", false
 }
 
 func defaultNSProxySockPath() string {
-	if path := os.Getenv("RCP_NS_PROXY_SOCK"); path != "" {
+	if path := os.Getenv(envNSProxySock); path != "" {
 		return path
 	}
-	return "/run/rcp/ns-proxy.sock"
+	return defaultNSProxySock
 }
