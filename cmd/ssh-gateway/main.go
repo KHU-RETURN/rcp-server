@@ -53,7 +53,10 @@ func main() {
 	if err != nil {
 		fatal("openstack auth: %v", err)
 	}
-	resolver := newGopherResolver(provider)
+	resolver, err := newGopherResolver(provider)
+	if err != nil {
+		fatal("openstack compute client: %v", err)
+	}
 
 	store := newSessionStore(cfg.NonceTTL)
 	r := newRepo(db)
@@ -138,17 +141,19 @@ func fatal(format string, args ...any) {
 // gopherResolver implements vmAddressResolver against the live OpenStack API.
 // It picks the first IPv4 address found in any network of the server.
 type gopherResolver struct {
-	provider *gophercloud.ProviderClient
+	compute *gophercloud.ServiceClient
 }
 
-func newGopherResolver(p *gophercloud.ProviderClient) *gopherResolver { return &gopherResolver{provider: p} }
+func newGopherResolver(p *gophercloud.ProviderClient) (*gopherResolver, error) {
+	c, err := goopenstack.NewComputeV2(p, gophercloud.EndpointOpts{Region: "RegionOne"})
+	if err != nil {
+		return nil, err
+	}
+	return &gopherResolver{compute: c}, nil
+}
 
 func (g *gopherResolver) ResolveFixedIPv4(_ context.Context, openstackID string) (string, error) {
-	c, err := goopenstack.NewComputeV2(g.provider, gophercloud.EndpointOpts{Region: "RegionOne"})
-	if err != nil {
-		return "", err
-	}
-	srv, err := gccompute.Get(c, openstackID).Extract()
+	srv, err := gccompute.Get(g.compute, openstackID).Extract()
 	if err != nil {
 		return "", err
 	}

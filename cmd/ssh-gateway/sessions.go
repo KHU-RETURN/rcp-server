@@ -20,7 +20,6 @@ var (
 type pendingSession struct {
 	Nonce    string
 	resolved chan resolution
-	expires  time.Time
 }
 
 type resolution struct {
@@ -61,7 +60,6 @@ func (s *sessionStore) New() (*pendingSession, error) {
 	p := &pendingSession{
 		Nonce:    nonce,
 		resolved: make(chan resolution, 1),
-		expires:  time.Now().Add(s.ttl),
 	}
 	s.mu.Lock()
 	s.m[nonce] = p

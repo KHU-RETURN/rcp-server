@@ -45,12 +45,12 @@ func (c *NotifyClient) Notify(ctx context.Context, nonce, userEmail string) erro
 	mac.Write(body)
 	sig := hex.EncodeToString(mac.Sum(nil))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/notify", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix"+NotifyPath, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-RCP-Notify-Sig", sig)
+	req.Header.Set(NotifySigHeader, sig)
 
 	resp, err := c.http.Do(req)
 	if err != nil {

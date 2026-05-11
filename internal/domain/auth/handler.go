@@ -8,16 +8,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// sshCallbackHandler is satisfied by ssh.Service. Defined here to avoid an
-// import cycle between auth and ssh domains.
+// sshStatePrefix marks an OAuth state string as belonging to the ssh-gateway
+// keyboard-interactive flow; the suffix is the gateway-issued nonce.
+const sshStatePrefix = "ssh:"
+
+// sshCallbackHandler is satisfied by *access.SSHService. Duck-typed to avoid
+// a back-edge from access to auth.
 type sshCallbackHandler interface {
 	HandleSSHCallback(ctx context.Context, nonce, userEmail string) error
 }
 
 type Handler struct {
 	Svc             *Service
-	ssh             sshCallbackHandler // optional: nil disables the ssh:<nonce> branch
-	frontendBaseURL string             // origin used to redirect after ssh:<nonce> callback completes
+	ssh             sshCallbackHandler // nil disables the ssh-gateway callback branch
+	frontendBaseURL string
 }
 
 func NewHandler(svc *Service, ssh sshCallbackHandler, frontendBaseURL string) *Handler {
@@ -51,13 +55,12 @@ func (h *Handler) Callback(c *gin.Context) {
 	}
 	state := c.Query("state")
 
-	// SSH-flow branch: state begins with "ssh:".
-	if strings.HasPrefix(state, "ssh:") {
+	if strings.HasPrefix(state, sshStatePrefix) {
 		if h.ssh == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "ssh handler not configured"})
 			return
 		}
-		nonce := strings.TrimPrefix(state, "ssh:")
+		nonce := strings.TrimPrefix(state, sshStatePrefix)
 		email, err := h.Svc.VerifyGoogleCode(c.Request.Context(), code)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})

@@ -1,6 +1,12 @@
 package access
 
-// NotifyRequest is the payload posted to the gateway's /notify endpoint.
+// Wire contract between RCP API and ssh-gateway over the local notify socket.
+// Both sides import these so a rename can't drift one half of the protocol.
+const (
+	NotifySigHeader = "X-RCP-Notify-Sig"
+	NotifyPath      = "/notify"
+)
+
 type NotifyRequest struct {
 	Nonce     string `json:"nonce"`
 	UserEmail string `json:"user_email"`

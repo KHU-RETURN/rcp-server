@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -30,6 +31,10 @@ func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, reso
 	if err != nil {
 		return nil, err
 	}
+	dialer, err := newNsProxyDialer(cfg.NsProxySock, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
 	sc := &ssh.ServerConfig{
 		KeyboardInteractiveCallback: kbdInteractiveAuthenticator(cfg, store),
 	}
@@ -39,7 +44,7 @@ func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, reso
 		log:       log,
 		store:     store,
 		repo:      r,
-		dialer:    newNsProxyDialer(cfg.NsProxySock, 10*time.Second),
+		dialer:    dialer,
 		resolver:  resolver,
 		sshConfig: sc,
 	}, nil
@@ -82,10 +87,6 @@ func (s *Server) handle(ctx context.Context, raw net.Conn) {
 	go ssh.DiscardRequests(reqs)
 
 	email := conn.Permissions.Extensions[permEmailKey]
-	directVM := strings.TrimSpace(conn.User())
-	// `ssh ... rcp-gw vm-name` arrives as User() == "vm-name" only if the user
-	// passed it as the SSH login user. We use a different convention: the
-	// command (exec payload) is the VM name. User() is ignored here.
 
 	for newCh := range chans {
 		if newCh.ChannelType() != "session" {
@@ -97,32 +98,29 @@ func (s *Server) handle(ctx context.Context, raw net.Conn) {
 			s.log.Warn("accept session", "err", err)
 			continue
 		}
-		go s.handleSession(ctx, conn, ch, sessionReqs, email, directVM)
+		go s.handleSession(ctx, conn, ch, sessionReqs, email)
 	}
 }
 
-func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch ssh.Channel, reqs <-chan *ssh.Request, email, directFromUser string) {
+func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch ssh.Channel, reqs <-chan *ssh.Request, email string) {
 	defer ch.Close()
 
-	// Buffer pty + agent-forward + collect either shell or exec request.
 	var pty pendingPty
 	var execCmd string
 	var agentForwarded bool
-	pumpDone := make(chan struct{})
 
 	// Channel-request pump: stops when we either get shell/exec or the channel closes.
-	requestQueue := make(chan *ssh.Request, 8)
+	requestQueue := make(chan *ssh.Request, 1)
 	go func() {
-		defer close(pumpDone)
 		for req := range reqs {
 			switch req.Type {
 			case "pty-req":
 				if len(req.Payload) >= 4 {
-					termLen := int(beUint32(req.Payload[0:4]))
+					termLen := int(binary.BigEndian.Uint32(req.Payload[0:4]))
 					if 4+termLen+8 <= len(req.Payload) {
 						pty.term = string(req.Payload[4 : 4+termLen])
-						pty.cols = int(beUint32(req.Payload[4+termLen : 4+termLen+4]))
-						pty.rows = int(beUint32(req.Payload[4+termLen+4 : 4+termLen+8]))
+						pty.cols = int(binary.BigEndian.Uint32(req.Payload[4+termLen : 4+termLen+4]))
+						pty.rows = int(binary.BigEndian.Uint32(req.Payload[4+termLen+4 : 4+termLen+8]))
 						pty.set = true
 					}
 				}
@@ -136,7 +134,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 				}
 			case "exec":
 				if len(req.Payload) >= 4 {
-					n := int(beUint32(req.Payload[0:4]))
+					n := int(binary.BigEndian.Uint32(req.Payload[0:4]))
 					if 4+n <= len(req.Payload) {
 						execCmd = string(req.Payload[4 : 4+n])
 					}
@@ -183,7 +181,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		return
 	}
 
-	// Pick a VM: explicit exec command > typed selection from menu.
+	// Pick a VM: explicit exec command > single auto-pick > menu.
 	var target VM
 	switch {
 	case execCmd != "":
@@ -193,7 +191,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 			return
 		}
 		target = v
-	case len(vms) == 1 && strings.TrimSpace(directFromUser) == "":
+	case len(vms) == 1:
 		target = vms[0]
 	default:
 		v, ok := promptForVM(ch, vms)
@@ -246,9 +244,6 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		s.log.Info("pipe ended", "err", err)
 		return
 	}
-	_ = pumpDone
-
-	_ = io.Discard // keep import
 }
 
 // promptForVM renders the menu and reads exactly one line. Re-prompts up to 3

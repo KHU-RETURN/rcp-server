@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -97,5 +96,3 @@ func TestNotifyHandler_BadJSON(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rr.Code)
 	}
 }
-
-var _ = errors.Is

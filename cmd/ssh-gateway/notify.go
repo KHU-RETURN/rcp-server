@@ -14,12 +14,9 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-)
 
-type notifyBody struct {
-	Nonce     string `json:"nonce"`
-	UserEmail string `json:"user_email"`
-}
+	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
+)
 
 type notifyHandler struct {
 	store  *sessionStore
@@ -31,7 +28,7 @@ func newNotifyHandler(store *sessionStore, secret []byte) *notifyHandler {
 }
 
 func (h *notifyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/notify" {
+	if r.URL.Path != access.NotifyPath {
 		http.NotFound(w, r)
 		return
 	}
@@ -45,12 +42,12 @@ func (h *notifyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "read", http.StatusBadRequest)
 		return
 	}
-	got := r.Header.Get("X-RCP-Notify-Sig")
+	got := r.Header.Get(access.NotifySigHeader)
 	if !verifyHMAC(h.secret, body, got) {
 		http.Error(w, "hmac", http.StatusUnauthorized)
 		return
 	}
-	var b notifyBody
+	var b access.NotifyRequest
 	if err := json.Unmarshal(body, &b); err != nil || b.Nonce == "" || b.UserEmail == "" {
 		http.Error(w, "bad body", http.StatusBadRequest)
 		return
@@ -76,8 +73,7 @@ func verifyHMAC(secret, body []byte, gotHex string) bool {
 	return hmac.Equal(mac.Sum(nil), want)
 }
 
-// listenNotifySocket creates the Unix socket with 0o660 (group rcp can connect).
-// Mirrors cmd/ns-proxy patterns.
+// listenNotifySocket creates the Unix socket with 0o660 so group rcp peers can connect.
 func listenNotifySocket(path string, log *slog.Logger) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, err

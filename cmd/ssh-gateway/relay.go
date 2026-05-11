@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -26,17 +27,12 @@ type vmAddressResolver interface {
 type nsProxyDialer struct {
 	sockPath string
 	timeout  time.Duration
+	socks    proxy.ContextDialer
 }
 
-func newNsProxyDialer(sockPath string, timeout time.Duration) *nsProxyDialer {
-	return &nsProxyDialer{sockPath: sockPath, timeout: timeout}
-}
-
-// Dial opens a TCP-equivalent connection to host:port via the ns-proxy SOCKS5
-// server reachable on the local Unix socket.
-func (d *nsProxyDialer) Dial(ctx context.Context, host string, port int) (net.Conn, error) {
-	unix := &unixDialer{path: d.sockPath, timeout: d.timeout}
-	socks, err := proxy.SOCKS5("unix", d.sockPath, nil, unix)
+func newNsProxyDialer(sockPath string, timeout time.Duration) (*nsProxyDialer, error) {
+	unix := &unixDialer{path: sockPath, timeout: timeout}
+	socks, err := proxy.SOCKS5("unix", sockPath, nil, unix)
 	if err != nil {
 		return nil, fmt.Errorf("socks5 setup: %w", err)
 	}
@@ -44,7 +40,13 @@ func (d *nsProxyDialer) Dial(ctx context.Context, host string, port int) (net.Co
 	if !ok {
 		return nil, errors.New("socks5 dialer missing context support")
 	}
-	return dctx.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	return &nsProxyDialer{sockPath: sockPath, timeout: timeout, socks: dctx}, nil
+}
+
+// Dial opens a TCP-equivalent connection to host:port via the ns-proxy SOCKS5
+// server reachable on the local Unix socket.
+func (d *nsProxyDialer) Dial(ctx context.Context, host string, port int) (net.Conn, error) {
+	return d.socks.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 }
 
 // unixDialer satisfies proxy.Dialer/proxy.ContextDialer by always dialing a
@@ -149,8 +151,8 @@ func pipeSession(log *slog.Logger, outerChan ssh.Channel, outerReqs <-chan *ssh.
 			switch req.Type {
 			case "window-change":
 				if len(req.Payload) >= 16 {
-					cols := int(beUint32(req.Payload[0:4]))
-					rows := int(beUint32(req.Payload[4:8]))
+					cols := int(binary.BigEndian.Uint32(req.Payload[0:4]))
+					rows := int(binary.BigEndian.Uint32(req.Payload[4:8]))
 					_ = innerSess.WindowChange(rows, cols)
 				}
 				if req.WantReply {
@@ -179,8 +181,4 @@ type pendingPty struct {
 	set        bool
 	term       string
 	rows, cols int
-}
-
-func beUint32(b []byte) uint32 {
-	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
 }
