@@ -62,6 +62,9 @@ jobs:
 
       - name: Write env file
         uses: appleboy/ssh-action@v0.1.10
+        env:
+          RCP_NS_PROXY_ALLOW_CIDR: ${{ secrets.RCP_NS_PROXY_ALLOW_CIDR }}
+          RCP_NS_PROXY_ROUTER_ID: ${{ secrets.RCP_NS_PROXY_ROUTER_ID }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -70,7 +73,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            NETNS="qrouter-${RCP_NS_PROXY_ROUTER_ID}"
+            NETNS="${RCP_NS_PROXY_ROUTER_ID}"
             if ! ip netns list | awk '{print $1}' | grep -qx "$NETNS"; then
               echo "ERROR: netns $NETNS not found on host" >&2
               exit 1
