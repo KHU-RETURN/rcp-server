@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=rcp
-Group=rcp
+User=return
+Group=return
 
 EnvironmentFile=/etc/rcp/ns-proxy.env
 NetworkNamespacePath=/var/run/netns/${RCP_NS_PROXY_NETNS}
