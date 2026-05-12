@@ -1,9 +1,11 @@
 package auth
 
 import (
-	"net/http"
-
+	"fmt"
 	"github.com/gin-gonic/gin"
+	"net/http"
+	"os"
+	"strings"
 )
 
 type Handler struct {
@@ -42,16 +44,26 @@ func (h *Handler) Callback(c *gin.Context) {
 		return
 	}
 
-	// 서비스 계층에서 토큰 교환 및 유저 정보 처리
+	// 1. AccessToken, RefreshToken이 다 담긴 User 객체를 반환
 	user, err := h.Svc.ProcessGoogleCallback(c.Request.Context(), code)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Redirect(http.StatusTemporaryRedirect, getFrontendURL()+"/login?error=auth_failed")
 		return
 	}
 
-	// 성공 시 유저 정보 반환 (실제로는 세션/JWT 등을 발급함)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "login success",
-		"user":    user,
-	})
+	// 환경 변수에서 주소를 가져오고, 없으면 로컬 주소를 기본값으로 사용
+	frontendURL := getFrontendURL()
+	token := user.AccessToken
+
+	targetURL := fmt.Sprintf("%s/auth/callback?token=%s", frontendURL, token)
+	c.Redirect(http.StatusFound, targetURL)
+}
+
+func getFrontendURL() string {
+	url := os.Getenv("FRONTEND_URL")
+	if url == "" {
+		// 설정이 없으면 개발 환경(로컬)으로 간주
+		return "http://localhost:4173"
+	}
+	return strings.TrimSuffix(url, "/")
 }
