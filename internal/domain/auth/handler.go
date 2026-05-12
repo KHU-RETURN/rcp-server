@@ -2,10 +2,10 @@ package auth
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"os"
 	"strings"
-	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
