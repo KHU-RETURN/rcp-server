@@ -4,35 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
+	"strings"
+
 	"golang.org/x/oauth2"
 	"google.golang.org/api/idtoken"
-	"strings"
 )
-
-// userRepository는 유저 데이터 접근 인터페이스입니다.
-// 구현체는 repository.go의 Repository입니다.
-type userRepository interface {
-	UpsertUser(ctx context.Context, user *User) error
-	FindByEmail(ctx context.Context, email string) (*User, error)
-}
-
-// Service는 인증 비즈니스 로직을 담당합니다.
-type Service struct {
-	repo         userRepository
-	OauthConfig  *oauth2.Config
-	TokenService *TokenService // JWT 발급을 위해 주입받음
-}
-
-// NewService는 새로운 서비스를 생성합니다.
-func NewService(repo userRepository, config *oauth2.Config, svc *TokenService) *Service {
-	return &Service{
-		repo:         repo,
-		OauthConfig:  config,
-		TokenService: svc,
-	}
-}
 
 // GetGoogleLoginURL은 사용자를 리다이렉트시킬 구글 승인 페이지 URL을 생성합니다.
 func (s *Service) GetGoogleLoginURL() string {
@@ -60,15 +37,15 @@ func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User
 	// 🔒 2.5 이메일 도메인 검증 로직 추가
 	email, ok := payload.Claims["email"].(string)
 	if !ok || email == "" {
-		return nil, errors.New("email claim not found in id_token")
+		return nil, ErrEmailClaimNotFound
 	}
 
 	name, ok := payload.Claims["name"].(string)
 	if !ok || name == "" {
-		return nil, errors.New("name claim not found in id_token")
+		return nil, ErrNameClaimNotFound
 	}
 	if !strings.HasSuffix(email, "@khu.ac.kr") {
-		return nil, errors.New("경희대학교 계정(@khu.ac.kr)으로만 로그인할 수 있습니다")
+		return nil, ErrUnsupportedEmailDomain
 	}
 	// 3. 우리 서비스 토큰 발급 (TokenService 활용)
 	accessToken, refreshToken, expiry, err := s.TokenService.GenerateAuthTokens(email)

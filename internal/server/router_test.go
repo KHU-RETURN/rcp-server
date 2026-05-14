@@ -24,10 +24,14 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	var foundFlavors bool
 	var foundCreateInstance bool
 	var foundAuthLogin bool
+	var foundAuthMe bool
 	var foundConsoleWebSocket bool
 	var foundAuthorizedKeys bool
 
 	for _, route := range routes {
+		if route.Method == http.MethodGet && route.Path == api.BasePath+"/auth/me" {
+			foundAuthMe = true
+		}
 		if route.Method == http.MethodGet && route.Path == api.BasePath+"/auth/oauth/google" {
 			foundAuthLogin = true
 		}
@@ -53,6 +57,9 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	}
 	if !foundAuthLogin {
 		t.Fatalf("%s %s/auth/oauth/google route was not registered", http.MethodGet, api.BasePath)
+	}
+	if !foundAuthMe {
+		t.Fatalf("%s %s/auth/me route was not registered", http.MethodGet, api.BasePath)
 	}
 	if !foundConsoleWebSocket {
 		t.Fatalf("%s %s/access/console/ws route was not registered", http.MethodGet, api.BasePath)
