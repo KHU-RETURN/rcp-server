@@ -250,6 +250,7 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 	inst := &Instance{
 		OpenstackID: server.ID,
 		Name:        firstNonEmpty(strings.TrimSpace(server.Name), normalizedOpts.Name),
+		Status:      normalizeServerStatus(server.Status),
 		ImageID:     firstNonEmpty(extractResourceID(server.Image), normalizedOpts.ImageRef),
 		FlavorID:    firstNonEmpty(extractResourceID(server.Flavor), normalizedOpts.FlavorRef),
 		Created:     server.Created,
@@ -373,7 +374,7 @@ func buildCreateInstanceResponse(server *Server, opts CreateServerOpts) *CreateI
 	return &CreateInstanceResponse{
 		ID:             server.ID,
 		Name:           firstNonEmpty(strings.TrimSpace(server.Name), opts.Name),
-		Status:         strings.TrimSpace(server.Status),
+		Status:         normalizeServerStatus(server.Status),
 		ImageID:        firstNonEmpty(extractResourceID(server.Image), opts.ImageRef),
 		FlavorID:       firstNonEmpty(extractResourceID(server.Flavor), opts.FlavorRef),
 		KeyName:        keyName,
@@ -492,4 +493,8 @@ func firstNonEmpty(values ...string) string {
 	}
 
 	return ""
+}
+
+func normalizeServerStatus(status string) string {
+	return firstNonEmpty(status, "BUILD")
 }

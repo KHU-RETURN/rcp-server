@@ -22,6 +22,7 @@ func (r *Repository) SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *
 		SetOwnerID(ownerID).
 		SetOpenstackID(inst.OpenstackID).
 		SetName(inst.Name).
+		SetStatus(inst.Status).
 		SetImageID(inst.ImageID).
 		SetFlavorID(inst.FlavorID).
 		SetProviderCreatedAt(inst.Created).
@@ -74,6 +75,7 @@ func entToInstance(row *ent.Instance) Instance {
 	return Instance{
 		OpenstackID: row.OpenstackID,
 		Name:        row.Name,
+		Status:      row.Status,
 		ImageID:     row.ImageID,
 		FlavorID:    row.FlavorID,
 		Created:     row.ProviderCreatedAt,

@@ -323,6 +323,7 @@ func TestServiceCreateInstance(t *testing.T) {
 
 	t.Run("maps floating and fixed IPs into response", func(t *testing.T) {
 		var gotOpts CreateServerOpts
+		var saved Instance
 		client := &fakeClient{
 			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				gotOpts = opts
@@ -334,8 +335,14 @@ func TestServiceCreateInstance(t *testing.T) {
 				}), nil
 			},
 		}
+		repo := &fakeRepo{
+			saveInstanceFn: func(_ context.Context, _ uuid.UUID, inst *Instance) error {
+				saved = *inst
+				return nil
+			},
+		}
 
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, repo, "project-1")
 		res, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:           " test-vm ",
 			ImageRef:       " image-1 ",
@@ -359,6 +366,9 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 		if len(gotOpts.Networks) != 1 || gotOpts.Networks[0].UUID != "network-1" {
 			t.Fatalf("expected trimmed network UUID, got %#v", gotOpts.Networks)
+		}
+		if saved.Status != "BUILD" {
+			t.Fatalf("expected saved status BUILD, got %q", saved.Status)
 		}
 
 		if res.FixedIP != "10.0.0.8" {
