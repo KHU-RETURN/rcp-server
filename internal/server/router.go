@@ -1,12 +1,18 @@
 package server
 
 import (
+	"net/http"
+
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
 )
 
 func NewRouter(app *App) *gin.Engine {
 	r := gin.Default()
+	r.Use(corsMiddleware())
+	r.OPTIONS("/*path", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
 
 	v1 := r.Group(api.BasePath)
 	{
