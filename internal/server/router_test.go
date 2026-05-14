@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
@@ -66,6 +67,58 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	}
 	if !foundAuthorizedKeys {
 		t.Fatalf("%s %s/internal/ssh/authorized-keys route was not registered", http.MethodGet, api.BasePath)
+	}
+}
+
+func TestRouterCORSAllowsFrontendOrigin(t *testing.T) {
+	setGinMode(t, gin.TestMode)
+	t.Setenv(envAllowedOrigins, "https://khu-return.com")
+
+	router := NewRouter(&App{
+		Access:  &access.Handler{},
+		Auth:    &auth.Handler{},
+		Compute: &compute.Handler{},
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
+	req.Header.Set("Origin", "https://khu-return.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://khu-return.com" {
+		t.Fatalf("expected allowed origin, got %q", got)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("expected credentials to be allowed, got %q", got)
+	}
+}
+
+func TestRouterCORSRejectsUnconfiguredOrigin(t *testing.T) {
+	setGinMode(t, gin.TestMode)
+
+	router := NewRouter(&App{
+		Access:  &access.Handler{},
+		Auth:    &auth.Handler{},
+		Compute: &compute.Handler{},
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
+	req.Header.Set("Origin", "https://khu-return.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("expected no allowed origin, got %q", got)
 	}
 }
 
