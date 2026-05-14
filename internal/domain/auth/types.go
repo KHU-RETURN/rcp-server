@@ -20,9 +20,10 @@ type User struct {
 }
 
 type MeResponse struct {
-	ID    uuid.UUID `json:"id"`
-	Email string    `json:"email"`
-	Name  string    `json:"name"`
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	Name        string    `json:"name"`
+	AccessToken string    `json:"access_token"`
 }
 
 type ErrorResponse struct {
