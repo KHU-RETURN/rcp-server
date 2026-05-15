@@ -142,6 +142,7 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 
 	res := make([]InstanceDetailResponse, 0, len(dbInstances))
 	staleIDs := make([]string, 0)
+
 	for _, inst := range dbInstances {
 		srv, ok := serverMap[inst.OpenstackID]
 		if !ok {
@@ -161,16 +162,22 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Created:    inst.Created,
 		})
 	}
-
-	for _, id := range staleIDs {
-		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
-		}
+	if err := s.pruneStaleInstances(ctx, ownerID, staleIDs); err != nil {
+		return nil, err
 	}
 
 	return res, nil
 }
 
+func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, staleIDs []string) error {
+	for _, id := range staleIDs {
+		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+			return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+		}
+	}
+
+	return nil
+}
 // GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
 func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id string) (*InstanceDetailResponse, error) {
 	var (
