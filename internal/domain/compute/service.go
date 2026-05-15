@@ -178,6 +178,7 @@ func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, st
 
 	return nil
 }
+
 // GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
 func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id string) (*InstanceDetailResponse, error) {
 	var (
