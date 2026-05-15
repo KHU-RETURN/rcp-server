@@ -141,8 +141,14 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 	}
 
 	res := make([]InstanceDetailResponse, 0, len(dbInstances))
+	staleIDs := make([]string, 0)
 	for _, inst := range dbInstances {
-		srv := serverMap[inst.OpenstackID]
+		srv, ok := serverMap[inst.OpenstackID]
+		if !ok {
+			staleIDs = append(staleIDs, inst.OpenstackID)
+			continue
+		}
+
 		fixedIP, floatingIP := extractServerIPs(&srv)
 		res = append(res, InstanceDetailResponse{
 			ID:         inst.OpenstackID,
@@ -155,6 +161,13 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Created:    inst.Created,
 		})
 	}
+
+	for _, id := range staleIDs {
+		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+		}
+	}
+
 	return res, nil
 }
 
