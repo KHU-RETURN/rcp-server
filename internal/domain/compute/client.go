@@ -1,7 +1,6 @@
 package compute
 
 import (
-	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
@@ -9,6 +8,8 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 )
 
 type Client struct {

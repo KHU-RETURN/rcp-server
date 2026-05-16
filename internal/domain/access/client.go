@@ -6,11 +6,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 )
 
 type Client struct {

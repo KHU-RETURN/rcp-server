@@ -10,10 +10,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/KHU-RETURN/rcp-server/internal/api"
-	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 )
 
 var testUser = &auth.User{ID: testOwnerID}

@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
+
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 )
 
 type Handler struct {

@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
+
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 )
 
 type Client struct {

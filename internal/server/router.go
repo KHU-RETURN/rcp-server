@@ -3,8 +3,9 @@ package server
 import (
 	"net/http"
 
-	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
+
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 )
 
 func NewRouter(app *App) *gin.Engine {
