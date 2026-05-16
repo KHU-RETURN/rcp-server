@@ -165,7 +165,7 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Flavor:     flavorMap[inst.FlavorID],
 			FixedIP:    fixedIP,
 			FloatingIP: floatingIP,
-			Created:    inst.Created,
+			Created:    srv.Created,
 		})
 	}
 	if err := s.pruneStaleInstances(ctx, ownerID, staleIDs); err != nil {
@@ -239,7 +239,7 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 		FixedIP:    fixedIP,
 		FloatingIP: floatingIP,
 		Usage:      extractUsageStats(diag),
-		Created:    inst.Created,
+		Created:    srv.Created,
 	}, nil
 }
 
