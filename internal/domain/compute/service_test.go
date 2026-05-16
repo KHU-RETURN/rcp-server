@@ -531,6 +531,53 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 	})
 
+	t.Run("falls back to default network when request omits one", func(t *testing.T) {
+		var gotOpts CreateServerOpts
+		client := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				gotOpts = opts
+				return testServer(map[string]any{}), nil
+			},
+		}
+
+		svc := NewService(client, &fakeRepo{}, "project-1", "default-net-uuid")
+		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
+			Name:      "vm",
+			ImageRef:  "image-1",
+			FlavorRef: "flavor-1",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(gotOpts.Networks) != 1 || gotOpts.Networks[0].UUID != "default-net-uuid" {
+			t.Fatalf("expected default network fallback, got %#v", gotOpts.Networks)
+		}
+	})
+
+	t.Run("does not override explicit network with default", func(t *testing.T) {
+		var gotOpts CreateServerOpts
+		client := &fakeClient{
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				gotOpts = opts
+				return testServer(map[string]any{}), nil
+			},
+		}
+
+		svc := NewService(client, &fakeRepo{}, "project-1", "default-net-uuid")
+		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
+			Name:      "vm",
+			ImageRef:  "image-1",
+			FlavorRef: "flavor-1",
+			Networks:  []NetworkID{{UUID: "explicit-net"}},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(gotOpts.Networks) != 1 || gotOpts.Networks[0].UUID != "explicit-net" {
+			t.Fatalf("expected explicit network preserved, got %#v", gotOpts.Networks)
+		}
+	})
+
 	t.Run("returns operation failed when repo save errors", func(t *testing.T) {
 		client := &fakeClient{
 			createServerFn: func(opts CreateServerOpts) (*Server, error) {

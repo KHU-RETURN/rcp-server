@@ -265,6 +265,9 @@ func (s *Service) DeleteInstance(ctx context.Context, ownerID uuid.UUID, id stri
 
 func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts CreateServerOpts) (*CreateInstanceResponse, error) {
 	normalizedOpts := normalizeCreateServerOpts(opts)
+	if len(normalizedOpts.Networks) == 0 && s.defaultNetworkID != "" {
+		normalizedOpts.Networks = []NetworkID{{UUID: s.defaultNetworkID}}
+	}
 	if err := validateCreateServerOpts(normalizedOpts); err != nil {
 		return nil, err
 	}
