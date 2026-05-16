@@ -43,7 +43,7 @@ type Server struct {
 	KeyName        string
 	SecurityGroups []map[string]any
 	AccessIPv4     string
-	Created        time.Time
+	Created        time.Time `json:"created"`
 }
 
 type NetworkID struct {
