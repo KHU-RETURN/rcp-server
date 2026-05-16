@@ -11,11 +11,11 @@ import (
 var ErrSelectionInvalid = errors.New("invalid selection")
 
 func RenderMenu(w io.Writer, vms []VM) {
-	fmt.Fprintln(w, "Available VMs:")
+	_, _ = fmt.Fprintln(w, "Available VMs:")
 	for i, vm := range vms {
-		fmt.Fprintf(w, "  %d) %-20s (%s)\r\n", i+1, vm.Name, vm.Status)
+		_, _ = fmt.Fprintf(w, "  %d) %-20s (%s)\r\n", i+1, vm.Name, vm.Status)
 	}
-	fmt.Fprintf(w, "Select [1-%d]: ", len(vms))
+	_, _ = fmt.Fprintf(w, "Select [1-%d]: ", len(vms))
 }
 
 // ParseSelection accepts either a 1-based index or an exact VM name.

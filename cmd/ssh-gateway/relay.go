@@ -115,7 +115,7 @@ func pipeSession(log *slog.Logger, outerChan ssh.Channel, outerReqs <-chan *ssh.
 	if err != nil {
 		return fmt.Errorf("inner session: %w", err)
 	}
-	defer innerSess.Close()
+	defer func() { _ = innerSess.Close() }()
 
 	if ptyReq.set {
 		if err := innerSess.RequestPty(ptyReq.term, ptyReq.rows, ptyReq.cols, ssh.TerminalModes{}); err != nil {

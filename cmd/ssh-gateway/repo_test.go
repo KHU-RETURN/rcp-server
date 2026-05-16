@@ -14,7 +14,7 @@ func timeZero() time.Time { return time.Unix(0, 0).UTC() }
 
 func TestRepo_ListInstancesByEmail_Empty(t *testing.T) {
 	c := enttest.Open(t, "sqlite3", "file:?mode=memory&cache=shared&_pragma=foreign_keys(1)")
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	r := newRepo(c)
 	got, err := r.ListInstancesByEmail(context.Background(), "ghost@khu.ac.kr")
 	if err != nil {
@@ -27,7 +27,7 @@ func TestRepo_ListInstancesByEmail_Empty(t *testing.T) {
 
 func TestRepo_ListInstancesByEmail_OnlyOwn(t *testing.T) {
 	c := enttest.Open(t, "sqlite3", "file:?mode=memory&cache=shared&_pragma=foreign_keys(1)")
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	ctx := context.Background()
 
 	alice := c.User.Create().SetEmail("a@khu.ac.kr").SetName("a").

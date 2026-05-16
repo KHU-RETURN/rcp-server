@@ -75,7 +75,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 }
 
 func (s *Server) handle(ctx context.Context, raw net.Conn) {
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	_ = raw.SetDeadline(time.Now().Add(s.cfg.NonceTTL + 30*time.Second))
 	conn, chans, reqs, err := ssh.NewServerConn(raw, s.sshConfig)
 	if err != nil {
@@ -83,7 +83,7 @@ func (s *Server) handle(ctx context.Context, raw net.Conn) {
 		return
 	}
 	_ = raw.SetDeadline(time.Time{})
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	go ssh.DiscardRequests(reqs)
 
 	email := conn.Permissions.Extensions[permEmailKey]
@@ -103,7 +103,7 @@ func (s *Server) handle(ctx context.Context, raw net.Conn) {
 }
 
 func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch ssh.Channel, reqs <-chan *ssh.Request, email string) {
-	defer ch.Close()
+	defer func() { _ = ch.Close() }()
 
 	var pty pendingPty
 	var execCmd string
@@ -161,19 +161,19 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	select {
 	case <-requestQueue:
 	case <-time.After(15 * time.Second):
-		fmt.Fprintln(ch, "no shell/exec request — aborting")
+		_, _ = fmt.Fprintln(ch, "no shell/exec request — aborting")
 		return
 	}
 
 	if !agentForwarded {
-		fmt.Fprintln(ch, "ssh-agent forwarding required. Use `ssh -A`.")
+		_, _ = fmt.Fprintln(ch, "ssh-agent forwarding required. Use `ssh -A`.")
 		return
 	}
 
 	// Resolve the user's VM list.
 	vms, err := s.repo.ListInstancesByEmail(ctx, email)
 	if err != nil {
-		fmt.Fprintf(ch, "lookup failed: %v\r\n", err)
+		_, _ = fmt.Fprintf(ch, "lookup failed: %v\r\n", err)
 		return
 	}
 	if len(vms) == 0 {
@@ -218,7 +218,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		fmt.Fprintf(ch, "VM unreachable (ns-proxy): %v\r\n", err)
 		return
 	}
-	defer tcp.Close()
+	defer func() { _ = tcp.Close() }()
 
 	// Borrow the user's agent.
 	ag, agentCloser, err := agentClientFromOuter(sshConn)
@@ -226,7 +226,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		fmt.Fprintf(ch, "agent forwarding setup failed: %v\r\n", err)
 		return
 	}
-	defer agentCloser.Close()
+	defer func() { _ = agentCloser.Close() }()
 
 	// Inner SSH handshake. The login user defaults to "root"; OpenStack cloud-
 	// init images vary (ubuntu/centos/...) — Phase 1 PoC uses "root" and the
@@ -238,7 +238,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
 		return
 	}
-	defer inner.Close()
+	defer func() { _ = inner.Close() }()
 
 	if err := pipeSession(s.log, ch, reqs, inner, pty); err != nil {
 		s.log.Info("pipe ended", "err", err)

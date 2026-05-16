@@ -56,7 +56,7 @@ func (c *NotifyClient) Notify(ctx context.Context, nonce, userEmail string) erro
 	if err != nil {
 		return fmt.Errorf("notify gateway: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return fmt.Errorf("notify gateway: status %d, body=%q", resp.StatusCode, string(b))

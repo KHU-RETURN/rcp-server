@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func tempSock(t *testing.T) string {
@@ -29,18 +30,21 @@ func TestNotifyClient_PostsHMACSignedBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	gotBody := make(chan []byte, 1)
 	gotSig := make(chan string, 1)
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		gotBody <- b
-		gotSig <- r.Header.Get("X-RCP-Notify-Sig")
-		w.WriteHeader(http.StatusOK)
-	})}
-	go srv.Serve(ln)
-	defer srv.Close()
+	srv := &http.Server{
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			gotBody <- b
+			gotSig <- r.Header.Get("X-RCP-Notify-Sig")
+			w.WriteHeader(http.StatusOK)
+		}),
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
 
 	c := NewNotifyClient(sock, []byte("secret"))
 	if err := c.Notify(context.Background(), "the-nonce", "u@khu.ac.kr"); err != nil {
@@ -65,12 +69,15 @@ func TestNotifyClient_NonOKReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "gone", http.StatusGone)
-	})}
-	go srv.Serve(ln)
-	defer srv.Close()
+	defer func() { _ = ln.Close() }()
+	srv := &http.Server{
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "gone", http.StatusGone)
+		}),
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
 	c := NewNotifyClient(sock, []byte("s"))
 	err = c.Notify(context.Background(), "n", "u")
 	if err == nil {
