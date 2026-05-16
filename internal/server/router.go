@@ -27,6 +27,7 @@ func NewRouter(app *App) *gin.Engine {
 
 		app.Access.InitRoutes(protected)
 		app.Compute.InitRoutes(protected)
+		app.Storage.InitRoutes(protected)
 	}
 
 	return r

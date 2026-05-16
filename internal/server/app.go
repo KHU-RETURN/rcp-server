@@ -7,6 +7,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 	"github.com/gophercloud/gophercloud"
 	"golang.org/x/oauth2"
 )
@@ -15,6 +16,7 @@ type App struct {
 	Compute *compute.Handler
 	Access  *access.Handler
 	Auth    *auth.Handler
+	Storage *storage.Handler
 }
 
 func NewApp(
@@ -33,5 +35,6 @@ func NewApp(
 		Compute: compute.Init(p, client, projectID),
 		Access:  access.Init(p, client),
 		Auth:    authHandler,
+		Storage: storage.Init(p, client),
 	}, nil
 }
