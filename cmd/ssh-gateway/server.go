@@ -177,7 +177,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		return
 	}
 	if len(vms) == 0 {
-		fmt.Fprintf(ch, "No instances. Create one at %s\r\n", s.cfg.AuthURLBase)
+		_, _ = fmt.Fprintf(ch, "No instances. Create one at %s\r\n", s.cfg.AuthURLBase)
 		return
 	}
 
@@ -187,7 +187,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	case execCmd != "":
 		v, ok := FindByName(vms, strings.TrimSpace(execCmd))
 		if !ok {
-			fmt.Fprintf(ch, "VM %q not found among your instances.\r\n", execCmd)
+			_, _ = fmt.Fprintf(ch, "VM %q not found among your instances.\r\n", execCmd)
 			return
 		}
 		target = v
@@ -206,7 +206,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	defer cancel()
 	ip, err := s.resolver.ResolveFixedIPv4(rctx, target.OpenstackID)
 	if err != nil {
-		fmt.Fprintf(ch, "VM unreachable: %v\r\n", err)
+		_, _ = fmt.Fprintf(ch, "VM unreachable: %v\r\n", err)
 		return
 	}
 
@@ -215,7 +215,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	defer dcancel()
 	tcp, err := s.dialer.Dial(dctx, ip, 22)
 	if err != nil {
-		fmt.Fprintf(ch, "VM unreachable (ns-proxy): %v\r\n", err)
+		_, _ = fmt.Fprintf(ch, "VM unreachable (ns-proxy): %v\r\n", err)
 		return
 	}
 	defer func() { _ = tcp.Close() }()
@@ -223,7 +223,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	// Borrow the user's agent.
 	ag, agentCloser, err := agentClientFromOuter(sshConn)
 	if err != nil {
-		fmt.Fprintf(ch, "agent forwarding setup failed: %v\r\n", err)
+		_, _ = fmt.Fprintf(ch, "agent forwarding setup failed: %v\r\n", err)
 		return
 	}
 	defer func() { _ = agentCloser.Close() }()
@@ -235,7 +235,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	defer innerCancel()
 	inner, err := dialInnerSSH(innerCtx, tcp, "root", ag)
 	if err != nil {
-		fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
+		_, _ = fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
 		return
 	}
 	defer func() { _ = inner.Close() }()
@@ -260,9 +260,9 @@ func promptForVM(rw io.ReadWriter, vms []VM) (VM, bool) {
 		if perr == nil {
 			return vm, true
 		}
-		fmt.Fprintln(rw, "invalid selection, try again")
+		_, _ = fmt.Fprintln(rw, "invalid selection, try again")
 	}
-	fmt.Fprintln(rw, "too many invalid attempts; closing")
+	_, _ = fmt.Fprintln(rw, "too many invalid attempts; closing")
 	return VM{}, false
 }
 
