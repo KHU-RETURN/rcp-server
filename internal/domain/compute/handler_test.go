@@ -28,7 +28,7 @@ func TestHandlerGetFlavors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(client *fakeClient) *Handler {
-		return NewHandler(NewService(client, &fakeRepo{}, "project-1"))
+		return NewHandler(NewService(client, &fakeRepo{}, "project-1", ""))
 	}
 
 	t.Run("returns 200 with flavor list", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestHandlerGetAvailableFlavors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(client *fakeClient) *Handler {
-		return NewHandler(NewService(client, &fakeRepo{}, "project-1"))
+		return NewHandler(NewService(client, &fakeRepo{}, "project-1", ""))
 	}
 
 	t.Run("returns 200 with available flavor list", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestHandlerCreateServer(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(client *fakeClient) *Handler {
-		return NewHandler(NewService(client, &fakeRepo{}, "project-1"))
+		return NewHandler(NewService(client, &fakeRepo{}, "project-1", ""))
 	}
 
 	t.Run("returns 401 when user is not authenticated", func(t *testing.T) {
@@ -324,7 +324,7 @@ func TestHandlerDeleteInstance(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(client *fakeClient, repo *fakeRepo) *Handler {
-		return NewHandler(NewService(client, repo, "project-1"))
+		return NewHandler(NewService(client, repo, "project-1", ""))
 	}
 
 	t.Run("returns 401 when user is not authenticated", func(t *testing.T) {
@@ -379,7 +379,7 @@ func TestHandlerGetInstances(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newHandler := func(client *fakeClient, repo *fakeRepo) *Handler {
-		return NewHandler(NewService(client, repo, "project-1"))
+		return NewHandler(NewService(client, repo, "project-1", ""))
 	}
 
 	t.Run("returns 401 when user is not authenticated", func(t *testing.T) {

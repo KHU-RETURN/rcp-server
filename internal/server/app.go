@@ -23,6 +23,7 @@ func NewApp(
 	oauthConfig *oauth2.Config,
 	projectID string,
 	jwtSecret string,
+	defaultNetworkID string,
 ) (*App, error) {
 	authHandler, err := auth.Init(client, oauthConfig, jwtSecret)
 	if err != nil {
@@ -30,7 +31,7 @@ func NewApp(
 	}
 
 	return &App{
-		Compute: compute.Init(p, client, projectID),
+		Compute: compute.Init(p, client, projectID, defaultNetworkID),
 		Access:  access.Init(p, client),
 		Auth:    authHandler,
 	}, nil
