@@ -159,7 +159,7 @@ func (s *Service) DeleteObject(ctx context.Context, ownerID uuid.UUID, container
 }
 
 func (s *Service) resolveContainer(ctx context.Context, ownerID uuid.UUID, name string) (*Container, error) {
-	c, err := s.repo.FindByName(ctx, ownerID, name)
+	c, err := s.repo.FindByName(ctx, ownerID, strings.TrimSpace(name))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}

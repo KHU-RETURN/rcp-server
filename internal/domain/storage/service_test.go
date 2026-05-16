@@ -12,8 +12,6 @@ import (
 var testOwnerID = uuid.New()
 var testContainerUUID = uuid.New()
 
-// --- Fakes ---
-
 type fakeStorageClient struct {
 	createContainerFn   func(name string) error
 	deleteContainerFn   func(name string) error
@@ -107,8 +105,6 @@ func (r *fakeContainerRepo) Delete(ctx context.Context, ownerID uuid.UUID, name 
 	}
 	return nil
 }
-
-// --- Tests ---
 
 func TestServiceCreateContainer(t *testing.T) {
 	ctx := context.Background()

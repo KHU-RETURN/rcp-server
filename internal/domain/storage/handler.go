@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
@@ -79,7 +80,7 @@ func (h *Handler) DeleteContainer(c *gin.Context) {
 	}
 
 	name := c.Param("name")
-	force := c.Query("force") == "true"
+	force, _ := strconv.ParseBool(c.Query("force"))
 
 	if err := h.Svc.DeleteContainer(c.Request.Context(), id, name, force); err != nil {
 		switch {

@@ -18,11 +18,16 @@ func NewRepository(client *ent.Client) *Repository {
 }
 
 func (r *Repository) Save(ctx context.Context, ownerID uuid.UUID, c *Container) error {
-	return r.client.Container.Create().
+	row, err := r.client.Container.Create().
 		SetOwnerID(ownerID).
 		SetOpenstackName(c.OpenstackName).
 		SetName(c.Name).
-		Exec(ctx)
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	c.CreatedAt = row.CreatedAt
+	return nil
 }
 
 func (r *Repository) FindByName(ctx context.Context, ownerID uuid.UUID, name string) (*Container, error) {
@@ -37,7 +42,8 @@ func (r *Repository) FindByName(ctx context.Context, ownerID uuid.UUID, name str
 		}
 		return nil, err
 	}
-	return entToContainer(row), nil
+	c := entToContainer(row)
+	return &c, nil
 }
 
 func (r *Repository) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Container, error) {
@@ -49,7 +55,7 @@ func (r *Repository) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Cont
 	}
 	result := make([]Container, len(rows))
 	for i, row := range rows {
-		result[i] = *entToContainer(row)
+		result[i] = entToContainer(row)
 	}
 	return result, nil
 }
@@ -63,8 +69,8 @@ func (r *Repository) Delete(ctx context.Context, ownerID uuid.UUID, name string)
 	return err
 }
 
-func entToContainer(row *ent.Container) *Container {
-	return &Container{
+func entToContainer(row *ent.Container) Container {
+	return Container{
 		OpenstackName: row.OpenstackName,
 		Name:          row.Name,
 		CreatedAt:     row.CreatedAt,
