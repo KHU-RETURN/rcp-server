@@ -181,12 +181,20 @@ func TestHandlerDeleteContainer(t *testing.T) {
 func TestHandlerUploadObject(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	makeMultipartRequest := func(path, filename, content string) *http.Request {
+	makeMultipartRequest := func(t *testing.T, path, filename, content string) *http.Request {
+		t.Helper()
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
-		fw, _ := writer.CreateFormFile("file", filename)
-		io.WriteString(fw, content)
-		writer.Close()
+		fw, err := writer.CreateFormFile("file", filename)
+		if err != nil {
+			t.Fatalf("CreateFormFile: %v", err)
+		}
+		if _, err := io.WriteString(fw, content); err != nil {
+			t.Fatalf("WriteString: %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("writer.Close: %v", err)
+		}
 		req := httptest.NewRequest(http.MethodPost, path, body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		return req
@@ -199,7 +207,7 @@ func TestHandlerUploadObject(t *testing.T) {
 			},
 		}
 
-		req := makeMultipartRequest(api.BasePath+"/storage/containers/my-bucket/objects", "hello.txt", "hello")
+		req := makeMultipartRequest(t, api.BasePath+"/storage/containers/my-bucket/objects", "hello.txt", "hello")
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)

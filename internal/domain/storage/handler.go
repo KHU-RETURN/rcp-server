@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -38,12 +39,12 @@ func (h *Handler) ListContainers(c *gin.Context) {
 		return
 	}
 
-	cs, err := h.Svc.ListContainers(c.Request.Context(), id)
+	containers, err := h.Svc.ListContainers(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, cs)
+	c.JSON(http.StatusOK, containers)
 }
 
 func (h *Handler) CreateContainer(c *gin.Context) {
@@ -132,7 +133,7 @@ func (h *Handler) UploadObject(c *gin.Context) {
 	}
 	defer file.Close()
 
-	objectName := header.Filename
+	objectName := path.Base(header.Filename)
 	contentType := header.Header.Get("Content-Type")
 
 	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType); err != nil {
@@ -155,9 +156,9 @@ func (h *Handler) DownloadObject(c *gin.Context) {
 	}
 
 	containerName := c.Param("name")
-	objectKey := strings.TrimPrefix(c.Param("key"), "/")
+	objectName := strings.TrimPrefix(c.Param("key"), "/")
 
-	if err := h.Svc.DownloadObject(c.Request.Context(), id, containerName, objectKey, c.Writer); err != nil {
+	if err := h.Svc.DownloadObject(c.Request.Context(), id, containerName, objectName, c.Writer); err != nil {
 		switch {
 		case errors.Is(err, ErrContainerNotFound):
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
@@ -176,9 +177,9 @@ func (h *Handler) DeleteObject(c *gin.Context) {
 	}
 
 	containerName := c.Param("name")
-	objectKey := strings.TrimPrefix(c.Param("key"), "/")
+	objectName := strings.TrimPrefix(c.Param("key"), "/")
 
-	if err := h.Svc.DeleteObject(c.Request.Context(), id, containerName, objectKey); err != nil {
+	if err := h.Svc.DeleteObject(c.Request.Context(), id, containerName, objectName); err != nil {
 		switch {
 		case errors.Is(err, ErrContainerNotFound):
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})

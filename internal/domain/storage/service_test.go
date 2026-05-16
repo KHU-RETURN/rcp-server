@@ -9,8 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
-var testOwnerID = uuid.New()
-var testContainerUUID = uuid.New()
+var (
+	testOwnerID       = uuid.New()
+	testContainerUUID = uuid.New()
+)
 
 type fakeStorageClient struct {
 	createContainerFn   func(name string) error

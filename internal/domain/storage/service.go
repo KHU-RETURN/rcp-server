@@ -10,6 +10,13 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	ErrContainerNotFound      = errors.New("container not found")
+	ErrContainerNotEmpty      = errors.New("container not empty, use force=true to delete all")
+	ErrContainerAlreadyExists = errors.New("container name already in use")
+	ErrStorageOperationFailed = errors.New("storage operation failed")
+)
+
 type storageClient interface {
 	CreateContainer(name string) error
 	DeleteContainer(name string) error
@@ -31,13 +38,6 @@ type Service struct {
 	client storageClient
 	repo   containerRepo
 }
-
-var (
-	ErrContainerNotFound      = errors.New("container not found")
-	ErrContainerNotEmpty      = errors.New("container not empty, use force=true to delete all")
-	ErrContainerAlreadyExists = errors.New("container name already in use")
-	ErrStorageOperationFailed = errors.New("storage operation failed")
-)
 
 func NewService(client storageClient, repo containerRepo) *Service {
 	return &Service{client: client, repo: repo}
@@ -68,13 +68,13 @@ func (s *Service) CreateContainer(ctx context.Context, ownerID uuid.UUID, name s
 }
 
 func (s *Service) ListContainers(ctx context.Context, ownerID uuid.UUID) ([]ContainerResponse, error) {
-	cs, err := s.repo.ListByOwner(ctx, ownerID)
+	containers, err := s.repo.ListByOwner(ctx, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
-	result := make([]ContainerResponse, len(cs))
-	for i, c := range cs {
-		result[i] = ContainerResponse{Name: c.Name, CreatedAt: c.CreatedAt}
+	result := make([]ContainerResponse, len(containers))
+	for i, container := range containers {
+		result[i] = ContainerResponse{Name: container.Name, CreatedAt: container.CreatedAt}
 	}
 	return result, nil
 }
