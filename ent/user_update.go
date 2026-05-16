@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -151,6 +152,21 @@ func (_u *UserUpdate) AddKeypairs(v ...*KeyPair) *UserUpdate {
 	return _u.AddKeypairIDs(ids...)
 }
 
+// AddContainerIDs adds the "containers" edge to the Container entity by IDs.
+func (_u *UserUpdate) AddContainerIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddContainerIDs(ids...)
+	return _u
+}
+
+// AddContainers adds the "containers" edges to the Container entity.
+func (_u *UserUpdate) AddContainers(v ...*Container) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContainerIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
@@ -196,6 +212,27 @@ func (_u *UserUpdate) RemoveKeypairs(v ...*KeyPair) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveKeypairIDs(ids...)
+}
+
+// ClearContainers clears all "containers" edges to the Container entity.
+func (_u *UserUpdate) ClearContainers() *UserUpdate {
+	_u.mutation.ClearContainers()
+	return _u
+}
+
+// RemoveContainerIDs removes the "containers" edge to Container entities by IDs.
+func (_u *UserUpdate) RemoveContainerIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveContainerIDs(ids...)
+	return _u
+}
+
+// RemoveContainers removes "containers" edges to Container entities.
+func (_u *UserUpdate) RemoveContainers(v ...*Container) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContainerIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -354,6 +391,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContainersIDs(); len(nodes) > 0 && !_u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContainersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -494,6 +576,21 @@ func (_u *UserUpdateOne) AddKeypairs(v ...*KeyPair) *UserUpdateOne {
 	return _u.AddKeypairIDs(ids...)
 }
 
+// AddContainerIDs adds the "containers" edge to the Container entity by IDs.
+func (_u *UserUpdateOne) AddContainerIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddContainerIDs(ids...)
+	return _u
+}
+
+// AddContainers adds the "containers" edges to the Container entity.
+func (_u *UserUpdateOne) AddContainers(v ...*Container) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContainerIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
@@ -539,6 +636,27 @@ func (_u *UserUpdateOne) RemoveKeypairs(v ...*KeyPair) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveKeypairIDs(ids...)
+}
+
+// ClearContainers clears all "containers" edges to the Container entity.
+func (_u *UserUpdateOne) ClearContainers() *UserUpdateOne {
+	_u.mutation.ClearContainers()
+	return _u
+}
+
+// RemoveContainerIDs removes the "containers" edge to Container entities by IDs.
+func (_u *UserUpdateOne) RemoveContainerIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveContainerIDs(ids...)
+	return _u
+}
+
+// RemoveContainers removes "containers" edges to Container entities.
+func (_u *UserUpdateOne) RemoveContainers(v ...*Container) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContainerIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -720,6 +838,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContainersIDs(); len(nodes) > 0 && !_u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContainersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

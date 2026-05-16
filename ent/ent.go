@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -75,9 +76,10 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			instance.Table: instance.ValidColumn,
-			keypair.Table:  keypair.ValidColumn,
-			user.Table:     user.ValidColumn,
+			container.Table: container.ValidColumn,
+			instance.Table:  instance.ValidColumn,
+			keypair.Table:   keypair.ValidColumn,
+			user.Table:      user.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

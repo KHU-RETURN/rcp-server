@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -132,6 +133,21 @@ func (_c *UserCreate) AddKeypairs(v ...*KeyPair) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddKeypairIDs(ids...)
+}
+
+// AddContainerIDs adds the "containers" edge to the Container entity by IDs.
+func (_c *UserCreate) AddContainerIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddContainerIDs(ids...)
+	return _c
+}
+
+// AddContainers adds the "containers" edges to the Container entity.
+func (_c *UserCreate) AddContainers(v ...*Container) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddContainerIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -302,6 +318,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ContainersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

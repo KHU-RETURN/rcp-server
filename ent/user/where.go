@@ -587,6 +587,29 @@ func HasKeypairsWith(preds ...predicate.KeyPair) predicate.User {
 	})
 }
 
+// HasContainers applies the HasEdge predicate on the "containers" edge.
+func HasContainers() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ContainersTable, ContainersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasContainersWith applies the HasEdge predicate on the "containers" edge with a given conditions (other predicates).
+func HasContainersWith(preds ...predicate.Container) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newContainersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.User) predicate.User {
 	return predicate.User(sql.AndPredicates(predicates...))

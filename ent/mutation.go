@@ -11,6 +11,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -27,10 +28,572 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeInstance = "Instance"
-	TypeKeyPair  = "KeyPair"
-	TypeUser     = "User"
+	TypeContainer = "Container"
+	TypeInstance  = "Instance"
+	TypeKeyPair   = "KeyPair"
+	TypeUser      = "User"
 )
+
+// ContainerMutation represents an operation that mutates the Container nodes in the graph.
+type ContainerMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	openstack_name *uuid.UUID
+	name           *string
+	created_at     *time.Time
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	owner          *uuid.UUID
+	clearedowner   bool
+	done           bool
+	oldValue       func(context.Context) (*Container, error)
+	predicates     []predicate.Container
+}
+
+var _ ent.Mutation = (*ContainerMutation)(nil)
+
+// containerOption allows management of the mutation configuration using functional options.
+type containerOption func(*ContainerMutation)
+
+// newContainerMutation creates new mutation for the Container entity.
+func newContainerMutation(c config, op Op, opts ...containerOption) *ContainerMutation {
+	m := &ContainerMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeContainer,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withContainerID sets the ID field of the mutation.
+func withContainerID(id uuid.UUID) containerOption {
+	return func(m *ContainerMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Container
+		)
+		m.oldValue = func(ctx context.Context) (*Container, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Container.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withContainer sets the old Container of the mutation.
+func withContainer(node *Container) containerOption {
+	return func(m *ContainerMutation) {
+		m.oldValue = func(context.Context) (*Container, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ContainerMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ContainerMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Container entities.
+func (m *ContainerMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ContainerMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ContainerMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Container.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOpenstackName sets the "openstack_name" field.
+func (m *ContainerMutation) SetOpenstackName(u uuid.UUID) {
+	m.openstack_name = &u
+}
+
+// OpenstackName returns the value of the "openstack_name" field in the mutation.
+func (m *ContainerMutation) OpenstackName() (r uuid.UUID, exists bool) {
+	v := m.openstack_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenstackName returns the old "openstack_name" field's value of the Container entity.
+// If the Container object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContainerMutation) OldOpenstackName(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenstackName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenstackName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenstackName: %w", err)
+	}
+	return oldValue.OpenstackName, nil
+}
+
+// ResetOpenstackName resets all changes to the "openstack_name" field.
+func (m *ContainerMutation) ResetOpenstackName() {
+	m.openstack_name = nil
+}
+
+// SetName sets the "name" field.
+func (m *ContainerMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ContainerMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Container entity.
+// If the Container object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContainerMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ContainerMutation) ResetName() {
+	m.name = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ContainerMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ContainerMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Container entity.
+// If the Container object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContainerMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ContainerMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ContainerMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ContainerMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Container entity.
+// If the Container object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContainerMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ContainerMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetOwnerID sets the "owner" edge to the User entity by id.
+func (m *ContainerMutation) SetOwnerID(id uuid.UUID) {
+	m.owner = &id
+}
+
+// ClearOwner clears the "owner" edge to the User entity.
+func (m *ContainerMutation) ClearOwner() {
+	m.clearedowner = true
+}
+
+// OwnerCleared reports if the "owner" edge to the User entity was cleared.
+func (m *ContainerMutation) OwnerCleared() bool {
+	return m.clearedowner
+}
+
+// OwnerID returns the "owner" edge ID in the mutation.
+func (m *ContainerMutation) OwnerID() (id uuid.UUID, exists bool) {
+	if m.owner != nil {
+		return *m.owner, true
+	}
+	return
+}
+
+// OwnerIDs returns the "owner" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OwnerID instead. It exists only for internal usage by the builders.
+func (m *ContainerMutation) OwnerIDs() (ids []uuid.UUID) {
+	if id := m.owner; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOwner resets all changes to the "owner" edge.
+func (m *ContainerMutation) ResetOwner() {
+	m.owner = nil
+	m.clearedowner = false
+}
+
+// Where appends a list predicates to the ContainerMutation builder.
+func (m *ContainerMutation) Where(ps ...predicate.Container) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ContainerMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ContainerMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Container, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ContainerMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ContainerMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Container).
+func (m *ContainerMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ContainerMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.openstack_name != nil {
+		fields = append(fields, container.FieldOpenstackName)
+	}
+	if m.name != nil {
+		fields = append(fields, container.FieldName)
+	}
+	if m.created_at != nil {
+		fields = append(fields, container.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, container.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ContainerMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case container.FieldOpenstackName:
+		return m.OpenstackName()
+	case container.FieldName:
+		return m.Name()
+	case container.FieldCreatedAt:
+		return m.CreatedAt()
+	case container.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ContainerMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case container.FieldOpenstackName:
+		return m.OldOpenstackName(ctx)
+	case container.FieldName:
+		return m.OldName(ctx)
+	case container.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case container.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Container field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ContainerMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case container.FieldOpenstackName:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenstackName(v)
+		return nil
+	case container.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case container.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case container.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Container field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ContainerMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ContainerMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ContainerMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Container numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ContainerMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ContainerMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ContainerMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Container nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ContainerMutation) ResetField(name string) error {
+	switch name {
+	case container.FieldOpenstackName:
+		m.ResetOpenstackName()
+		return nil
+	case container.FieldName:
+		m.ResetName()
+		return nil
+	case container.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case container.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Container field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ContainerMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.owner != nil {
+		edges = append(edges, container.EdgeOwner)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ContainerMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case container.EdgeOwner:
+		if id := m.owner; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ContainerMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ContainerMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ContainerMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedowner {
+		edges = append(edges, container.EdgeOwner)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ContainerMutation) EdgeCleared(name string) bool {
+	switch name {
+	case container.EdgeOwner:
+		return m.clearedowner
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ContainerMutation) ClearEdge(name string) error {
+	switch name {
+	case container.EdgeOwner:
+		m.ClearOwner()
+		return nil
+	}
+	return fmt.Errorf("unknown Container unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ContainerMutation) ResetEdge(name string) error {
+	switch name {
+	case container.EdgeOwner:
+		m.ResetOwner()
+		return nil
+	}
+	return fmt.Errorf("unknown Container edge %s", name)
+}
 
 // InstanceMutation represents an operation that mutates the Instance nodes in the graph.
 type InstanceMutation struct {
@@ -1643,6 +2206,9 @@ type UserMutation struct {
 	keypairs             map[uuid.UUID]struct{}
 	removedkeypairs      map[uuid.UUID]struct{}
 	clearedkeypairs      bool
+	containers           map[uuid.UUID]struct{}
+	removedcontainers    map[uuid.UUID]struct{}
+	clearedcontainers    bool
 	done                 bool
 	oldValue             func(context.Context) (*User, error)
 	predicates           []predicate.User
@@ -2148,6 +2714,60 @@ func (m *UserMutation) ResetKeypairs() {
 	m.removedkeypairs = nil
 }
 
+// AddContainerIDs adds the "containers" edge to the Container entity by ids.
+func (m *UserMutation) AddContainerIDs(ids ...uuid.UUID) {
+	if m.containers == nil {
+		m.containers = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.containers[ids[i]] = struct{}{}
+	}
+}
+
+// ClearContainers clears the "containers" edge to the Container entity.
+func (m *UserMutation) ClearContainers() {
+	m.clearedcontainers = true
+}
+
+// ContainersCleared reports if the "containers" edge to the Container entity was cleared.
+func (m *UserMutation) ContainersCleared() bool {
+	return m.clearedcontainers
+}
+
+// RemoveContainerIDs removes the "containers" edge to the Container entity by IDs.
+func (m *UserMutation) RemoveContainerIDs(ids ...uuid.UUID) {
+	if m.removedcontainers == nil {
+		m.removedcontainers = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.containers, ids[i])
+		m.removedcontainers[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedContainers returns the removed IDs of the "containers" edge to the Container entity.
+func (m *UserMutation) RemovedContainersIDs() (ids []uuid.UUID) {
+	for id := range m.removedcontainers {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ContainersIDs returns the "containers" edge IDs in the mutation.
+func (m *UserMutation) ContainersIDs() (ids []uuid.UUID) {
+	for id := range m.containers {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetContainers resets all changes to the "containers" edge.
+func (m *UserMutation) ResetContainers() {
+	m.containers = nil
+	m.clearedcontainers = false
+	m.removedcontainers = nil
+}
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -2400,12 +3020,15 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.instances != nil {
 		edges = append(edges, user.EdgeInstances)
 	}
 	if m.keypairs != nil {
 		edges = append(edges, user.EdgeKeypairs)
+	}
+	if m.containers != nil {
+		edges = append(edges, user.EdgeContainers)
 	}
 	return edges
 }
@@ -2426,18 +3049,27 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeContainers:
+		ids := make([]ent.Value, 0, len(m.containers))
+		for id := range m.containers {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.removedinstances != nil {
 		edges = append(edges, user.EdgeInstances)
 	}
 	if m.removedkeypairs != nil {
 		edges = append(edges, user.EdgeKeypairs)
+	}
+	if m.removedcontainers != nil {
+		edges = append(edges, user.EdgeContainers)
 	}
 	return edges
 }
@@ -2458,18 +3090,27 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeContainers:
+		ids := make([]ent.Value, 0, len(m.removedcontainers))
+		for id := range m.removedcontainers {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedinstances {
 		edges = append(edges, user.EdgeInstances)
 	}
 	if m.clearedkeypairs {
 		edges = append(edges, user.EdgeKeypairs)
+	}
+	if m.clearedcontainers {
+		edges = append(edges, user.EdgeContainers)
 	}
 	return edges
 }
@@ -2482,6 +3123,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedinstances
 	case user.EdgeKeypairs:
 		return m.clearedkeypairs
+	case user.EdgeContainers:
+		return m.clearedcontainers
 	}
 	return false
 }
@@ -2503,6 +3146,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeKeypairs:
 		m.ResetKeypairs()
+		return nil
+	case user.EdgeContainers:
+		m.ResetContainers()
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)
