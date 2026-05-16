@@ -134,7 +134,7 @@ func (h *Handler) UploadObject(c *gin.Context) {
 	defer file.Close()
 
 	objectName := path.Base(header.Filename)
-	contentType := header.Header.Get("Content-Type")
+	contentType := header.Header.Get(api.HeaderContentType)
 
 	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType); err != nil {
 		switch {

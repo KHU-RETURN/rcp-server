@@ -1,6 +1,7 @@
 package compute
 
 import (
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
@@ -20,7 +21,7 @@ func NewClient(provider *gophercloud.ProviderClient) *Client {
 
 func (c *Client) serviceClient() (*gophercloud.ServiceClient, error) {
 	return goopenstack.NewComputeV2(c.provider, gophercloud.EndpointOpts{
-		Region: "RegionOne",
+		Region: openstack.Region,
 	})
 }
 

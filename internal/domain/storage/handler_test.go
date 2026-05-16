@@ -78,7 +78,7 @@ func TestHandlerCreateContainer(t *testing.T) {
 	t.Run("returns 201 on success", func(t *testing.T) {
 		body, _ := json.Marshal(CreateContainerRequest{Name: "new-bucket"})
 		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/storage/containers", bytes.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(api.HeaderContentType, api.ContentTypeJSON)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
@@ -100,7 +100,7 @@ func TestHandlerCreateContainer(t *testing.T) {
 
 		body, _ := json.Marshal(CreateContainerRequest{Name: "existing"})
 		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/storage/containers", bytes.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(api.HeaderContentType, api.ContentTypeJSON)
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
@@ -196,7 +196,7 @@ func TestHandlerUploadObject(t *testing.T) {
 			t.Fatalf("writer.Close: %v", err)
 		}
 		req := httptest.NewRequest(http.MethodPost, path, body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set(api.HeaderContentType, writer.FormDataContentType())
 		return req
 	}
 
@@ -235,7 +235,7 @@ func TestHandlerUploadObject(t *testing.T) {
 		}
 
 		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/storage/containers/my-bucket/objects", nil)
-		req.Header.Set("Content-Type", "multipart/form-data")
+		req.Header.Set(api.HeaderContentType, "multipart/form-data")
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)

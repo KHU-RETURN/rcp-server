@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers"
@@ -20,7 +21,7 @@ func NewClient(provider *gophercloud.ProviderClient) *Client {
 
 func (c *Client) serviceClient() (*gophercloud.ServiceClient, error) {
 	return goopenstack.NewObjectStorageV1(c.provider, gophercloud.EndpointOpts{
-		Region: "RegionOne",
+		Region: openstack.Region,
 	})
 }
 
