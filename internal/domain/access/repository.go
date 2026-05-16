@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/KHU-RETURN/rcp-server/ent"
+	entinstance "github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	entuser "github.com/KHU-RETURN/rcp-server/ent/user"
 	"github.com/google/uuid"
@@ -73,5 +74,27 @@ func (r *Repository) FindByName(ctx context.Context, ownerID uuid.UUID, name str
 		Name:        kp.OpenstackName,
 		Fingerprint: kp.Fingerprint,
 		PublicKey:   kp.PublicKey,
+	}, nil
+}
+
+func (r *Repository) FindConsoleTarget(ctx context.Context, ownerID uuid.UUID, openstackID string) (*ConsoleTarget, error) {
+	inst, err := r.client.Instance.Query().
+		Where(
+			entinstance.OpenstackID(openstackID),
+			entinstance.HasOwnerWith(entuser.ID(ownerID)),
+		).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &ConsoleTarget{
+		Instance: ConsoleInstance{
+			ID:   inst.OpenstackID,
+			Name: inst.Name,
+		},
 	}, nil
 }

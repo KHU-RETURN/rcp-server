@@ -164,4 +164,20 @@ func TestAuthRequired(t *testing.T) {
 			t.Fatalf("expected email to be propagated, got %q", body["email"])
 		}
 	})
+
+	t.Run("allows valid access token cookie", func(t *testing.T) {
+		repo := &MockUserRepository{users: map[string]*User{
+			"user@khu.ac.kr": {Email: "user@khu.ac.kr", Name: "User"},
+		}}
+		router, token := newProtectedRouter(repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.AddCookie(&http.Cookie{Name: cookieAccessToken, Value: token})
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+	})
 }

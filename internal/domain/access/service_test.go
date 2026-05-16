@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -16,6 +18,7 @@ var testOwnerID = uuid.New()
 type fakeClient struct {
 	createKeyPairFn func(name, publicKey string) (*KeyPair, error)
 	deleteKeyPairFn func(name string) error
+	getInstanceFn   func(id string) (*ConsoleInstance, error)
 }
 
 func (f *fakeClient) CreateKeyPair(name, publicKey string) (*KeyPair, error) {
@@ -32,11 +35,19 @@ func (f *fakeClient) DeleteKeyPair(name string) error {
 	return nil
 }
 
+func (f *fakeClient) GetInstance(id string) (*ConsoleInstance, error) {
+	if f.getInstanceFn != nil {
+		return f.getInstanceFn(id)
+	}
+	return nil, nil
+}
+
 type fakeRepo struct {
-	findByNameFn   func(ctx context.Context, ownerID uuid.UUID, name string) (*KeyPair, error)
-	saveKeyPairFn  func(ctx context.Context, ownerID uuid.UUID, kp *KeyPair) error
-	deleteByNameFn func(ctx context.Context, ownerID uuid.UUID, name string) error
-	listByOwnerFn  func(ctx context.Context, ownerID uuid.UUID) ([]KeyPair, error)
+	findByNameFn        func(ctx context.Context, ownerID uuid.UUID, name string) (*KeyPair, error)
+	saveKeyPairFn       func(ctx context.Context, ownerID uuid.UUID, kp *KeyPair) error
+	deleteByNameFn      func(ctx context.Context, ownerID uuid.UUID, name string) error
+	listByOwnerFn       func(ctx context.Context, ownerID uuid.UUID) ([]KeyPair, error)
+	findConsoleTargetFn func(ctx context.Context, ownerID uuid.UUID, openstackID string) (*ConsoleTarget, error)
 }
 
 func (r *fakeRepo) FindByName(ctx context.Context, ownerID uuid.UUID, name string) (*KeyPair, error) {
@@ -63,6 +74,13 @@ func (r *fakeRepo) DeleteByName(ctx context.Context, ownerID uuid.UUID, name str
 func (r *fakeRepo) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]KeyPair, error) {
 	if r.listByOwnerFn != nil {
 		return r.listByOwnerFn(ctx, ownerID)
+	}
+	return nil, nil
+}
+
+func (r *fakeRepo) FindConsoleTarget(ctx context.Context, ownerID uuid.UUID, openstackID string) (*ConsoleTarget, error) {
+	if r.findConsoleTargetFn != nil {
+		return r.findConsoleTargetFn(ctx, ownerID, openstackID)
 	}
 	return nil, nil
 }
@@ -227,4 +245,88 @@ func TestServiceCreateKeyPair(t *testing.T) {
 			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
 		}
 	})
+}
+
+func TestServiceCreateConsoleSession(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("creates one-time console token for owned instance", func(t *testing.T) {
+		repo := &fakeRepo{
+			findConsoleTargetFn: func(_ context.Context, ownerID uuid.UUID, openstackID string) (*ConsoleTarget, error) {
+				if ownerID != testOwnerID {
+					t.Fatalf("unexpected ownerID: %s", ownerID)
+				}
+				if openstackID != "server-1" {
+					t.Fatalf("unexpected openstackID: %q", openstackID)
+				}
+				return &ConsoleTarget{
+					Instance: ConsoleInstance{ID: openstackID, Name: "server-1"},
+				}, nil
+			},
+		}
+		client := &fakeClient{
+			getInstanceFn: func(id string) (*ConsoleInstance, error) {
+				if id != "server-1" {
+					t.Fatalf("unexpected instance id: %q", id)
+				}
+				return &ConsoleInstance{ID: id, FixedIP: "10.0.0.8"}, nil
+			},
+		}
+
+		svc := NewService(client, repo)
+		res, err := svc.CreateConsoleSession(ctx, testOwnerID, " server-1 ", CreateConsoleSessionRequest{
+			Username: " ubuntu ",
+		}, "ws://example.test/api/v1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		token := consoleTokenFromURL(t, res.URL)
+		if token == "" || !strings.Contains(res.URL, "/access/console/ws?token="+token) {
+			t.Fatalf("unexpected console response: %+v", res)
+		}
+		authorizedKeys := svc.AuthorizedKeys("server-1", "ubuntu")
+		if !strings.HasPrefix(authorizedKeys, "ssh-ed25519 ") {
+			t.Fatalf("expected ephemeral authorized key, got %q", authorizedKeys)
+		}
+
+		session, ok := svc.TakeConsoleSession(token)
+		if !ok {
+			t.Fatal("expected token to be accepted")
+		}
+		if session.Host != "10.0.0.8" || session.Username != "ubuntu" || session.InstanceID != "server-1" {
+			t.Fatalf("unexpected stored session: %+v", session)
+		}
+		svc.DeleteAuthorizedKey(session.InstanceID, session.Username, session.AuthorizedKey)
+		if keys := svc.AuthorizedKeys("server-1", "ubuntu"); keys != "" {
+			t.Fatalf("expected authorized key to be deleted, got %q", keys)
+		}
+		if _, ok := svc.TakeConsoleSession(token); ok {
+			t.Fatal("expected token to be single-use")
+		}
+	})
+
+	t.Run("rejects unowned instance", func(t *testing.T) {
+		svc := NewService(&fakeClient{}, &fakeRepo{
+			findConsoleTargetFn: func(context.Context, uuid.UUID, string) (*ConsoleTarget, error) {
+				return nil, nil
+			},
+		})
+
+		_, err := svc.CreateConsoleSession(ctx, testOwnerID, "server-1", CreateConsoleSessionRequest{
+			Username: "ubuntu",
+		}, "ws://example.test/api/v1")
+		if !errors.Is(err, ErrConsoleInstanceNotFound) {
+			t.Fatalf("expected ErrConsoleInstanceNotFound, got %v", err)
+		}
+	})
+}
+
+func consoleTokenFromURL(t *testing.T, rawURL string) string {
+	t.Helper()
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("invalid console URL %q: %v", rawURL, err)
+	}
+	return u.Query().Get("token")
 }

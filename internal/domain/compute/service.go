@@ -141,8 +141,15 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 	}
 
 	res := make([]InstanceDetailResponse, 0, len(dbInstances))
+	staleIDs := make([]string, 0)
+
 	for _, inst := range dbInstances {
-		srv := serverMap[inst.OpenstackID]
+		srv, ok := serverMap[inst.OpenstackID]
+		if !ok {
+			staleIDs = append(staleIDs, inst.OpenstackID)
+			continue
+		}
+
 		fixedIP, floatingIP := extractServerIPs(&srv)
 		res = append(res, InstanceDetailResponse{
 			ID:         inst.OpenstackID,
@@ -155,7 +162,21 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Created:    inst.Created,
 		})
 	}
+	if err := s.pruneStaleInstances(ctx, ownerID, staleIDs); err != nil {
+		return nil, err
+	}
+
 	return res, nil
+}
+
+func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, staleIDs []string) error {
+	for _, id := range staleIDs {
+		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+			return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+		}
+	}
+
+	return nil
 }
 
 // GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
@@ -250,6 +271,7 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 	inst := &Instance{
 		OpenstackID: server.ID,
 		Name:        firstNonEmpty(strings.TrimSpace(server.Name), normalizedOpts.Name),
+		Status:      normalizeServerStatus(server.Status),
 		ImageID:     firstNonEmpty(extractResourceID(server.Image), normalizedOpts.ImageRef),
 		FlavorID:    firstNonEmpty(extractResourceID(server.Flavor), normalizedOpts.FlavorRef),
 		Created:     server.Created,
@@ -373,7 +395,7 @@ func buildCreateInstanceResponse(server *Server, opts CreateServerOpts) *CreateI
 	return &CreateInstanceResponse{
 		ID:             server.ID,
 		Name:           firstNonEmpty(strings.TrimSpace(server.Name), opts.Name),
-		Status:         strings.TrimSpace(server.Status),
+		Status:         normalizeServerStatus(server.Status),
 		ImageID:        firstNonEmpty(extractResourceID(server.Image), opts.ImageRef),
 		FlavorID:       firstNonEmpty(extractResourceID(server.Flavor), opts.FlavorRef),
 		KeyName:        keyName,
@@ -492,4 +514,8 @@ func firstNonEmpty(values ...string) string {
 	}
 
 	return ""
+}
+
+func normalizeServerStatus(status string) string {
+	return firstNonEmpty(status, "BUILD")
 }

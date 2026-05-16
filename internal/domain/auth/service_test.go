@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,7 +10,8 @@ import (
 )
 
 type fakeRepo struct {
-	users map[string]*User
+	users          map[string]*User
+	findByEmailErr error
 }
 
 func (f *fakeRepo) UpsertUser(ctx context.Context, user *User) error {
@@ -18,6 +20,9 @@ func (f *fakeRepo) UpsertUser(ctx context.Context, user *User) error {
 }
 
 func (f *fakeRepo) FindByEmail(ctx context.Context, email string) (*User, error) {
+	if f.findByEmailErr != nil {
+		return nil, f.findByEmailErr
+	}
 	user, ok := f.users[email]
 	if !ok {
 		return nil, nil
@@ -124,6 +129,70 @@ func TestTokenService(t *testing.T) {
 		_, err := svc.ValidateToken("not.a.valid.jwt")
 		if err == nil {
 			t.Fatal("expected error for malformed token, got nil")
+		}
+	})
+}
+
+func TestServiceGetUserByAccessToken(t *testing.T) {
+	ctx := context.Background()
+	tokenSvc := NewTokenService("test-secret")
+	user := &User{Email: "user@khu.ac.kr", Name: "User"}
+	svc := NewService(&fakeRepo{
+		users: map[string]*User{
+			user.Email: user,
+		},
+	}, &oauth2.Config{}, tokenSvc)
+
+	t.Run("returns user for valid access token", func(t *testing.T) {
+		token, _, _, err := tokenSvc.GenerateAuthTokens(user.Email)
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		got, err := svc.GetUserByAccessToken(ctx, token)
+		if err != nil {
+			t.Fatalf("GetUserByAccessToken: %v", err)
+		}
+		if got != user {
+			t.Fatalf("expected user %+v, got %+v", user, got)
+		}
+	})
+
+	t.Run("rejects refresh token", func(t *testing.T) {
+		_, token, _, err := tokenSvc.GenerateAuthTokens(user.Email)
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		if _, err := svc.GetUserByAccessToken(ctx, token); !errors.Is(err, ErrInvalidTokenType) {
+			t.Fatalf("expected ErrInvalidTokenType, got %v", err)
+		}
+	})
+
+	t.Run("rejects missing user", func(t *testing.T) {
+		token, _, _, err := tokenSvc.GenerateAuthTokens("missing@khu.ac.kr")
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		if _, err := svc.GetUserByAccessToken(ctx, token); !errors.Is(err, ErrUserNotFound) {
+			t.Fatalf("expected ErrUserNotFound, got %v", err)
+		}
+	})
+
+	t.Run("returns repository error", func(t *testing.T) {
+		repoErr := errors.New("repository failed")
+		svc := NewService(&fakeRepo{
+			users:          map[string]*User{},
+			findByEmailErr: repoErr,
+		}, &oauth2.Config{}, tokenSvc)
+		token, _, _, err := tokenSvc.GenerateAuthTokens(user.Email)
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		if _, err := svc.GetUserByAccessToken(ctx, token); !errors.Is(err, ErrUserLookupFailed) {
+			t.Fatalf("expected ErrUserLookupFailed, got %v", err)
 		}
 	})
 }

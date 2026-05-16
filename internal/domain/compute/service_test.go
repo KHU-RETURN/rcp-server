@@ -323,6 +323,7 @@ func TestServiceCreateInstance(t *testing.T) {
 
 	t.Run("maps floating and fixed IPs into response", func(t *testing.T) {
 		var gotOpts CreateServerOpts
+		var saved Instance
 		client := &fakeClient{
 			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				gotOpts = opts
@@ -334,8 +335,14 @@ func TestServiceCreateInstance(t *testing.T) {
 				}), nil
 			},
 		}
+		repo := &fakeRepo{
+			saveInstanceFn: func(_ context.Context, _ uuid.UUID, inst *Instance) error {
+				saved = *inst
+				return nil
+			},
+		}
 
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, repo, "project-1")
 		res, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:           " test-vm ",
 			ImageRef:       " image-1 ",
@@ -359,6 +366,9 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 		if len(gotOpts.Networks) != 1 || gotOpts.Networks[0].UUID != "network-1" {
 			t.Fatalf("expected trimmed network UUID, got %#v", gotOpts.Networks)
+		}
+		if saved.Status != "BUILD" {
+			t.Fatalf("expected saved status BUILD, got %q", saved.Status)
 		}
 
 		if res.FixedIP != "10.0.0.8" {
@@ -539,6 +549,73 @@ func TestServiceCreateInstance(t *testing.T) {
 			ImageRef:  "image-1",
 			FlavorRef: "flavor-1",
 		})
+		if !errors.Is(err, ErrInstanceOperationFailed) {
+			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
+		}
+	})
+}
+
+func TestServiceGetInstances(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns only instances that still exist in OpenStack and prunes stale DB rows", func(t *testing.T) {
+		var deletedIDs []string
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{
+					{OpenstackID: "server-1", Name: "vm-1", ImageID: "image-1", FlavorID: "flavor-1"},
+					{OpenstackID: "server-stale", Name: "old-vm", ImageID: "image-2", FlavorID: "flavor-2"},
+				}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+				deletedIDs = append(deletedIDs, id)
+				return nil
+			},
+		}
+		client := &fakeClient{
+			fetchInstancesFn: func() ([]Server, error) {
+				return []Server{{ID: "server-1", Status: "ACTIVE"}}, nil
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "flavor-1", Name: "m1.small", VCPUs: 1, RAM: 1024},
+					{ID: "flavor-2", Name: "m1.medium", VCPUs: 2, RAM: 2048},
+				}, nil
+			},
+		}
+
+		svc := NewService(client, repo, "project-1")
+		res, err := svc.GetInstances(ctx, testOwnerID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 1 {
+			t.Fatalf("expected 1 live instance, got %d: %+v", len(res), res)
+		}
+		if res[0].ID != "server-1" || res[0].Status != "ACTIVE" {
+			t.Fatalf("unexpected live instance response: %+v", res[0])
+		}
+		if !reflect.DeepEqual(deletedIDs, []string{"server-stale"}) {
+			t.Fatalf("expected stale server to be deleted, got %#v", deletedIDs)
+		}
+	})
+
+	t.Run("returns operation failed when pruning stale DB rows fails", func(t *testing.T) {
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-stale"}}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return errors.New("db delete failed")
+			},
+		}
+		client := &fakeClient{
+			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
+			fetchFlavorsFn:   func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+
+		svc := NewService(client, repo, "project-1")
+		_, err := svc.GetInstances(ctx, testOwnerID)
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
 		}

@@ -7,6 +7,7 @@ import "time"
 type Instance struct {
 	OpenstackID string
 	Name        string
+	Status      string
 	ImageID     string
 	FlavorID    string
 	Created     time.Time

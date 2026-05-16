@@ -19,6 +19,17 @@ type User struct {
 	GoogleAuth *GoogleInfo `json:"-"`
 }
 
+type MeResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	Name        string    `json:"name"`
+	AccessToken string    `json:"access_token"`
+}
+
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 type GoogleInfo struct {
 	AccessToken  string    `json:"google_access_token"`
 	RefreshToken string    `json:"google_refresh_token"`
