@@ -1,8 +1,6 @@
 package compute
 
 import (
-	"fmt"
-
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
@@ -100,7 +98,6 @@ func (c *Client) FetchInstances() ([]Server, error) {
 	result := make([]Server, len(raw))
 
 	for i, s := range raw {
-		fmt.Printf("Instance %s Created At: %v\n", s.Name, s.Created)
 		result[i] = Server{
 			ID:         s.ID,
 			Name:       s.Name,
