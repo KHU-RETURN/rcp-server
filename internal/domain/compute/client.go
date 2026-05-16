@@ -98,7 +98,7 @@ func (c *Client) FetchInstances() ([]Server, error) {
 	}
 
 	result := make([]Server, len(raw))
-	
+
 	for i, s := range raw {
 		fmt.Printf("Instance %s Created At: %v\n", s.Name, s.Created)
 		result[i] = Server{
