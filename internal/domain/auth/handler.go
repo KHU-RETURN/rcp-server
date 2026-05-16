@@ -18,13 +18,10 @@ const (
 	pathLoginError    = "/login?error=auth_failed"
 	pathAuthCallback  = "/auth/callback"
 
-	envFrontendURL      = "FRONTEND_URL"
 	envAuthCookieSecure = "RCP_AUTH_COOKIE_SECURE"
 
 	cookieAccessToken  = "access_token"
 	cookieRefreshToken = "refresh_token"
-
-	defaultFrontendURL = "http://localhost:4173"
 )
 
 // sshStatePrefix marks an OAuth state string as belonging to the ssh-gateway
@@ -97,7 +94,7 @@ func (h *Handler) Callback(c *gin.Context) {
 
 	user, err := h.Svc.ProcessGoogleCallback(c.Request.Context(), code)
 	if err != nil {
-		c.Redirect(http.StatusTemporaryRedirect, getFrontendURL()+pathLoginError)
+		c.Redirect(http.StatusTemporaryRedirect, h.frontendBaseURL+pathLoginError)
 		return
 	}
 
@@ -123,7 +120,7 @@ func (h *Handler) Callback(c *gin.Context) {
 		true, // HttpOnly
 	)
 
-	c.Redirect(http.StatusFound, getFrontendURL()+pathAuthCallback)
+	c.Redirect(http.StatusFound, h.frontendBaseURL+pathAuthCallback)
 }
 
 // GET /api/v1/auth/me
@@ -146,15 +143,6 @@ func (h *Handler) Me(c *gin.Context) {
 		Email:       user.Email,
 		AccessToken: token,
 	})
-}
-
-func getFrontendURL() string {
-	url := os.Getenv(envFrontendURL)
-	if url == "" {
-		// 설정이 없으면 개발 환경(로컬)으로 간주
-		return defaultFrontendURL
-	}
-	return strings.TrimSuffix(url, "/")
 }
 
 func authCookieSecure() bool {
