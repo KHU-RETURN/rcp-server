@@ -29,9 +29,10 @@ type instanceRepo interface {
 }
 
 type Service struct {
-	client    computeClient
-	repo      instanceRepo
-	projectID string
+	client           computeClient
+	repo             instanceRepo
+	projectID        string
+	defaultNetworkID string
 }
 
 var (
@@ -42,8 +43,13 @@ var (
 	ErrInstanceOperationFailed      = errors.New("instance operation failed")
 )
 
-func NewService(client computeClient, repo instanceRepo, projectID string) *Service {
-	return &Service{client: client, repo: repo, projectID: projectID}
+func NewService(client computeClient, repo instanceRepo, projectID, defaultNetworkID string) *Service {
+	return &Service{
+		client:           client,
+		repo:             repo,
+		projectID:        projectID,
+		defaultNetworkID: strings.TrimSpace(defaultNetworkID),
+	}
 }
 
 func (s *Service) GetFlavors() ([]FlavorResponse, error) {

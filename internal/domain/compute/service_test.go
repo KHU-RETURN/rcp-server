@@ -115,7 +115,7 @@ func TestServiceGetFlavors(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.GetFlavors()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -135,7 +135,7 @@ func TestServiceGetFlavors(t *testing.T) {
 		client := &fakeClient{
 			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.GetFlavors()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -151,7 +151,7 @@ func TestServiceGetFlavors(t *testing.T) {
 				return nil, errors.New("upstream error")
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		_, err := svc.GetFlavors()
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -176,7 +176,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -205,7 +205,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -231,7 +231,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -254,7 +254,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -279,7 +279,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.GetAvailableFlavorsWithLimit()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -296,7 +296,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				return nil, errors.New("flavors fetch failed")
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		_, err := svc.GetAvailableFlavorsWithLimit()
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -310,7 +310,7 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 				return nil, errors.New("quota fetch failed")
 			},
 		}
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		_, err := svc.GetAvailableFlavorsWithLimit()
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -342,7 +342,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(client, repo, "project-1")
+		svc := NewService(client, repo, "project-1", "")
 		res, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:           " test-vm ",
 			ImageRef:       " image-1 ",
@@ -393,7 +393,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
@@ -425,7 +425,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:      "test-vm",
 			ImageRef:  "image-1",
@@ -453,7 +453,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		res, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:           "fallback-vm",
 			ImageRef:       "image-2",
@@ -477,7 +477,7 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("rejects whitespace-only required fields", func(t *testing.T) {
-		svc := NewService(&fakeClient{}, &fakeRepo{}, "project-1")
+		svc := NewService(&fakeClient{}, &fakeRepo{}, "project-1", "")
 
 		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:      "   ",
@@ -516,7 +516,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(client, &fakeRepo{}, "project-1")
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
 		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
@@ -543,7 +543,7 @@ func TestServiceCreateInstance(t *testing.T) {
 			},
 		}
 
-		svc := NewService(client, repo, "project-1")
+		svc := NewService(client, repo, "project-1", "")
 		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
 			Name:      "vm",
 			ImageRef:  "image-1",
@@ -584,7 +584,7 @@ func TestServiceGetInstances(t *testing.T) {
 			},
 		}
 
-		svc := NewService(client, repo, "project-1")
+		svc := NewService(client, repo, "project-1", "")
 		res, err := svc.GetInstances(ctx, testOwnerID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -614,7 +614,7 @@ func TestServiceGetInstances(t *testing.T) {
 			fetchFlavorsFn:   func() ([]Flavor, error) { return []Flavor{}, nil },
 		}
 
-		svc := NewService(client, repo, "project-1")
+		svc := NewService(client, repo, "project-1", "")
 		_, err := svc.GetInstances(ctx, testOwnerID)
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
@@ -626,7 +626,7 @@ func TestServiceDeleteInstance(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("returns not found when instance does not exist in DB", func(t *testing.T) {
-		svc := NewService(&fakeClient{}, &fakeRepo{}, "project-1")
+		svc := NewService(&fakeClient{}, &fakeRepo{}, "project-1", "")
 		err := svc.DeleteInstance(ctx, testOwnerID, "missing-id")
 		if !errors.Is(err, ErrInstanceNotFound) {
 			t.Fatalf("expected ErrInstanceNotFound, got %v", err)
@@ -639,7 +639,7 @@ func TestServiceDeleteInstance(t *testing.T) {
 				return nil, errors.New("db error")
 			},
 		}
-		svc := NewService(&fakeClient{}, repo, "project-1")
+		svc := NewService(&fakeClient{}, repo, "project-1", "")
 		err := svc.DeleteInstance(ctx, testOwnerID, "some-id")
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
@@ -657,7 +657,7 @@ func TestServiceDeleteInstance(t *testing.T) {
 				return errors.New("upstream error")
 			},
 		}
-		svc := NewService(client, repo, "project-1")
+		svc := NewService(client, repo, "project-1", "")
 		err := svc.DeleteInstance(ctx, testOwnerID, "some-id")
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
@@ -675,7 +675,7 @@ func TestServiceDeleteInstance(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewService(&fakeClient{}, repo, "project-1")
+		svc := NewService(&fakeClient{}, repo, "project-1", "")
 		if err := svc.DeleteInstance(ctx, testOwnerID, "server-1"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
