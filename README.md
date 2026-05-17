@@ -4,6 +4,9 @@
 
 프로젝트 구조, 개발 규칙, 코드 컨벤션, API 엔드포인트 등 상세한 내용은 [GUIDELINE.md](GUIDELINE.md)를 참고하세요.
 
+## 아키텍처
+<img width="1739" height="904" alt="아키텍처" src="https://github.com/user-attachments/assets/782ec4df-ca55-4f6f-a096-29f2f5cb7419" />
+
 ## Run
 
 환경 변수를 준비한 뒤 아래 명령으로 실행합니다.
