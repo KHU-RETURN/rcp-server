@@ -29,9 +29,10 @@ type instanceRepo interface {
 }
 
 type Service struct {
-	client    computeClient
-	repo      instanceRepo
-	projectID string
+	client           computeClient
+	repo             instanceRepo
+	projectID        string
+	defaultNetworkID string
 }
 
 var (
@@ -42,8 +43,13 @@ var (
 	ErrInstanceOperationFailed      = errors.New("instance operation failed")
 )
 
-func NewService(client computeClient, repo instanceRepo, projectID string) *Service {
-	return &Service{client: client, repo: repo, projectID: projectID}
+func NewService(client computeClient, repo instanceRepo, projectID, defaultNetworkID string) *Service {
+	return &Service{
+		client:           client,
+		repo:             repo,
+		projectID:        projectID,
+		defaultNetworkID: strings.TrimSpace(defaultNetworkID),
+	}
 }
 
 func (s *Service) GetFlavors() ([]FlavorResponse, error) {
@@ -159,7 +165,7 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Flavor:     flavorMap[inst.FlavorID],
 			FixedIP:    fixedIP,
 			FloatingIP: floatingIP,
-			Created:    inst.Created,
+			Created:    srv.Created,
 		})
 	}
 	if err := s.pruneStaleInstances(ctx, ownerID, staleIDs); err != nil {
@@ -233,7 +239,7 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 		FixedIP:    fixedIP,
 		FloatingIP: floatingIP,
 		Usage:      extractUsageStats(diag),
-		Created:    inst.Created,
+		Created:    srv.Created,
 	}, nil
 }
 
@@ -259,6 +265,9 @@ func (s *Service) DeleteInstance(ctx context.Context, ownerID uuid.UUID, id stri
 
 func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts CreateServerOpts) (*CreateInstanceResponse, error) {
 	normalizedOpts := normalizeCreateServerOpts(opts)
+	if len(normalizedOpts.Networks) == 0 && s.defaultNetworkID != "" {
+		normalizedOpts.Networks = []NetworkID{{UUID: s.defaultNetworkID}}
+	}
 	if err := validateCreateServerOpts(normalizedOpts); err != nil {
 		return nil, err
 	}

@@ -6,9 +6,9 @@ import (
 	"github.com/KHU-RETURN/rcp-server/ent"
 )
 
-func Init(p *gophercloud.ProviderClient, entClient *ent.Client, projectID string) *Handler {
+func Init(p *gophercloud.ProviderClient, entClient *ent.Client, projectID, defaultNetworkID string) *Handler {
 	client := NewClient(p)
 	repo := NewRepository(entClient)
-	svc := NewService(client, repo, projectID)
+	svc := NewService(client, repo, projectID, defaultNetworkID)
 	return NewHandler(svc)
 }

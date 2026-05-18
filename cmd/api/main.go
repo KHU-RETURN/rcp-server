@@ -63,7 +63,7 @@ func main() {
 		log.Fatalf("google oauth 연결 실패: %v", err)
 	}
 
-	myApp, err := server.NewApp(provider, db, oauth, os.Getenv("OS_PROJECT_ID"), jwtSecret)
+	myApp, err := server.NewApp(provider, db, oauth, os.Getenv("OS_PROJECT_ID"), jwtSecret, os.Getenv("RCP_DEFAULT_NETWORK_ID"))
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
 	}

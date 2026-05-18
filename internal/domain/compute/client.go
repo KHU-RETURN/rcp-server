@@ -98,6 +98,7 @@ func (c *Client) FetchInstances() ([]Server, error) {
 	}
 
 	result := make([]Server, len(raw))
+
 	for i, s := range raw {
 		result[i] = Server{
 			ID:         s.ID,
@@ -105,6 +106,7 @@ func (c *Client) FetchInstances() ([]Server, error) {
 			Status:     s.Status,
 			Addresses:  s.Addresses,
 			AccessIPv4: s.AccessIPv4,
+			Created:    s.Created,
 		}
 	}
 	return result, nil
@@ -127,6 +129,7 @@ func (c *Client) FetchInstance(id string) (*Server, error) {
 		Status:     raw.Status,
 		Addresses:  raw.Addresses,
 		AccessIPv4: raw.AccessIPv4,
+		Created:    raw.Created,
 	}, nil
 }
 
