@@ -87,7 +87,7 @@ func (c *Client) DownloadObject(containerName, objectName string, w io.Writer) e
 	if result.Err != nil {
 		return result.Err
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 	if _, err := io.Copy(w, result.Body); err != nil {
 		return fmt.Errorf("stream error: %w", err)
 	}

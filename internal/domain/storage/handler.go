@@ -132,7 +132,7 @@ func (h *Handler) UploadObject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	objectName := path.Base(header.Filename)
 	contentType := header.Header.Get(api.HeaderContentType)

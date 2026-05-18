@@ -256,7 +256,7 @@ func TestHandlerDownloadObject(t *testing.T) {
 	t.Run("streams object content", func(t *testing.T) {
 		client := &fakeStorageClient{
 			downloadObjectFn: func(_, _ string, w io.Writer) error {
-				w.Write([]byte("file content"))
+				_, _ = w.Write([]byte("file content"))
 				return nil
 			},
 		}
