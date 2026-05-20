@@ -61,6 +61,9 @@ func (s *Service) CreateContainer(ctx context.Context, ownerID uuid.UUID, name s
 
 	c := &Container{OpenstackName: openstackName, Name: name}
 	if err := s.repo.Save(ctx, ownerID, c); err != nil {
+		if delErr := s.client.DeleteContainer(openstackName.String()); delErr != nil {
+			return nil, fmt.Errorf("%w: %v (cleanup failed: %v)", ErrStorageOperationFailed, err, delErr)
+		}
 		return nil, fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 

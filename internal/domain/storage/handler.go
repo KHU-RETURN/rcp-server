@@ -3,7 +3,6 @@ package storage
 import (
 	"errors"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 
@@ -27,7 +26,7 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		g.POST("/containers", h.CreateContainer)
 		g.DELETE("/containers/:name", h.DeleteContainer)
 		g.GET("/containers/:name/objects", h.ListObjects)
-		g.POST("/containers/:name/objects", h.UploadObject)
+		g.POST("/containers/:name/objects/*key", h.UploadObject)
 		g.GET("/containers/:name/objects/*key", h.DownloadObject)
 		g.DELETE("/containers/:name/objects/*key", h.DeleteObject)
 	}
@@ -127,6 +126,12 @@ func (h *Handler) UploadObject(c *gin.Context) {
 	}
 
 	containerName := c.Param("name")
+	objectName := strings.TrimPrefix(c.Param("key"), "/")
+	if objectName == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing object key"})
+		return
+	}
+
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
@@ -134,7 +139,6 @@ func (h *Handler) UploadObject(c *gin.Context) {
 	}
 	defer func() { _ = file.Close() }()
 
-	objectName := path.Base(header.Filename)
 	contentType := header.Header.Get(api.HeaderContentType)
 
 	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType); err != nil {
