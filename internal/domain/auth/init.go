@@ -1,8 +1,9 @@
 package auth
 
 import (
-	"github.com/KHU-RETURN/rcp-server/ent"
 	"golang.org/x/oauth2"
+
+	"github.com/KHU-RETURN/rcp-server/ent"
 )
 
 func Init(db *ent.Client, oauthConfig *oauth2.Config, jwtSecret string) (*Handler, error) {

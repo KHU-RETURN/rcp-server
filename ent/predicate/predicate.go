@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// Container is the predicate function for container builders.
+type Container func(*sql.Selector)
+
 // Instance is the predicate function for instance builders.
 type Instance func(*sql.Selector)
 

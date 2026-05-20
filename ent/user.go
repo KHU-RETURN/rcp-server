@@ -46,9 +46,11 @@ type UserEdges struct {
 	Instances []*Instance `json:"instances,omitempty"`
 	// Keypairs holds the value of the keypairs edge.
 	Keypairs []*KeyPair `json:"keypairs,omitempty"`
+	// Containers holds the value of the containers edge.
+	Containers []*Container `json:"containers,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // InstancesOrErr returns the Instances value or an error if the edge
@@ -67,6 +69,15 @@ func (e UserEdges) KeypairsOrErr() ([]*KeyPair, error) {
 		return e.Keypairs, nil
 	}
 	return nil, &NotLoadedError{edge: "keypairs"}
+}
+
+// ContainersOrErr returns the Containers value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ContainersOrErr() ([]*Container, error) {
+	if e.loadedTypes[2] {
+		return e.Containers, nil
+	}
+	return nil, &NotLoadedError{edge: "containers"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -170,6 +181,11 @@ func (_m *User) QueryInstances() *InstanceQuery {
 // QueryKeypairs queries the "keypairs" edge of the User entity.
 func (_m *User) QueryKeypairs() *KeyPairQuery {
 	return NewUserClient(_m.config).QueryKeypairs(_m)
+}
+
+// QueryContainers queries the "containers" edge of the User entity.
+func (_m *User) QueryContainers() *ContainerQuery {
+	return NewUserClient(_m.config).QueryContainers(_m)
 }
 
 // Update returns a builder for updating this User.

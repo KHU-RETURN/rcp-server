@@ -3,10 +3,11 @@ package compute
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/KHU-RETURN/rcp-server/ent"
 	entinstance "github.com/KHU-RETURN/rcp-server/ent/instance"
 	entuser "github.com/KHU-RETURN/rcp-server/ent/user"
-	"github.com/google/uuid"
 )
 
 type Repository struct {

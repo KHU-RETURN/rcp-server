@@ -35,6 +35,8 @@ const (
 	EdgeInstances = "instances"
 	// EdgeKeypairs holds the string denoting the keypairs edge name in mutations.
 	EdgeKeypairs = "keypairs"
+	// EdgeContainers holds the string denoting the containers edge name in mutations.
+	EdgeContainers = "containers"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// InstancesTable is the table that holds the instances relation/edge.
@@ -51,6 +53,13 @@ const (
 	KeypairsInverseTable = "key_pairs"
 	// KeypairsColumn is the table column denoting the keypairs relation/edge.
 	KeypairsColumn = "user_keypairs"
+	// ContainersTable is the table that holds the containers relation/edge.
+	ContainersTable = "containers"
+	// ContainersInverseTable is the table name for the Container entity.
+	// It exists in this package in order to avoid circular dependency with the "container" package.
+	ContainersInverseTable = "containers"
+	// ContainersColumn is the table column denoting the containers relation/edge.
+	ContainersColumn = "user_containers"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -162,6 +171,20 @@ func ByKeypairs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newKeypairsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByContainersCount orders the results by containers count.
+func ByContainersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newContainersStep(), opts...)
+	}
+}
+
+// ByContainers orders the results by containers terms.
+func ByContainers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newContainersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newInstancesStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -174,5 +197,12 @@ func newKeypairsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(KeypairsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, KeypairsTable, KeypairsColumn),
+	)
+}
+func newContainersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ContainersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ContainersTable, ContainersColumn),
 	)
 }

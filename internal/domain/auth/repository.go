@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+
 	"github.com/KHU-RETURN/rcp-server/ent"
 	entuser "github.com/KHU-RETURN/rcp-server/ent/user"
 )

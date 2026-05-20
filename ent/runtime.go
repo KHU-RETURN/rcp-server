@@ -5,6 +5,7 @@ package ent
 import (
 	"time"
 
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -16,6 +17,22 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	containerFields := schema.Container{}.Fields()
+	_ = containerFields
+	// containerDescCreatedAt is the schema descriptor for created_at field.
+	containerDescCreatedAt := containerFields[3].Descriptor()
+	// container.DefaultCreatedAt holds the default value on creation for the created_at field.
+	container.DefaultCreatedAt = containerDescCreatedAt.Default.(func() time.Time)
+	// containerDescUpdatedAt is the schema descriptor for updated_at field.
+	containerDescUpdatedAt := containerFields[4].Descriptor()
+	// container.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	container.DefaultUpdatedAt = containerDescUpdatedAt.Default.(func() time.Time)
+	// container.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	container.UpdateDefaultUpdatedAt = containerDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// containerDescID is the schema descriptor for id field.
+	containerDescID := containerFields[0].Descriptor()
+	// container.DefaultID holds the default value on creation for the id field.
+	container.DefaultID = containerDescID.Default.(func() uuid.UUID)
 	instanceFields := schema.Instance{}.Fields()
 	_ = instanceFields
 	// instanceDescCreatedAt is the schema descriptor for created_at field.

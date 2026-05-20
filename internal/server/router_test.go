@@ -5,11 +5,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
-	"github.com/gin-gonic/gin"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 )
 
 func TestNewRouterRegistersComputeRoutes(t *testing.T) {
@@ -19,6 +21,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 		Access:  &access.Handler{},
 		Auth:    &auth.Handler{},
 		Compute: &compute.Handler{},
+		Storage: &storage.Handler{},
 	})
 
 	routes := router.Routes()
@@ -28,6 +31,8 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	var foundAuthMe bool
 	var foundConsoleWebSocket bool
 	var foundAuthorizedKeys bool
+	var foundStorageContainers bool
+	var foundStorageUploadObject bool
 
 	for _, route := range routes {
 		if route.Method == http.MethodGet && route.Path == api.BasePath+"/auth/me" {
@@ -47,6 +52,12 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 		}
 		if route.Method == http.MethodGet && route.Path == api.BasePath+"/internal/ssh/authorized-keys" {
 			foundAuthorizedKeys = true
+		}
+		if route.Method == http.MethodGet && route.Path == api.BasePath+"/storage/containers" {
+			foundStorageContainers = true
+		}
+		if route.Method == http.MethodPost && route.Path == api.BasePath+"/storage/containers/:name/objects/*key" {
+			foundStorageUploadObject = true
 		}
 	}
 
@@ -68,6 +79,12 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	if !foundAuthorizedKeys {
 		t.Fatalf("%s %s/internal/ssh/authorized-keys route was not registered", http.MethodGet, api.BasePath)
 	}
+	if !foundStorageContainers {
+		t.Fatalf("%s %s/storage/containers route was not registered", http.MethodGet, api.BasePath)
+	}
+	if !foundStorageUploadObject {
+		t.Fatalf("%s %s/storage/containers/:name/objects route was not registered", http.MethodPost, api.BasePath)
+	}
 }
 
 func TestRouterCORSAllowsFrontendOrigin(t *testing.T) {
@@ -78,6 +95,7 @@ func TestRouterCORSAllowsFrontendOrigin(t *testing.T) {
 		Access:  &access.Handler{},
 		Auth:    &auth.Handler{},
 		Compute: &compute.Handler{},
+		Storage: &storage.Handler{},
 	})
 
 	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
@@ -105,6 +123,7 @@ func TestRouterCORSRejectsUnconfiguredOrigin(t *testing.T) {
 		Access:  &access.Handler{},
 		Auth:    &auth.Handler{},
 		Compute: &compute.Handler{},
+		Storage: &storage.Handler{},
 	})
 
 	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)

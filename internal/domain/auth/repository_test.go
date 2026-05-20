@@ -8,9 +8,10 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	_ "modernc.org/sqlite"
+
 	"github.com/KHU-RETURN/rcp-server/ent"
 	"github.com/KHU-RETURN/rcp-server/ent/migrate"
-	_ "modernc.org/sqlite"
 )
 
 func newTestRepo(t *testing.T) *Repository {

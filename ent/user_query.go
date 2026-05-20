@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -22,12 +23,13 @@ import (
 // UserQuery is the builder for querying User entities.
 type UserQuery struct {
 	config
-	ctx           *QueryContext
-	order         []user.OrderOption
-	inters        []Interceptor
-	predicates    []predicate.User
-	withInstances *InstanceQuery
-	withKeypairs  *KeyPairQuery
+	ctx            *QueryContext
+	order          []user.OrderOption
+	inters         []Interceptor
+	predicates     []predicate.User
+	withInstances  *InstanceQuery
+	withKeypairs   *KeyPairQuery
+	withContainers *ContainerQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -101,6 +103,28 @@ func (_q *UserQuery) QueryKeypairs() *KeyPairQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(keypair.Table, keypair.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.KeypairsTable, user.KeypairsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryContainers chains the current query on the "containers" edge.
+func (_q *UserQuery) QueryContainers() *ContainerQuery {
+	query := (&ContainerClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(container.Table, container.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ContainersTable, user.ContainersColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -295,13 +319,14 @@ func (_q *UserQuery) Clone() *UserQuery {
 		return nil
 	}
 	return &UserQuery{
-		config:        _q.config,
-		ctx:           _q.ctx.Clone(),
-		order:         append([]user.OrderOption{}, _q.order...),
-		inters:        append([]Interceptor{}, _q.inters...),
-		predicates:    append([]predicate.User{}, _q.predicates...),
-		withInstances: _q.withInstances.Clone(),
-		withKeypairs:  _q.withKeypairs.Clone(),
+		config:         _q.config,
+		ctx:            _q.ctx.Clone(),
+		order:          append([]user.OrderOption{}, _q.order...),
+		inters:         append([]Interceptor{}, _q.inters...),
+		predicates:     append([]predicate.User{}, _q.predicates...),
+		withInstances:  _q.withInstances.Clone(),
+		withKeypairs:   _q.withKeypairs.Clone(),
+		withContainers: _q.withContainers.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -327,6 +352,17 @@ func (_q *UserQuery) WithKeypairs(opts ...func(*KeyPairQuery)) *UserQuery {
 		opt(query)
 	}
 	_q.withKeypairs = query
+	return _q
+}
+
+// WithContainers tells the query-builder to eager-load the nodes that are connected to
+// the "containers" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithContainers(opts ...func(*ContainerQuery)) *UserQuery {
+	query := (&ContainerClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withContainers = query
 	return _q
 }
 
@@ -408,9 +444,10 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withInstances != nil,
 			_q.withKeypairs != nil,
+			_q.withContainers != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -442,6 +479,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadKeypairs(ctx, query, nodes,
 			func(n *User) { n.Edges.Keypairs = []*KeyPair{} },
 			func(n *User, e *KeyPair) { n.Edges.Keypairs = append(n.Edges.Keypairs, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withContainers; query != nil {
+		if err := _q.loadContainers(ctx, query, nodes,
+			func(n *User) { n.Edges.Containers = []*Container{} },
+			func(n *User, e *Container) { n.Edges.Containers = append(n.Edges.Containers, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -505,6 +549,37 @@ func (_q *UserQuery) loadKeypairs(ctx context.Context, query *KeyPairQuery, node
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "user_keypairs" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadContainers(ctx context.Context, query *ContainerQuery, nodes []*User, init func(*User), assign func(*User, *Container)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	query.withFKs = true
+	query.Where(predicate.Container(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ContainersColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.user_containers
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "user_containers" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_containers" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}

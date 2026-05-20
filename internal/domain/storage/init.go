@@ -1,4 +1,4 @@
-package access
+package storage
 
 import (
 	"github.com/gophercloud/gophercloud"
@@ -7,8 +7,8 @@ import (
 )
 
 func Init(provider *gophercloud.ProviderClient, entClient *ent.Client) *Handler {
-	osClient := NewClient(provider)
+	client := NewClient(provider)
 	repo := NewRepository(entClient)
-	svc := NewService(osClient, repo)
+	svc := NewService(client, repo)
 	return NewHandler(svc)
 }

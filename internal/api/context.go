@@ -1,9 +1,10 @@
 package api
 
 import (
-	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 )
 
 func OwnerID(c *gin.Context) (uuid.UUID, bool) {
