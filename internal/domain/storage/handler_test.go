@@ -208,7 +208,7 @@ func TestHandlerUploadObject(t *testing.T) {
 			},
 		}
 
-		req := makeMultipartRequest(t, api.BasePath+"/storage/containers/my-bucket/objects", "hello.txt", "hello")
+		req := makeMultipartRequest(t, api.BasePath+"/storage/containers/my-bucket/objects/hello.txt", "hello.txt", "hello")
 		w := httptest.NewRecorder()
 		r := gin.New()
 		v1 := r.Group(api.BasePath)
@@ -228,6 +228,43 @@ func TestHandlerUploadObject(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves nested object key", func(t *testing.T) {
+		var gotObjectName string
+		client := &fakeStorageClient{
+			uploadObjectFn: func(_, objectName string, _ io.Reader, _ string) error {
+				gotObjectName = objectName
+				return nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		req := makeMultipartRequest(t, api.BasePath+"/storage/containers/my-bucket/objects/dir/sub/a.txt", "a.txt", "hello")
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		withTestUser(v1)
+		newTestHandler(client, repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+		if gotObjectName != "dir/sub/a.txt" {
+			t.Fatalf("expected object name dir/sub/a.txt, got %q", gotObjectName)
+		}
+		var res UploadObjectResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if res.Key != "dir/sub/a.txt" {
+			t.Fatalf("expected key dir/sub/a.txt, got %q", res.Key)
+		}
+	})
+
 	t.Run("returns 400 when file missing", func(t *testing.T) {
 		repo := &fakeContainerRepo{
 			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
@@ -235,7 +272,7 @@ func TestHandlerUploadObject(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/storage/containers/my-bucket/objects", nil)
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/storage/containers/my-bucket/objects/hello.txt", nil)
 		req.Header.Set(api.HeaderContentType, "multipart/form-data")
 		w := httptest.NewRecorder()
 		r := gin.New()

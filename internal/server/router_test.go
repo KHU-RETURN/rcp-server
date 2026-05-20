@@ -56,7 +56,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 		if route.Method == http.MethodGet && route.Path == api.BasePath+"/storage/containers" {
 			foundStorageContainers = true
 		}
-		if route.Method == http.MethodPost && route.Path == api.BasePath+"/storage/containers/:name/objects" {
+		if route.Method == http.MethodPost && route.Path == api.BasePath+"/storage/containers/:name/objects/*key" {
 			foundStorageUploadObject = true
 		}
 	}
