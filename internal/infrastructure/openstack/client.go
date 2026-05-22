@@ -24,6 +24,7 @@ func NewProviderClient(cfg ProviderConfig) (*gophercloud.ProviderClient, error) 
 		Password:         cfg.Password,
 		TenantName:       cfg.ProjectName,
 		DomainName:       cfg.DomainName,
+		AllowReauth:      true,
 	}
 
 	provider, err := openstack.NewClient(opts.IdentityEndpoint)
