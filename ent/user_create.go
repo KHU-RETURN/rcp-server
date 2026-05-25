@@ -63,6 +63,20 @@ func (_c *UserCreate) SetGoogleTokenExpiry(v time.Time) *UserCreate {
 	return _c
 }
 
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (_c *UserCreate) SetCurrentRefreshJti(v string) *UserCreate {
+	_c.mutation.SetCurrentRefreshJti(v)
+	return _c
+}
+
+// SetNillableCurrentRefreshJti sets the "current_refresh_jti" field if the given value is not nil.
+func (_c *UserCreate) SetNillableCurrentRefreshJti(v *string) *UserCreate {
+	if v != nil {
+		_c.SetCurrentRefreshJti(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UserCreate) SetCreatedAt(v time.Time) *UserCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -285,6 +299,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldGoogleTokenExpiry, field.TypeTime, value)
 		_node.GoogleTokenExpiry = value
 	}
+	if value, ok := _c.mutation.CurrentRefreshJti(); ok {
+		_spec.SetField(user.FieldCurrentRefreshJti, field.TypeString, value)
+		_node.CurrentRefreshJti = &value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(user.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -465,6 +483,24 @@ func (u *UserUpsert) UpdateGoogleTokenExpiry() *UserUpsert {
 	return u
 }
 
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (u *UserUpsert) SetCurrentRefreshJti(v string) *UserUpsert {
+	u.Set(user.FieldCurrentRefreshJti, v)
+	return u
+}
+
+// UpdateCurrentRefreshJti sets the "current_refresh_jti" field to the value that was provided on create.
+func (u *UserUpsert) UpdateCurrentRefreshJti() *UserUpsert {
+	u.SetExcluded(user.FieldCurrentRefreshJti)
+	return u
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (u *UserUpsert) ClearCurrentRefreshJti() *UserUpsert {
+	u.SetNull(user.FieldCurrentRefreshJti)
+	return u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (u *UserUpsert) SetUpdatedAt(v time.Time) *UserUpsert {
 	u.Set(user.FieldUpdatedAt, v)
@@ -609,6 +645,27 @@ func (u *UserUpsertOne) SetGoogleTokenExpiry(v time.Time) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateGoogleTokenExpiry() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateGoogleTokenExpiry()
+	})
+}
+
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (u *UserUpsertOne) SetCurrentRefreshJti(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCurrentRefreshJti(v)
+	})
+}
+
+// UpdateCurrentRefreshJti sets the "current_refresh_jti" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateCurrentRefreshJti() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCurrentRefreshJti()
+	})
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (u *UserUpsertOne) ClearCurrentRefreshJti() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearCurrentRefreshJti()
 	})
 }
 
@@ -925,6 +982,27 @@ func (u *UserUpsertBulk) SetGoogleTokenExpiry(v time.Time) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateGoogleTokenExpiry() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateGoogleTokenExpiry()
+	})
+}
+
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (u *UserUpsertBulk) SetCurrentRefreshJti(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCurrentRefreshJti(v)
+	})
+}
+
+// UpdateCurrentRefreshJti sets the "current_refresh_jti" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateCurrentRefreshJti() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCurrentRefreshJti()
+	})
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (u *UserUpsertBulk) ClearCurrentRefreshJti() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearCurrentRefreshJti()
 	})
 }
 

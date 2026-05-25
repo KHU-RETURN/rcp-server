@@ -27,6 +27,8 @@ const (
 	FieldGoogleRefreshToken = "google_refresh_token"
 	// FieldGoogleTokenExpiry holds the string denoting the google_token_expiry field in the database.
 	FieldGoogleTokenExpiry = "google_token_expiry"
+	// FieldCurrentRefreshJti holds the string denoting the current_refresh_jti field in the database.
+	FieldCurrentRefreshJti = "current_refresh_jti"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -71,6 +73,7 @@ var Columns = []string{
 	FieldGoogleAccessToken,
 	FieldGoogleRefreshToken,
 	FieldGoogleTokenExpiry,
+	FieldCurrentRefreshJti,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -132,6 +135,11 @@ func ByGoogleRefreshToken(opts ...sql.OrderTermOption) OrderOption {
 // ByGoogleTokenExpiry orders the results by the google_token_expiry field.
 func ByGoogleTokenExpiry(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGoogleTokenExpiry, opts...).ToFunc()
+}
+
+// ByCurrentRefreshJti orders the results by the current_refresh_jti field.
+func ByCurrentRefreshJti(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCurrentRefreshJti, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
