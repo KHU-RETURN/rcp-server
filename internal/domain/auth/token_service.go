@@ -15,7 +15,7 @@ const (
 
 	tokenTypeAccess  = "access"
 	tokenTypeRefresh = "refresh"
-	tokenIssuer      = "rcp-auth-service"
+	jwtIssuer      = "rcp-auth-service"
 )
 
 // TokenService는 JWT 토큰의 생성 및 검증을 담당합니다.
@@ -89,7 +89,7 @@ func (s *TokenService) createToken(email, tokenType string, expiry time.Time, jt
 			ID:        jti,
 			ExpiresAt: jwt.NewNumericDate(expiry),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    tokenIssuer,
+			Issuer:    jwtIssuer,
 		},
 	}
 
