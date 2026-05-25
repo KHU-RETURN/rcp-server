@@ -22,6 +22,7 @@ func NewRepository(db *ent.Client) *Repository {
 }
 
 // UpsertUser는 Google에서 받은 정보를 DB에 저장하거나 업데이트합니다.
+// User.CurrentRefreshJTI가 non-nil이면 함께 저장(회전), nil이면 컬럼 변경 없음.
 func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 	var googleAccessToken, googleRefreshToken string
 	var googleExpiry time.Time
@@ -32,13 +33,18 @@ func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 		googleExpiry = user.GoogleAuth.Expiry
 	}
 
-	err := r.db.User.Create().
+	create := r.db.User.Create().
 		SetEmail(user.Email).
 		SetName(user.Name).
 		SetGoogleID(user.GoogleID).
 		SetGoogleAccessToken(googleAccessToken).
 		SetGoogleRefreshToken(googleRefreshToken).
-		SetGoogleTokenExpiry(googleExpiry).
+		SetGoogleTokenExpiry(googleExpiry)
+	if user.CurrentRefreshJTI != nil {
+		create = create.SetCurrentRefreshJti(*user.CurrentRefreshJTI)
+	}
+
+	err := create.
 		OnConflict(
 			sql.ConflictColumns(entuser.FieldEmail),
 		).
@@ -49,6 +55,9 @@ func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 			u.SetGoogleRefreshToken(googleRefreshToken)
 			u.SetGoogleTokenExpiry(googleExpiry)
 			u.SetUpdatedAt(time.Now())
+			if user.CurrentRefreshJTI != nil {
+				u.SetCurrentRefreshJti(*user.CurrentRefreshJTI)
+			}
 		}).
 		Exec(ctx)
 	if err != nil {
@@ -70,14 +79,29 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 	}
 
 	return &User{
-		ID:       u.ID,
-		Email:    u.Email,
-		Name:     u.Name,
-		GoogleID: u.GoogleID,
+		ID:                u.ID,
+		Email:             u.Email,
+		Name:              u.Name,
+		GoogleID:          u.GoogleID,
+		CurrentRefreshJTI: u.CurrentRefreshJti,
 		GoogleAuth: &GoogleInfo{
 			AccessToken:  u.GoogleAccessToken,
 			RefreshToken: u.GoogleRefreshToken,
 			Expiry:       u.GoogleTokenExpiry,
 		},
 	}, nil
+}
+
+// SetRefreshJTI는 user의 활성 refresh token jti를 갱신합니다. jti가 nil이면 컬럼을 비웁니다(logout).
+func (r *Repository) SetRefreshJTI(ctx context.Context, email string, jti *string) error {
+	update := r.db.User.Update().Where(entuser.Email(email))
+	if jti == nil {
+		update = update.ClearCurrentRefreshJti()
+	} else {
+		update = update.SetCurrentRefreshJti(*jti)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		return fmt.Errorf("failed to set refresh jti: %w", err)
+	}
+	return nil
 }

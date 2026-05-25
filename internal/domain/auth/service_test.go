@@ -30,8 +30,30 @@ func (f *fakeRepo) FindByEmail(ctx context.Context, email string) (*User, error)
 	return user, nil
 }
 
+func (f *fakeRepo) SetRefreshJTI(ctx context.Context, email string, jti *string) error {
+	user, ok := f.users[email]
+	if !ok {
+		return nil
+	}
+	user.CurrentRefreshJTI = jti
+	return nil
+}
+
 // MockUserRepository는 이전 테스트 코드와의 호환을 위해 유지합니다.
 type MockUserRepository = fakeRepo
+
+func issueAndStore(t *testing.T, repo *fakeRepo, tokenSvc *TokenService, email string) TokenPair {
+	t.Helper()
+	pair, err := tokenSvc.GenerateAuthTokens(email)
+	if err != nil {
+		t.Fatalf("GenerateAuthTokens: %v", err)
+	}
+	if user, ok := repo.users[email]; ok {
+		jti := pair.RefreshJTI
+		user.CurrentRefreshJTI = &jti
+	}
+	return pair
+}
 
 func TestService_Initialization(t *testing.T) {
 	mockRepo := &fakeRepo{users: make(map[string]*User)}
@@ -52,27 +74,30 @@ func TestTokenService(t *testing.T) {
 	svc := NewTokenService("test-secret")
 
 	t.Run("generates access and refresh tokens without error", func(t *testing.T) {
-		access, refresh, expiry, err := svc.GenerateAuthTokens("test@khu.ac.kr")
+		pair, err := svc.GenerateAuthTokens("test@khu.ac.kr")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if access == "" {
+		if pair.AccessToken == "" {
 			t.Fatal("expected non-empty access token")
 		}
-		if refresh == "" {
+		if pair.RefreshToken == "" {
 			t.Fatal("expected non-empty refresh token")
 		}
-		if expiry.IsZero() {
-			t.Fatal("expected non-zero expiry")
+		if pair.RefreshJTI == "" {
+			t.Fatal("expected non-empty refresh jti")
+		}
+		if pair.AccessExpiry.IsZero() {
+			t.Fatal("expected non-zero access expiry")
 		}
 	})
 
 	t.Run("access token expiry is approximately 1 hour from now", func(t *testing.T) {
-		_, _, expiry, err := svc.GenerateAuthTokens("test@khu.ac.kr")
+		pair, err := svc.GenerateAuthTokens("test@khu.ac.kr")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		remaining := time.Until(expiry)
+		remaining := time.Until(pair.AccessExpiry)
 		if remaining < 59*time.Minute || remaining > 61*time.Minute {
 			t.Fatalf("expected expiry ~1 hour from now, got %v remaining", remaining)
 		}
@@ -80,12 +105,12 @@ func TestTokenService(t *testing.T) {
 
 	t.Run("access token validates with correct claims", func(t *testing.T) {
 		email := "user@khu.ac.kr"
-		access, _, _, err := svc.GenerateAuthTokens(email)
+		pair, err := svc.GenerateAuthTokens(email)
 		if err != nil {
 			t.Fatalf("GenerateAuthTokens: %v", err)
 		}
 
-		claims, err := svc.ValidateToken(access)
+		claims, err := svc.ValidateToken(pair.AccessToken)
 		if err != nil {
 			t.Fatalf("ValidateToken: %v", err)
 		}
@@ -97,30 +122,49 @@ func TestTokenService(t *testing.T) {
 		}
 	})
 
-	t.Run("refresh token validates with correct claims", func(t *testing.T) {
-		_, refresh, _, err := svc.GenerateAuthTokens("user@khu.ac.kr")
+	t.Run("refresh token validates with correct claims and jti", func(t *testing.T) {
+		pair, err := svc.GenerateAuthTokens("user@khu.ac.kr")
 		if err != nil {
 			t.Fatalf("GenerateAuthTokens: %v", err)
 		}
 
-		claims, err := svc.ValidateToken(refresh)
+		claims, err := svc.ValidateToken(pair.RefreshToken)
 		if err != nil {
 			t.Fatalf("ValidateToken: %v", err)
 		}
 		if claims.Type != "refresh" {
 			t.Fatalf("expected type 'refresh', got %q", claims.Type)
 		}
+		if claims.ID == "" {
+			t.Fatal("expected refresh token to carry jti in ID claim")
+		}
+		if claims.ID != pair.RefreshJTI {
+			t.Fatalf("expected jti %q in token, got %q", pair.RefreshJTI, claims.ID)
+		}
+	})
+
+	t.Run("every refresh issuance produces a unique jti", func(t *testing.T) {
+		first, err := svc.GenerateAuthTokens("user@khu.ac.kr")
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+		second, err := svc.GenerateAuthTokens("user@khu.ac.kr")
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+		if first.RefreshJTI == second.RefreshJTI {
+			t.Fatal("expected distinct jti per issuance")
+		}
 	})
 
 	t.Run("rejects token signed with different secret", func(t *testing.T) {
 		otherSvc := NewTokenService("different-secret")
-		token, _, _, err := otherSvc.GenerateAuthTokens("user@khu.ac.kr")
+		pair, err := otherSvc.GenerateAuthTokens("user@khu.ac.kr")
 		if err != nil {
 			t.Fatalf("GenerateAuthTokens: %v", err)
 		}
 
-		_, err = svc.ValidateToken(token)
-		if err == nil {
+		if _, err := svc.ValidateToken(pair.AccessToken); err == nil {
 			t.Fatal("expected error for token with wrong secret, got nil")
 		}
 	})
@@ -137,19 +181,13 @@ func TestServiceGetUserByAccessToken(t *testing.T) {
 	ctx := context.Background()
 	tokenSvc := NewTokenService("test-secret")
 	user := &User{Email: "user@khu.ac.kr", Name: "User"}
-	svc := NewService(&fakeRepo{
-		users: map[string]*User{
-			user.Email: user,
-		},
-	}, &oauth2.Config{}, tokenSvc)
+	repo := &fakeRepo{users: map[string]*User{user.Email: user}}
+	svc := NewService(repo, &oauth2.Config{}, tokenSvc)
 
 	t.Run("returns user for valid access token", func(t *testing.T) {
-		token, _, _, err := tokenSvc.GenerateAuthTokens(user.Email)
-		if err != nil {
-			t.Fatalf("GenerateAuthTokens: %v", err)
-		}
+		pair := issueAndStore(t, repo, tokenSvc, user.Email)
 
-		got, err := svc.GetUserByAccessToken(ctx, token)
+		got, err := svc.GetUserByAccessToken(ctx, pair.AccessToken)
 		if err != nil {
 			t.Fatalf("GetUserByAccessToken: %v", err)
 		}
@@ -159,40 +197,189 @@ func TestServiceGetUserByAccessToken(t *testing.T) {
 	})
 
 	t.Run("rejects refresh token", func(t *testing.T) {
-		_, token, _, err := tokenSvc.GenerateAuthTokens(user.Email)
-		if err != nil {
-			t.Fatalf("GenerateAuthTokens: %v", err)
-		}
+		pair := issueAndStore(t, repo, tokenSvc, user.Email)
 
-		if _, err := svc.GetUserByAccessToken(ctx, token); !errors.Is(err, ErrInvalidTokenType) {
+		if _, err := svc.GetUserByAccessToken(ctx, pair.RefreshToken); !errors.Is(err, ErrInvalidTokenType) {
 			t.Fatalf("expected ErrInvalidTokenType, got %v", err)
 		}
 	})
 
 	t.Run("rejects missing user", func(t *testing.T) {
-		token, _, _, err := tokenSvc.GenerateAuthTokens("missing@khu.ac.kr")
+		emptyRepo := &fakeRepo{users: map[string]*User{}}
+		emptySvc := NewService(emptyRepo, &oauth2.Config{}, tokenSvc)
+		pair, err := tokenSvc.GenerateAuthTokens("missing@khu.ac.kr")
 		if err != nil {
 			t.Fatalf("GenerateAuthTokens: %v", err)
 		}
 
-		if _, err := svc.GetUserByAccessToken(ctx, token); !errors.Is(err, ErrUserNotFound) {
+		if _, err := emptySvc.GetUserByAccessToken(ctx, pair.AccessToken); !errors.Is(err, ErrUserNotFound) {
 			t.Fatalf("expected ErrUserNotFound, got %v", err)
 		}
 	})
 
 	t.Run("returns repository error", func(t *testing.T) {
 		repoErr := errors.New("repository failed")
-		svc := NewService(&fakeRepo{
-			users:          map[string]*User{},
-			findByEmailErr: repoErr,
-		}, &oauth2.Config{}, tokenSvc)
-		token, _, _, err := tokenSvc.GenerateAuthTokens(user.Email)
+		errRepo := &fakeRepo{users: map[string]*User{}, findByEmailErr: repoErr}
+		errSvc := NewService(errRepo, &oauth2.Config{}, tokenSvc)
+		pair, err := tokenSvc.GenerateAuthTokens(user.Email)
 		if err != nil {
 			t.Fatalf("GenerateAuthTokens: %v", err)
 		}
 
-		if _, err := svc.GetUserByAccessToken(ctx, token); !errors.Is(err, ErrUserLookupFailed) {
+		if _, err := errSvc.GetUserByAccessToken(ctx, pair.AccessToken); !errors.Is(err, ErrUserLookupFailed) {
 			t.Fatalf("expected ErrUserLookupFailed, got %v", err)
+		}
+	})
+}
+
+func TestServiceRefreshAccessToken(t *testing.T) {
+	ctx := context.Background()
+	tokenSvc := NewTokenService("test-secret")
+
+	newSvc := func(email string) (*Service, *fakeRepo) {
+		repo := &fakeRepo{users: map[string]*User{
+			email: {Email: email, Name: "User"},
+		}}
+		return NewService(repo, &oauth2.Config{}, tokenSvc), repo
+	}
+
+	t.Run("rotates jti and issues new token pair", func(t *testing.T) {
+		svc, repo := newSvc("user@khu.ac.kr")
+		original := issueAndStore(t, repo, tokenSvc, "user@khu.ac.kr")
+
+		newPair, err := svc.RefreshAccessToken(ctx, original.RefreshToken)
+		if err != nil {
+			t.Fatalf("RefreshAccessToken: %v", err)
+		}
+		if newPair.AccessToken == "" || newPair.RefreshToken == "" {
+			t.Fatal("expected non-empty new tokens")
+		}
+		if newPair.RefreshJTI == original.RefreshJTI {
+			t.Fatal("expected rotated refresh jti, got same as original")
+		}
+		stored := repo.users["user@khu.ac.kr"].CurrentRefreshJTI
+		if stored == nil || *stored != newPair.RefreshJTI {
+			t.Fatalf("expected stored jti to be rotated to %q, got %v", newPair.RefreshJTI, stored)
+		}
+		if time.Until(newPair.AccessExpiry) < 59*time.Minute {
+			t.Fatalf("expected expiry ~1 hour from now, got %v", newPair.AccessExpiry)
+		}
+	})
+
+	t.Run("rejects old refresh token after rotation (replay)", func(t *testing.T) {
+		svc, repo := newSvc("user@khu.ac.kr")
+		original := issueAndStore(t, repo, tokenSvc, "user@khu.ac.kr")
+
+		if _, err := svc.RefreshAccessToken(ctx, original.RefreshToken); err != nil {
+			t.Fatalf("first refresh: %v", err)
+		}
+		if _, err := svc.RefreshAccessToken(ctx, original.RefreshToken); !errors.Is(err, ErrInvalidRefreshToken) {
+			t.Fatalf("expected ErrInvalidRefreshToken on replay, got %v", err)
+		}
+	})
+
+	t.Run("rejects refresh when server-side jti is cleared (post-logout)", func(t *testing.T) {
+		svc, repo := newSvc("user@khu.ac.kr")
+		original := issueAndStore(t, repo, tokenSvc, "user@khu.ac.kr")
+		repo.users["user@khu.ac.kr"].CurrentRefreshJTI = nil
+
+		if _, err := svc.RefreshAccessToken(ctx, original.RefreshToken); !errors.Is(err, ErrInvalidRefreshToken) {
+			t.Fatalf("expected ErrInvalidRefreshToken, got %v", err)
+		}
+	})
+
+	t.Run("rejects access token used as refresh", func(t *testing.T) {
+		svc, repo := newSvc("user@khu.ac.kr")
+		pair := issueAndStore(t, repo, tokenSvc, "user@khu.ac.kr")
+
+		if _, err := svc.RefreshAccessToken(ctx, pair.AccessToken); !errors.Is(err, ErrInvalidTokenType) {
+			t.Fatalf("expected ErrInvalidTokenType, got %v", err)
+		}
+	})
+
+	t.Run("rejects malformed token", func(t *testing.T) {
+		svc, _ := newSvc("user@khu.ac.kr")
+		if _, err := svc.RefreshAccessToken(ctx, "not.a.jwt"); !errors.Is(err, ErrInvalidRefreshToken) {
+			t.Fatalf("expected ErrInvalidRefreshToken, got %v", err)
+		}
+	})
+
+	t.Run("rejects when user no longer exists", func(t *testing.T) {
+		svc, _ := newSvc("user@khu.ac.kr")
+		pair, err := tokenSvc.GenerateAuthTokens("ghost@khu.ac.kr")
+		if err != nil {
+			t.Fatalf("GenerateAuthTokens: %v", err)
+		}
+
+		if _, err := svc.RefreshAccessToken(ctx, pair.RefreshToken); !errors.Is(err, ErrUserNotFound) {
+			t.Fatalf("expected ErrUserNotFound, got %v", err)
+		}
+	})
+}
+
+func TestServiceLogout(t *testing.T) {
+	ctx := context.Background()
+	tokenSvc := NewTokenService("test-secret")
+
+	t.Run("clears stored jti for valid refresh", func(t *testing.T) {
+		email := "user@khu.ac.kr"
+		repo := &fakeRepo{users: map[string]*User{email: {Email: email}}}
+		svc := NewService(repo, &oauth2.Config{}, tokenSvc)
+		pair := issueAndStore(t, repo, tokenSvc, email)
+
+		invalidated, err := svc.Logout(ctx, pair.RefreshToken)
+		if err != nil {
+			t.Fatalf("Logout: %v", err)
+		}
+		if !invalidated {
+			t.Fatal("expected invalidated=true for valid refresh")
+		}
+		if repo.users[email].CurrentRefreshJTI != nil {
+			t.Fatal("expected stored jti to be cleared")
+		}
+	})
+
+	t.Run("succeeds without invalidation when refresh is missing", func(t *testing.T) {
+		repo := &fakeRepo{users: map[string]*User{}}
+		svc := NewService(repo, &oauth2.Config{}, tokenSvc)
+
+		invalidated, err := svc.Logout(ctx, "")
+		if err != nil {
+			t.Fatalf("Logout: %v", err)
+		}
+		if invalidated {
+			t.Fatal("expected invalidated=false for empty token")
+		}
+	})
+
+	t.Run("succeeds without invalidation when token is malformed", func(t *testing.T) {
+		repo := &fakeRepo{users: map[string]*User{}}
+		svc := NewService(repo, &oauth2.Config{}, tokenSvc)
+
+		invalidated, err := svc.Logout(ctx, "not.a.jwt")
+		if err != nil {
+			t.Fatalf("Logout: %v", err)
+		}
+		if invalidated {
+			t.Fatal("expected invalidated=false for malformed token")
+		}
+	})
+
+	t.Run("succeeds without invalidation when access token presented", func(t *testing.T) {
+		email := "user@khu.ac.kr"
+		repo := &fakeRepo{users: map[string]*User{email: {Email: email}}}
+		svc := NewService(repo, &oauth2.Config{}, tokenSvc)
+		pair := issueAndStore(t, repo, tokenSvc, email)
+
+		invalidated, err := svc.Logout(ctx, pair.AccessToken)
+		if err != nil {
+			t.Fatalf("Logout: %v", err)
+		}
+		if invalidated {
+			t.Fatal("expected invalidated=false when access token is used")
+		}
+		if repo.users[email].CurrentRefreshJTI == nil {
+			t.Fatal("expected stored jti to remain intact")
 		}
 	})
 }
