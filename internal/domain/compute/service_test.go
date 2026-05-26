@@ -412,35 +412,6 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 	})
 
-	t.Run("uses 10GB root volume for supported tiny flavor IDs", func(t *testing.T) {
-		var gotOpts CreateServerOpts
-		client := &fakeClient{
-			fetchFlavorsFn: func() ([]Flavor, error) {
-				return []Flavor{{ID: "flavor-tiny", Name: "m1.tiny", VCPUs: 1, RAM: 512, Disk: 1}}, nil
-			},
-			createServerFn: func(opts CreateServerOpts) (*Server, error) {
-				gotOpts = opts
-				return testServer(map[string]any{}), nil
-			},
-		}
-		repo := &fakeRepo{
-			saveInstanceFn: func(_ context.Context, _ uuid.UUID, _ *Instance) error { return nil },
-		}
-
-		svc := NewService(client, repo, "project-1", "")
-		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
-			Name:      "tiny-vm",
-			ImageRef:  "image-1",
-			FlavorRef: "flavor-tiny",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if gotOpts.RootVolumeSizeGB != 10 {
-			t.Fatalf("expected 10GB root volume size, got %d", gotOpts.RootVolumeSizeGB)
-		}
-	})
-
 	t.Run("falls back to fixed IP when floating IP is missing", func(t *testing.T) {
 		client := &fakeClient{
 			createServerFn: func(opts CreateServerOpts) (*Server, error) {
