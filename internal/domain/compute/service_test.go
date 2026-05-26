@@ -110,6 +110,7 @@ func TestServiceGetFlavors(t *testing.T) {
 		client := &fakeClient{
 			fetchFlavorsFn: func() ([]Flavor, error) {
 				return []Flavor{
+					{ID: "0", Name: "m1.tiny", VCPUs: 1, RAM: 512, Disk: 1},
 					{ID: "1", Name: "m1.small", VCPUs: 1, RAM: 2048, Disk: 20},
 					{ID: "2", Name: "m1.medium", VCPUs: 2, RAM: 4096, Disk: 40},
 				}, nil
@@ -120,13 +121,16 @@ func TestServiceGetFlavors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(res) != 2 {
-			t.Fatalf("expected 2 flavors, got %d", len(res))
+		if len(res) != 3 {
+			t.Fatalf("expected 3 flavors, got %d", len(res))
 		}
-		if res[0].ID != "1" || res[0].VCPUs != 1 || res[0].RAM != 2048 {
+		if res[0].ID != "0" || res[0].Disk != 10 {
+			t.Fatalf("expected m1.tiny disk to be reported as 10GB, got %+v", res[0])
+		}
+		if res[1].ID != "1" || res[1].VCPUs != 1 || res[1].RAM != 2048 {
 			t.Fatalf("unexpected first flavor: %+v", res[0])
 		}
-		if res[1].ID != "2" || res[1].Name != "m1.medium" {
+		if res[2].ID != "2" || res[2].Name != "m1.medium" {
 			t.Fatalf("unexpected second flavor: %+v", res[1])
 		}
 	})
@@ -191,6 +195,32 @@ func TestServiceGetAvailableFlavorsWithLimit(t *testing.T) {
 		// 6 cores / 4 vcpus = 1 for m1.medium
 		if res[1].MaxConfigurable != 1 {
 			t.Fatalf("expected MaxConfigurable=1 for m1.medium, got %d", res[1].MaxConfigurable)
+		}
+	})
+
+	t.Run("reports supported root disk size for tiny flavors", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "1", Name: "m1.tiny", VCPUs: 1, RAM: 512, Disk: 1},
+					{ID: "2", Name: "m2.tiny", VCPUs: 2, RAM: 512, Disk: 1},
+				}, nil
+			},
+			getComputeQuotaFn: func(projectID string) (*QuotaDetailSet, error) {
+				return &QuotaDetailSet{
+					Cores:     QuotaDetail{Limit: 8, InUse: 0},
+					RAM:       QuotaDetail{Limit: 8192, InUse: 0},
+					Instances: QuotaDetail{Limit: 10, InUse: 0},
+				}, nil
+			},
+		}
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
+		res, err := svc.GetAvailableFlavorsWithLimit()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res[0].Disk != 10 || res[1].Disk != 10 {
+			t.Fatalf("expected tiny flavors to report 10GB disk, got %+v", res)
 		}
 	})
 
@@ -379,6 +409,35 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 		if !reflect.DeepEqual(res.SecurityGroups, []string{"default", "ssh"}) {
 			t.Fatalf("expected security groups to be mapped, got %#v", res.SecurityGroups)
+		}
+	})
+
+	t.Run("uses 10GB root volume for supported tiny flavor IDs", func(t *testing.T) {
+		var gotOpts CreateServerOpts
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{{ID: "flavor-tiny", Name: "m1.tiny", VCPUs: 1, RAM: 512, Disk: 1}}, nil
+			},
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				gotOpts = opts
+				return testServer(map[string]any{}), nil
+			},
+		}
+		repo := &fakeRepo{
+			saveInstanceFn: func(_ context.Context, _ uuid.UUID, _ *Instance) error { return nil },
+		}
+
+		svc := NewService(client, repo, "project-1", "")
+		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
+			Name:      "tiny-vm",
+			ImageRef:  "image-1",
+			FlavorRef: "flavor-tiny",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotOpts.RootVolumeSizeGB != 10 {
+			t.Fatalf("expected 10GB root volume size, got %d", gotOpts.RootVolumeSizeGB)
 		}
 	})
 

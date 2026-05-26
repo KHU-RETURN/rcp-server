@@ -101,3 +101,78 @@ func TestClientCreateServerIncludesSSHOptions(t *testing.T) {
 		t.Fatalf("expected security group names [default ssh], got %#v", gotGroupNames)
 	}
 }
+
+func TestClientCreateServerUsesBootVolumeWhenRootVolumeSizeIsSet(t *testing.T) {
+	var gotBody map[string]any
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/servers" {
+			t.Fatalf("expected /servers path, got %s", r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{
+			"server": {
+				"id": "server-1",
+				"name": "tiny-vm",
+				"status": "BUILD",
+				"image": {"id": "image-1"},
+				"flavor": {"id": "flavor-tiny"},
+				"addresses": {}
+			}
+		}`))
+	}))
+	defer ts.Close()
+
+	sc := &gophercloud.ServiceClient{
+		ProviderClient: &gophercloud.ProviderClient{
+			TokenID:    "token",
+			HTTPClient: http.Client{},
+		},
+		Endpoint: ts.URL + "/",
+	}
+
+	_, err := createServerWithServiceClient(sc, CreateServerOpts{
+		Name:             "tiny-vm",
+		ImageRef:         "image-1",
+		FlavorRef:        "flavor-tiny",
+		RootVolumeSizeGB: 10,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	serverBody, ok := gotBody["server"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level server body, got %#v", gotBody)
+	}
+	if _, ok := serverBody["imageRef"]; ok {
+		t.Fatalf("expected imageRef to be omitted when booting from volume, got %#v", serverBody["imageRef"])
+	}
+
+	blockDevices, ok := serverBody["block_device_mapping_v2"].([]any)
+	if !ok || len(blockDevices) != 1 {
+		t.Fatalf("expected one block device mapping, got %#v", serverBody["block_device_mapping_v2"])
+	}
+	blockDevice, ok := blockDevices[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected block device payload: %#v", blockDevices[0])
+	}
+	if blockDevice["source_type"] != "image" || blockDevice["destination_type"] != "volume" {
+		t.Fatalf("unexpected block device source/destination: %#v", blockDevice)
+	}
+	if blockDevice["uuid"] != "image-1" || blockDevice["volume_size"] != float64(10) {
+		t.Fatalf("unexpected block device image or size: %#v", blockDevice)
+	}
+	if blockDevice["delete_on_termination"] != true {
+		t.Fatalf("expected boot volume to be deleted on termination, got %#v", blockDevice["delete_on_termination"])
+	}
+}

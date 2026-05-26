@@ -51,12 +51,13 @@ type NetworkID struct {
 }
 
 type CreateServerOpts struct {
-	Name           string
-	ImageRef       string
-	FlavorRef      string
-	KeyName        string
-	SecurityGroups []string
-	Networks       []NetworkID
+	Name             string
+	ImageRef         string
+	FlavorRef        string
+	KeyName          string
+	SecurityGroups   []string
+	Networks         []NetworkID
+	RootVolumeSizeGB int
 }
 
 // --- Request/Response DTOs ---

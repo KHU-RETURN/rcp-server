@@ -164,7 +164,7 @@ func createServerWithServiceClient(sc *gophercloud.ServiceClient, opts CreateSer
 		Networks:       networks,
 	}
 
-	createOpts := keypairs.CreateOptsExt{
+	var createOpts servers.CreateOptsBuilder = keypairs.CreateOptsExt{
 		CreateOptsBuilder: baseOpts,
 		KeyName:           opts.KeyName,
 	}

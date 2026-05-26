@@ -60,7 +60,7 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 
 	var res []FlavorResponse
 	for _, f := range rawFlavors {
-		res = append(res, FlavorResponse(f))
+		res = append(res, buildFlavorResponse(f))
 	}
 	return res, nil
 }
@@ -99,7 +99,7 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 		maxPossible := max(min(remInstances, min(countByRAM, countByCPU)), 0)
 
 		res = append(res, AvailableFlavorResponse{
-			FlavorResponse:  FlavorResponse(f),
+			FlavorResponse:  buildFlavorResponse(f),
 			MaxConfigurable: maxPossible,
 		})
 	}
@@ -300,7 +300,7 @@ func (s *Service) fetchFlavorMap() (map[string]FlavorResponse, error) {
 	}
 	m := make(map[string]FlavorResponse, len(rawFlavors))
 	for _, f := range rawFlavors {
-		m[f.ID] = FlavorResponse(f)
+		m[f.ID] = buildFlavorResponse(f)
 	}
 	return m, nil
 }
@@ -394,6 +394,22 @@ func normalizeStringSlice(values []string) []string {
 	}
 
 	return normalized
+}
+
+func buildFlavorResponse(f Flavor) FlavorResponse {
+	if size := supportedRootVolumeSizeGBForFlavorName(f.Name); size > f.Disk {
+		f.Disk = size
+	}
+	return FlavorResponse(f)
+}
+
+func supportedRootVolumeSizeGBForFlavorName(name string) int {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "m1.tiny", "m2.tiny":
+		return 10
+	default:
+		return 0
+	}
 }
 
 func buildCreateInstanceResponse(server *Server, opts CreateServerOpts) *CreateInstanceResponse {
