@@ -15,6 +15,9 @@ type fakeClient struct {
 	fetchFlavorsFn     func() ([]Flavor, error)
 	getComputeQuotaFn  func(projectID string) (*QuotaDetailSet, error)
 	createServerFn     func(opts CreateServerOpts) (*Server, error)
+	updateServerNameFn func(id string, name string) (*Server, error)
+	pauseServerFn      func(id string) error
+	unpauseServerFn    func(id string) error
 	deleteServerFn     func(id string) error
 	fetchInstancesFn   func() ([]Server, error)
 	fetchInstanceFn    func(id string) (*Server, error)
@@ -40,6 +43,27 @@ func (f *fakeClient) CreateServer(opts CreateServerOpts) (*Server, error) {
 		return f.createServerFn(opts)
 	}
 	return nil, nil
+}
+
+func (f *fakeClient) UpdateServerName(id string, name string) (*Server, error) {
+	if f.updateServerNameFn != nil {
+		return f.updateServerNameFn(id, name)
+	}
+	return &Server{ID: id, Name: name}, nil
+}
+
+func (f *fakeClient) PauseServer(id string) error {
+	if f.pauseServerFn != nil {
+		return f.pauseServerFn(id)
+	}
+	return nil
+}
+
+func (f *fakeClient) UnpauseServer(id string) error {
+	if f.unpauseServerFn != nil {
+		return f.unpauseServerFn(id)
+	}
+	return nil
 }
 
 func (f *fakeClient) DeleteServer(id string) error {
@@ -73,6 +97,7 @@ func (f *fakeClient) FetchDiagnostics(id string) (map[string]any, error) {
 type fakeRepo struct {
 	saveInstanceFn        func(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
 	deleteByOpenstackIDFn func(ctx context.Context, ownerID uuid.UUID, openstackID string) error
+	updateMetadataFn      func(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error
 	listByOwnerFn         func(ctx context.Context, ownerID uuid.UUID) ([]Instance, error)
 	findByOpenstackIDFn   func(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
 }
@@ -87,6 +112,13 @@ func (r *fakeRepo) SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *In
 func (r *fakeRepo) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error {
 	if r.deleteByOpenstackIDFn != nil {
 		return r.deleteByOpenstackIDFn(ctx, ownerID, openstackID)
+	}
+	return nil
+}
+
+func (r *fakeRepo) UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error {
+	if r.updateMetadataFn != nil {
+		return r.updateMetadataFn(ctx, ownerID, openstackID, update)
 	}
 	return nil
 }

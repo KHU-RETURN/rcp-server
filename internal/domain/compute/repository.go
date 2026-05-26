@@ -26,8 +26,27 @@ func (r *Repository) SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *
 		SetStatus(inst.Status).
 		SetImageID(inst.ImageID).
 		SetFlavorID(inst.FlavorID).
+		SetKeyName(inst.KeyName).
+		SetNote(inst.Note).
 		SetProviderCreatedAt(inst.Created).
 		Exec(ctx)
+}
+
+func (r *Repository) UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error {
+	builder := r.client.Instance.Update().
+		Where(
+			entinstance.OpenstackID(openstackID),
+			entinstance.HasOwnerWith(entuser.ID(ownerID)),
+		)
+
+	if update.Name != "" {
+		builder.SetName(update.Name)
+	}
+	builder.SetKeyName(update.KeyName)
+	builder.SetNote(update.Note)
+
+	_, err := builder.Save(ctx)
+	return err
 }
 
 func (r *Repository) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error {
@@ -79,6 +98,8 @@ func entToInstance(row *ent.Instance) Instance {
 		Status:      row.Status,
 		ImageID:     row.ImageID,
 		FlavorID:    row.FlavorID,
+		KeyName:     row.KeyName,
+		Note:        row.Note,
 		Created:     row.ProviderCreatedAt,
 	}
 }

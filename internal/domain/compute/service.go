@@ -15,6 +15,9 @@ type computeClient interface {
 	FetchFlavors() ([]Flavor, error)
 	GetComputeQuota(projectID string) (*QuotaDetailSet, error)
 	CreateServer(opts CreateServerOpts) (*Server, error)
+	UpdateServerName(id string, name string) (*Server, error)
+	PauseServer(id string) error
+	UnpauseServer(id string) error
 	DeleteServer(id string) error
 	FetchInstances() ([]Server, error)
 	FetchInstance(id string) (*Server, error)
@@ -24,6 +27,7 @@ type computeClient interface {
 type instanceRepo interface {
 	SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
 	DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error
+	UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error
 	ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Instance, error)
 	FindByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
 }
@@ -163,6 +167,8 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Status:     srv.Status,
 			Image:      inst.ImageID,
 			Flavor:     flavorMap[inst.FlavorID],
+			KeyName:    firstNonEmpty(inst.KeyName, srv.KeyName),
+			Note:       inst.Note,
 			FixedIP:    fixedIP,
 			FloatingIP: floatingIP,
 			Created:    srv.Created,
@@ -236,11 +242,68 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 		Status:     srv.Status,
 		Image:      inst.ImageID,
 		Flavor:     flavorMap[inst.FlavorID],
+		KeyName:    firstNonEmpty(inst.KeyName, srv.KeyName),
+		Note:       inst.Note,
 		FixedIP:    fixedIP,
 		FloatingIP: floatingIP,
 		Usage:      extractUsageStats(diag),
 		Created:    srv.Created,
 	}, nil
+}
+
+func (s *Service) UpdateInstance(ctx context.Context, ownerID uuid.UUID, id string, req UpdateInstanceRequest) (*InstanceDetailResponse, error) {
+	inst, err := s.repo.FindByOpenstackID(ctx, ownerID, id)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	if inst == nil {
+		return nil, ErrInstanceNotFound
+	}
+
+	req = normalizeUpdateInstanceRequest(req)
+	if req.Name == "" {
+		req.Name = inst.Name
+	}
+
+	if req.Name != inst.Name {
+		if _, err := s.client.UpdateServerName(id, req.Name); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+		}
+	}
+
+	if err := s.repo.UpdateInstanceMetadata(ctx, ownerID, id, req); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+
+	return s.GetInstanceDetail(ctx, ownerID, id)
+}
+
+func (s *Service) PauseInstance(ctx context.Context, ownerID uuid.UUID, id string) error {
+	inst, err := s.repo.FindByOpenstackID(ctx, ownerID, id)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	if inst == nil {
+		return ErrInstanceNotFound
+	}
+	if err := s.client.PauseServer(id); err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	return nil
+}
+
+func (s *Service) UnpauseInstance(ctx context.Context, ownerID uuid.UUID, id string) error {
+	inst, err := s.repo.FindByOpenstackID(ctx, ownerID, id)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	if inst == nil {
+		return ErrInstanceNotFound
+	}
+	if err := s.client.UnpauseServer(id); err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	return nil
 }
 
 // DeleteInstance는 owner 소유 인스턴스를 OpenStack과 DB에서 삭제합니다.
@@ -283,6 +346,8 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 		Status:      normalizeServerStatus(server.Status),
 		ImageID:     firstNonEmpty(extractResourceID(server.Image), normalizedOpts.ImageRef),
 		FlavorID:    firstNonEmpty(extractResourceID(server.Flavor), normalizedOpts.FlavorRef),
+		KeyName:     normalizedOpts.KeyName,
+		Note:        normalizedOpts.Note,
 		Created:     server.Created,
 	}
 
@@ -318,6 +383,7 @@ func buildCreateServerOpts(req CreateInstanceRequest) (CreateServerOpts, error) 
 		ImageRef:       req.ImageID,
 		FlavorRef:      req.FlavorID,
 		KeyName:        req.KeyName,
+		Note:           req.Note,
 		SecurityGroups: req.SecurityGroups,
 	}
 
@@ -338,8 +404,17 @@ func normalizeCreateInstanceRequest(req CreateInstanceRequest) CreateInstanceReq
 	req.FlavorID = strings.TrimSpace(req.FlavorID)
 	req.NetworkID = strings.TrimSpace(req.NetworkID)
 	req.KeyName = strings.TrimSpace(req.KeyName)
+	req.Note = strings.TrimSpace(req.Note)
 	req.SecurityGroups = normalizeStringSlice(req.SecurityGroups)
 	return req
+}
+
+func normalizeUpdateInstanceRequest(req UpdateInstanceRequest) UpdateInstanceRequest {
+	return UpdateInstanceRequest{
+		Name:    strings.TrimSpace(req.Name),
+		KeyName: strings.TrimSpace(req.KeyName),
+		Note:    strings.TrimSpace(req.Note),
+	}
 }
 
 func normalizeCreateServerOpts(opts CreateServerOpts) CreateServerOpts {
@@ -347,6 +422,7 @@ func normalizeCreateServerOpts(opts CreateServerOpts) CreateServerOpts {
 	opts.ImageRef = strings.TrimSpace(opts.ImageRef)
 	opts.FlavorRef = strings.TrimSpace(opts.FlavorRef)
 	opts.KeyName = strings.TrimSpace(opts.KeyName)
+	opts.Note = strings.TrimSpace(opts.Note)
 	opts.SecurityGroups = normalizeStringSlice(opts.SecurityGroups)
 
 	networks := make([]NetworkID, 0, len(opts.Networks))
@@ -506,7 +582,7 @@ func extractUsageStats(diag map[string]any) UsageStats {
 	}
 	var usage UsageStats
 	if cpu, ok := diag["cpu0_time"].(float64); ok {
-		usage.CPUUsage = cpu
+		usage.CPUUsage = cpu / 1e9
 	}
 	if mem, ok := diag["memory"].(float64); ok {
 		usage.MemoryUsage = int(mem / 1024)

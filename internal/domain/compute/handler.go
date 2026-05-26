@@ -24,6 +24,9 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		computeGroup.GET("/instances", h.GetInstances)
 		computeGroup.GET("/instances/:id", h.GetInstanceDetail)
 		computeGroup.POST("/instances", h.CreateInstance)
+		computeGroup.PATCH("/instances/:id", h.UpdateInstance)
+		computeGroup.POST("/instances/:id/pause", h.PauseInstance)
+		computeGroup.POST("/instances/:id/unpause", h.UnpauseInstance)
 		computeGroup.DELETE("/instances/:id", h.DeleteInstance)
 	}
 }
@@ -80,6 +83,70 @@ func (h *Handler) GetInstanceDetail(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, detail)
+}
+
+func (h *Handler) UpdateInstance(c *gin.Context) {
+	id, ok := api.OwnerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	var req UpdateInstanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
+		return
+	}
+
+	detail, err := h.Svc.UpdateInstance(c.Request.Context(), id, c.Param("id"), req)
+	if err != nil {
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, detail)
+}
+
+func (h *Handler) PauseInstance(c *gin.Context) {
+	id, ok := api.OwnerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	if err := h.Svc.PauseInstance(c.Request.Context(), id, c.Param("id")); err != nil {
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.Status(http.StatusAccepted)
+}
+
+func (h *Handler) UnpauseInstance(c *gin.Context) {
+	id, ok := api.OwnerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	if err := h.Svc.UnpauseInstance(c.Request.Context(), id, c.Param("id")); err != nil {
+		if errors.Is(err, ErrInstanceNotFound) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.Status(http.StatusAccepted)
 }
 
 func (h *Handler) CreateInstance(c *gin.Context) {
