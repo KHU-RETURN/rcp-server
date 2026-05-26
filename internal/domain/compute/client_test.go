@@ -127,7 +127,7 @@ func TestClientCreateServerAlwaysUsesLocalDisk(t *testing.T) {
 	})
 
 	serverBody := gotBody["server"].(map[string]any)
-	
+
 	// 1. imageRef가 반드시 있어야 함 (로컬 부팅의 증거)
 	if _, ok := serverBody["imageRef"]; !ok {
 		t.Fatal("expected imageRef to be present for local disk boot")
