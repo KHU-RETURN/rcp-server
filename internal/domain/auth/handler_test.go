@@ -232,8 +232,8 @@ func TestHandlerLogout(t *testing.T) {
 	t.Run("expires cookies even when server-side invalidation fails", func(t *testing.T) {
 		email := "user@khu.ac.kr"
 		repo := &fakeRepo{
-			users:            map[string]*User{email: {Email: email}},
-			setRefreshJTIErr: errors.New("db boom"),
+			users:              map[string]*User{email: {Email: email}},
+			clearRefreshJTIErr: errors.New("db boom"),
 		}
 		router, tokenSvc := newAuthRouter(repo)
 		pair := issueAndStore(t, repo, tokenSvc, email)

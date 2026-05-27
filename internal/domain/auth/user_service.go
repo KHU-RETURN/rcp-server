@@ -69,7 +69,8 @@ func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (
 	return tokens, nil
 }
 
-// Logout은 refresh token이 유효하면 해당 user의 서버측 jti를 비웁니다.
+// Logout은 refresh token의 jti가 현재 활성 jti와 일치할 때만 서버측 세션을 비웁니다.
+// stale(회전된) refresh token으로는 현재 활성 세션을 종료시킬 수 없습니다 — refresh와 동일한 검사.
 // 토큰이 유효하지 않거나 없어도 에러를 반환하지 않습니다(graceful logout).
 // 반환되는 bool은 서버측 무효화가 실제로 일어났는지를 알려줍니다.
 func (s *Service) Logout(ctx context.Context, refreshToken string) (bool, error) {
@@ -77,11 +78,12 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) (bool, error)
 		return false, nil
 	}
 	claims, err := s.TokenService.ValidateToken(refreshToken)
-	if err != nil || claims.Type != tokenTypeRefresh || claims.Email == "" {
+	if err != nil || claims.Type != tokenTypeRefresh || claims.Email == "" || claims.ID == "" {
 		return false, nil
 	}
-	if err := s.repo.SetRefreshJTI(ctx, claims.Email, nil); err != nil {
+	cleared, err := s.repo.ClearRefreshJTIIfMatches(ctx, claims.Email, claims.ID)
+	if err != nil {
 		return false, fmt.Errorf("%w: %v", ErrUserLookupFailed, err)
 	}
-	return true, nil
+	return cleared, nil
 }

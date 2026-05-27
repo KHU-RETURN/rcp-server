@@ -122,3 +122,19 @@ func (r *Repository) RotateRefreshJTI(ctx context.Context, email string, oldJTI,
 	}
 	return n == 1, nil
 }
+
+// ClearRefreshJTIIfMatches는 저장된 jti가 expectedJTI와 일치할 때만 컬럼을 비웁니다.
+// 회전돼서 stale해진 refresh token으로 현재 활성 세션을 종료시키지 못하게 막습니다.
+func (r *Repository) ClearRefreshJTIIfMatches(ctx context.Context, email, expectedJTI string) (bool, error) {
+	n, err := r.db.User.Update().
+		Where(
+			entuser.Email(email),
+			entuser.CurrentRefreshJti(expectedJTI),
+		).
+		ClearCurrentRefreshJti().
+		Save(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to clear refresh jti: %w", err)
+	}
+	return n == 1, nil
+}

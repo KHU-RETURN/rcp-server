@@ -10,9 +10,9 @@ import (
 )
 
 type fakeRepo struct {
-	users            map[string]*User
-	findByEmailErr   error
-	setRefreshJTIErr error
+	users              map[string]*User
+	findByEmailErr     error
+	clearRefreshJTIErr error
 }
 
 func (f *fakeRepo) UpsertUser(ctx context.Context, user *User) error {
@@ -32,9 +32,6 @@ func (f *fakeRepo) FindByEmail(ctx context.Context, email string) (*User, error)
 }
 
 func (f *fakeRepo) SetRefreshJTI(ctx context.Context, email string, jti *string) error {
-	if f.setRefreshJTIErr != nil {
-		return f.setRefreshJTIErr
-	}
 	user, ok := f.users[email]
 	if !ok {
 		return nil
@@ -52,6 +49,21 @@ func (f *fakeRepo) RotateRefreshJTI(ctx context.Context, email string, oldJTI, n
 		return false, nil
 	}
 	user.CurrentRefreshJTI = &newJTI
+	return true, nil
+}
+
+func (f *fakeRepo) ClearRefreshJTIIfMatches(ctx context.Context, email, expectedJTI string) (bool, error) {
+	if f.clearRefreshJTIErr != nil {
+		return false, f.clearRefreshJTIErr
+	}
+	user, ok := f.users[email]
+	if !ok {
+		return false, nil
+	}
+	if user.CurrentRefreshJTI == nil || *user.CurrentRefreshJTI != expectedJTI {
+		return false, nil
+	}
+	user.CurrentRefreshJTI = nil
 	return true, nil
 }
 
@@ -417,6 +429,31 @@ func TestServiceLogout(t *testing.T) {
 		}
 		if repo.users[email].CurrentRefreshJTI == nil {
 			t.Fatal("expected stored jti to remain intact")
+		}
+	})
+
+	// stale(이미 회전된) refresh token으로는 현재 활성 세션을 종료시킬 수 없어야 한다.
+	// 옛 토큰이 잠깐 누출돼도 공격자가 user의 활성 세션을 DoS하는 걸 막는다.
+	t.Run("does not invalidate active session when stale refresh presented", func(t *testing.T) {
+		email := "user@khu.ac.kr"
+		repo := &fakeRepo{users: map[string]*User{email: {Email: email}}}
+		svc := NewService(repo, &oauth2.Config{}, tokenSvc)
+		stale := issueAndStore(t, repo, tokenSvc, email)
+
+		// 다른 디바이스에서 정상 refresh로 jti가 회전된 상황
+		activeJTI := "new-active-jti"
+		repo.users[email].CurrentRefreshJTI = &activeJTI
+
+		invalidated, err := svc.Logout(ctx, stale.RefreshToken)
+		if err != nil {
+			t.Fatalf("Logout: %v", err)
+		}
+		if invalidated {
+			t.Fatal("expected invalidated=false for stale refresh token")
+		}
+		stored := repo.users[email].CurrentRefreshJTI
+		if stored == nil || *stored != activeJTI {
+			t.Fatalf("active session jti was wiped by stale token: got %v, want %q", stored, activeJTI)
 		}
 	})
 }
