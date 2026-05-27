@@ -39,6 +39,8 @@ var (
 		{Name: "status", Type: field.TypeString},
 		{Name: "image_id", Type: field.TypeString},
 		{Name: "flavor_id", Type: field.TypeString},
+		{Name: "key_name", Type: field.TypeString, Default: ""},
+		{Name: "note", Type: field.TypeString, Default: ""},
 		{Name: "provider_created_at", Type: field.TypeTime},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -53,13 +55,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "instances_key_pairs_instances",
-				Columns:    []*schema.Column{InstancesColumns[9]},
+				Columns:    []*schema.Column{InstancesColumns[11]},
 				RefColumns: []*schema.Column{KeyPairsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "instances_users_instances",
-				Columns:    []*schema.Column{InstancesColumns[10]},
+				Columns:    []*schema.Column{InstancesColumns[12]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

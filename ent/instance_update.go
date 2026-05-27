@@ -101,6 +101,34 @@ func (_u *InstanceUpdate) SetNillableFlavorID(v *string) *InstanceUpdate {
 	return _u
 }
 
+// SetKeyName sets the "key_name" field.
+func (_u *InstanceUpdate) SetKeyName(v string) *InstanceUpdate {
+	_u.mutation.SetKeyName(v)
+	return _u
+}
+
+// SetNillableKeyName sets the "key_name" field if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableKeyName(v *string) *InstanceUpdate {
+	if v != nil {
+		_u.SetKeyName(*v)
+	}
+	return _u
+}
+
+// SetNote sets the "note" field.
+func (_u *InstanceUpdate) SetNote(v string) *InstanceUpdate {
+	_u.mutation.SetNote(v)
+	return _u
+}
+
+// SetNillableNote sets the "note" field if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableNote(v *string) *InstanceUpdate {
+	if v != nil {
+		_u.SetNote(*v)
+	}
+	return _u
+}
+
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (_u *InstanceUpdate) SetProviderCreatedAt(v time.Time) *InstanceUpdate {
 	_u.mutation.SetProviderCreatedAt(v)
@@ -238,6 +266,12 @@ func (_u *InstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FlavorID(); ok {
 		_spec.SetField(instance.FieldFlavorID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.KeyName(); ok {
+		_spec.SetField(instance.FieldKeyName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Note(); ok {
+		_spec.SetField(instance.FieldNote, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProviderCreatedAt(); ok {
 		_spec.SetField(instance.FieldProviderCreatedAt, field.TypeTime, value)
@@ -389,6 +423,34 @@ func (_u *InstanceUpdateOne) SetFlavorID(v string) *InstanceUpdateOne {
 func (_u *InstanceUpdateOne) SetNillableFlavorID(v *string) *InstanceUpdateOne {
 	if v != nil {
 		_u.SetFlavorID(*v)
+	}
+	return _u
+}
+
+// SetKeyName sets the "key_name" field.
+func (_u *InstanceUpdateOne) SetKeyName(v string) *InstanceUpdateOne {
+	_u.mutation.SetKeyName(v)
+	return _u
+}
+
+// SetNillableKeyName sets the "key_name" field if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableKeyName(v *string) *InstanceUpdateOne {
+	if v != nil {
+		_u.SetKeyName(*v)
+	}
+	return _u
+}
+
+// SetNote sets the "note" field.
+func (_u *InstanceUpdateOne) SetNote(v string) *InstanceUpdateOne {
+	_u.mutation.SetNote(v)
+	return _u
+}
+
+// SetNillableNote sets the "note" field if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableNote(v *string) *InstanceUpdateOne {
+	if v != nil {
+		_u.SetNote(*v)
 	}
 	return _u
 }
@@ -560,6 +622,12 @@ func (_u *InstanceUpdateOne) sqlSave(ctx context.Context) (_node *Instance, err 
 	}
 	if value, ok := _u.mutation.FlavorID(); ok {
 		_spec.SetField(instance.FieldFlavorID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.KeyName(); ok {
+		_spec.SetField(instance.FieldKeyName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Note(); ok {
+		_spec.SetField(instance.FieldNote, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProviderCreatedAt(); ok {
 		_spec.SetField(instance.FieldProviderCreatedAt, field.TypeTime, value)

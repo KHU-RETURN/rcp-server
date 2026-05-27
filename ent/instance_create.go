@@ -56,6 +56,34 @@ func (_c *InstanceCreate) SetFlavorID(v string) *InstanceCreate {
 	return _c
 }
 
+// SetKeyName sets the "key_name" field.
+func (_c *InstanceCreate) SetKeyName(v string) *InstanceCreate {
+	_c.mutation.SetKeyName(v)
+	return _c
+}
+
+// SetNillableKeyName sets the "key_name" field if the given value is not nil.
+func (_c *InstanceCreate) SetNillableKeyName(v *string) *InstanceCreate {
+	if v != nil {
+		_c.SetKeyName(*v)
+	}
+	return _c
+}
+
+// SetNote sets the "note" field.
+func (_c *InstanceCreate) SetNote(v string) *InstanceCreate {
+	_c.mutation.SetNote(v)
+	return _c
+}
+
+// SetNillableNote sets the "note" field if the given value is not nil.
+func (_c *InstanceCreate) SetNillableNote(v *string) *InstanceCreate {
+	if v != nil {
+		_c.SetNote(*v)
+	}
+	return _c
+}
+
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (_c *InstanceCreate) SetProviderCreatedAt(v time.Time) *InstanceCreate {
 	_c.mutation.SetProviderCreatedAt(v)
@@ -169,6 +197,14 @@ func (_c *InstanceCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *InstanceCreate) defaults() {
+	if _, ok := _c.mutation.KeyName(); !ok {
+		v := instance.DefaultKeyName
+		_c.mutation.SetKeyName(v)
+	}
+	if _, ok := _c.mutation.Note(); !ok {
+		v := instance.DefaultNote
+		_c.mutation.SetNote(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := instance.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -199,6 +235,12 @@ func (_c *InstanceCreate) check() error {
 	}
 	if _, ok := _c.mutation.FlavorID(); !ok {
 		return &ValidationError{Name: "flavor_id", err: errors.New(`ent: missing required field "Instance.flavor_id"`)}
+	}
+	if _, ok := _c.mutation.KeyName(); !ok {
+		return &ValidationError{Name: "key_name", err: errors.New(`ent: missing required field "Instance.key_name"`)}
+	}
+	if _, ok := _c.mutation.Note(); !ok {
+		return &ValidationError{Name: "note", err: errors.New(`ent: missing required field "Instance.note"`)}
 	}
 	if _, ok := _c.mutation.ProviderCreatedAt(); !ok {
 		return &ValidationError{Name: "provider_created_at", err: errors.New(`ent: missing required field "Instance.provider_created_at"`)}
@@ -267,6 +309,14 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FlavorID(); ok {
 		_spec.SetField(instance.FieldFlavorID, field.TypeString, value)
 		_node.FlavorID = value
+	}
+	if value, ok := _c.mutation.KeyName(); ok {
+		_spec.SetField(instance.FieldKeyName, field.TypeString, value)
+		_node.KeyName = value
+	}
+	if value, ok := _c.mutation.Note(); ok {
+		_spec.SetField(instance.FieldNote, field.TypeString, value)
+		_node.Note = value
 	}
 	if value, ok := _c.mutation.ProviderCreatedAt(); ok {
 		_spec.SetField(instance.FieldProviderCreatedAt, field.TypeTime, value)
@@ -426,6 +476,30 @@ func (u *InstanceUpsert) UpdateFlavorID() *InstanceUpsert {
 	return u
 }
 
+// SetKeyName sets the "key_name" field.
+func (u *InstanceUpsert) SetKeyName(v string) *InstanceUpsert {
+	u.Set(instance.FieldKeyName, v)
+	return u
+}
+
+// UpdateKeyName sets the "key_name" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateKeyName() *InstanceUpsert {
+	u.SetExcluded(instance.FieldKeyName)
+	return u
+}
+
+// SetNote sets the "note" field.
+func (u *InstanceUpsert) SetNote(v string) *InstanceUpsert {
+	u.Set(instance.FieldNote, v)
+	return u
+}
+
+// UpdateNote sets the "note" field to the value that was provided on create.
+func (u *InstanceUpsert) UpdateNote() *InstanceUpsert {
+	u.SetExcluded(instance.FieldNote)
+	return u
+}
+
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (u *InstanceUpsert) SetProviderCreatedAt(v time.Time) *InstanceUpsert {
 	u.Set(instance.FieldProviderCreatedAt, v)
@@ -568,6 +642,34 @@ func (u *InstanceUpsertOne) SetFlavorID(v string) *InstanceUpsertOne {
 func (u *InstanceUpsertOne) UpdateFlavorID() *InstanceUpsertOne {
 	return u.Update(func(s *InstanceUpsert) {
 		s.UpdateFlavorID()
+	})
+}
+
+// SetKeyName sets the "key_name" field.
+func (u *InstanceUpsertOne) SetKeyName(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetKeyName(v)
+	})
+}
+
+// UpdateKeyName sets the "key_name" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateKeyName() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateKeyName()
+	})
+}
+
+// SetNote sets the "note" field.
+func (u *InstanceUpsertOne) SetNote(v string) *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetNote(v)
+	})
+}
+
+// UpdateNote sets the "note" field to the value that was provided on create.
+func (u *InstanceUpsertOne) UpdateNote() *InstanceUpsertOne {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateNote()
 	})
 }
 
@@ -884,6 +986,34 @@ func (u *InstanceUpsertBulk) SetFlavorID(v string) *InstanceUpsertBulk {
 func (u *InstanceUpsertBulk) UpdateFlavorID() *InstanceUpsertBulk {
 	return u.Update(func(s *InstanceUpsert) {
 		s.UpdateFlavorID()
+	})
+}
+
+// SetKeyName sets the "key_name" field.
+func (u *InstanceUpsertBulk) SetKeyName(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetKeyName(v)
+	})
+}
+
+// UpdateKeyName sets the "key_name" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateKeyName() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateKeyName()
+	})
+}
+
+// SetNote sets the "note" field.
+func (u *InstanceUpsertBulk) SetNote(v string) *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.SetNote(v)
+	})
+}
+
+// UpdateNote sets the "note" field to the value that was provided on create.
+func (u *InstanceUpsertBulk) UpdateNote() *InstanceUpsertBulk {
+	return u.Update(func(s *InstanceUpsert) {
+		s.UpdateNote()
 	})
 }
 

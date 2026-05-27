@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -24,10 +25,15 @@ const (
 	oauthStateByteLen = 16
 )
 
+type oauthState struct {
+	Nonce          string `json:"nonce"`
+	RedirectOrigin string `json:"redirect_origin,omitempty"`
+}
+
 // GetGoogleLoginURL은 사용자를 리다이렉트시킬 구글 승인 페이지 URL을 생성합니다.
-func (s *Service) GetGoogleLoginURL() string {
+func (s *Service) GetGoogleLoginURL(redirectOrigin string) string {
 	// 실제 운영 환경에서는 state를 세션에 저장하고 콜백에서 검증해야 보안상 안전합니다.
-	state := s.generateState(oauthStateByteLen)
+	state := s.generateOAuthState(redirectOrigin)
 	return s.OauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline) // AccessTypeOffline은 Refresh Token을 받기 위함
 }
 
@@ -96,4 +102,16 @@ func (s *Service) generateState(n int) string {
 		panic(fmt.Sprintf("failed to generate random state: %v", err))
 	}
 	return base64.URLEncoding.EncodeToString(b)
+}
+
+func (s *Service) generateOAuthState(redirectOrigin string) string {
+	state := oauthState{
+		Nonce:          s.generateState(16),
+		RedirectOrigin: redirectOrigin,
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		panic(fmt.Sprintf("failed to generate oauth state: %v", err))
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
 }
