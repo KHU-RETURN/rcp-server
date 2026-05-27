@@ -27,6 +27,7 @@ type userRepository interface {
 	UpsertUser(ctx context.Context, user *User) error
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	SetRefreshJTI(ctx context.Context, email string, jti *string) error
+	RotateRefreshJTI(ctx context.Context, email string, oldJTI, newJTI string) (bool, error)
 }
 
 // Service는 인증 비즈니스 로직을 담당합니다.

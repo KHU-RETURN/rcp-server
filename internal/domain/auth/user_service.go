@@ -55,8 +55,15 @@ func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (
 	if err != nil {
 		return TokenPair{}, fmt.Errorf("failed to generate new tokens: %w", err)
 	}
-	if err := s.repo.SetRefreshJTI(ctx, user.Email, &tokens.RefreshJTI); err != nil {
+
+	// compare-and-set으로 회전. 동시에 같은 refresh token으로 들어온 다른 요청이
+	// 먼저 회전시켰다면 rotated=false → 이 요청은 stale이므로 거절.
+	rotated, err := s.repo.RotateRefreshJTI(ctx, user.Email, claims.ID, tokens.RefreshJTI)
+	if err != nil {
 		return TokenPair{}, fmt.Errorf("%w: %v", ErrUserLookupFailed, err)
+	}
+	if !rotated {
+		return TokenPair{}, ErrInvalidRefreshToken
 	}
 
 	return tokens, nil

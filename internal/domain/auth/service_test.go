@@ -39,6 +39,18 @@ func (f *fakeRepo) SetRefreshJTI(ctx context.Context, email string, jti *string)
 	return nil
 }
 
+func (f *fakeRepo) RotateRefreshJTI(ctx context.Context, email string, oldJTI, newJTI string) (bool, error) {
+	user, ok := f.users[email]
+	if !ok {
+		return false, nil
+	}
+	if user.CurrentRefreshJTI == nil || *user.CurrentRefreshJTI != oldJTI {
+		return false, nil
+	}
+	user.CurrentRefreshJTI = &newJTI
+	return true, nil
+}
+
 // MockUserRepository는 이전 테스트 코드와의 호환을 위해 유지합니다.
 type MockUserRepository = fakeRepo
 
@@ -313,6 +325,27 @@ func TestServiceRefreshAccessToken(t *testing.T) {
 
 		if _, err := svc.RefreshAccessToken(ctx, pair.RefreshToken); !errors.Is(err, ErrUserNotFound) {
 			t.Fatalf("expected ErrUserNotFound, got %v", err)
+		}
+	})
+
+	// 같은 refresh token으로 동시에 두 요청이 들어왔을 때, 한쪽이 먼저 회전을 끝내면
+	// 다른 쪽은 stale로 거절돼야 한다. read-modify-write에서 발생할 수 있는 양쪽 모두 성공 케이스 방지.
+	t.Run("rejects refresh when jti was rotated by concurrent request", func(t *testing.T) {
+		svc, repo := newSvc("user@khu.ac.kr")
+		original := issueAndStore(t, repo, tokenSvc, "user@khu.ac.kr")
+
+		// 다른 요청이 먼저 회전을 끝낸 상황을 시뮬레이션: 저장된 jti만 바뀐 상태.
+		otherJTI := "concurrent-winner-jti"
+		repo.users["user@khu.ac.kr"].CurrentRefreshJTI = &otherJTI
+
+		// 이 시점에서 원래 refresh token은 JWT-valid + 서명 OK이지만 jti는 stale.
+		if _, err := svc.RefreshAccessToken(ctx, original.RefreshToken); !errors.Is(err, ErrInvalidRefreshToken) {
+			t.Fatalf("expected ErrInvalidRefreshToken on concurrent rotation, got %v", err)
+		}
+		// 다른 요청의 jti가 덮어쓰여서는 안 됨.
+		stored := repo.users["user@khu.ac.kr"].CurrentRefreshJTI
+		if stored == nil || *stored != otherJTI {
+			t.Fatalf("concurrent winner's jti was overwritten: got %v, want %q", stored, otherJTI)
 		}
 	})
 }

@@ -105,3 +105,20 @@ func (r *Repository) SetRefreshJTI(ctx context.Context, email string, jti *strin
 	}
 	return nil
 }
+
+// RotateRefreshJTI는 저장된 jti가 oldJTI와 일치할 때만 newJTI로 교체합니다(compare-and-set).
+// 같은 refresh token으로 동시에 회전을 시도해도 단 하나만 성공합니다.
+// 반환된 bool은 실제로 회전이 일어났는지(=요청자가 승자였는지)를 나타냅니다.
+func (r *Repository) RotateRefreshJTI(ctx context.Context, email string, oldJTI, newJTI string) (bool, error) {
+	n, err := r.db.User.Update().
+		Where(
+			entuser.Email(email),
+			entuser.CurrentRefreshJti(oldJTI),
+		).
+		SetCurrentRefreshJti(newJTI).
+		Save(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to rotate refresh jti: %w", err)
+	}
+	return n == 1, nil
+}
