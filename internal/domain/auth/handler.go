@@ -160,17 +160,17 @@ func (h *Handler) Refresh(c *gin.Context) {
 }
 
 // Logout: POST /api/v1/auth/logout
-// 서버측 refresh jti를 무효화하고 클라이언트 쿠키를 만료시킵니다.
-// 토큰이 없거나 유효하지 않아도 항상 204(쿠키 만료는 보장).
+// 쿠키 만료는 서버측 jti 무효화 성공/실패와 무관하게 항상 보장.
 func (h *Handler) Logout(c *gin.Context) {
 	refreshToken, _ := c.Cookie(cookieRefreshToken)
+
+	setAuthCookie(c, cookieAccessToken, "", -1)
+	setAuthCookie(c, cookieRefreshToken, "", -1)
+
 	if _, err := h.Svc.Logout(c.Request.Context(), refreshToken); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: ErrUserLookupFailed.Error()})
 		return
 	}
-
-	setAuthCookie(c, cookieAccessToken, "", -1)
-	setAuthCookie(c, cookieRefreshToken, "", -1)
 	c.Status(http.StatusNoContent)
 }
 

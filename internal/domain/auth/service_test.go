@@ -10,8 +10,9 @@ import (
 )
 
 type fakeRepo struct {
-	users          map[string]*User
-	findByEmailErr error
+	users            map[string]*User
+	findByEmailErr   error
+	setRefreshJTIErr error
 }
 
 func (f *fakeRepo) UpsertUser(ctx context.Context, user *User) error {
@@ -31,6 +32,9 @@ func (f *fakeRepo) FindByEmail(ctx context.Context, email string) (*User, error)
 }
 
 func (f *fakeRepo) SetRefreshJTI(ctx context.Context, email string, jti *string) error {
+	if f.setRefreshJTIErr != nil {
+		return f.setRefreshJTIErr
+	}
 	user, ok := f.users[email]
 	if !ok {
 		return nil

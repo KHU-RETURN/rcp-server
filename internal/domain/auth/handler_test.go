@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -225,6 +226,37 @@ func TestHandlerLogout(t *testing.T) {
 
 		if w.Code != http.StatusNoContent {
 			t.Fatalf("expected 204, got %d", w.Code)
+		}
+	})
+
+	t.Run("expires cookies even when server-side invalidation fails", func(t *testing.T) {
+		email := "user@khu.ac.kr"
+		repo := &fakeRepo{
+			users:            map[string]*User{email: {Email: email}},
+			setRefreshJTIErr: errors.New("db boom"),
+		}
+		router, tokenSvc := newAuthRouter(repo)
+		pair := issueAndStore(t, repo, tokenSvc, email)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+		req.AddCookie(&http.Cookie{Name: cookieRefreshToken, Value: pair.RefreshToken})
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500 on DB failure, got %d", w.Code)
+		}
+		for _, name := range []string{cookieAccessToken, cookieRefreshToken} {
+			c := findCookie(w.Result(), name)
+			if c == nil {
+				t.Fatalf("expected %s cookie to be set even on DB failure", name)
+			}
+			if c.MaxAge >= 0 {
+				t.Errorf("expected %s Max-Age < 0 (expired), got %d", name, c.MaxAge)
+			}
+			if !c.HttpOnly {
+				t.Errorf("%s cookie must remain HttpOnly", name)
+			}
 		}
 	})
 }
