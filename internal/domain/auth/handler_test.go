@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -27,6 +29,27 @@ func TestAllowedFrontendOrigin(t *testing.T) {
 			ok:          true,
 		},
 		{
+			name:        "configured localhost http origin",
+			frontendURL: "http://localhost:4173",
+			raw:         "http://localhost:4173",
+			want:        "http://localhost:4173",
+			ok:          true,
+		},
+		{
+			name:    "localhost http origin from configured pattern",
+			pattern: `^localhost:4173$`,
+			raw:     "http://localhost:4173",
+			want:    "http://localhost:4173",
+			ok:      true,
+		},
+		{
+			name:    "loopback ipv4 http origin from configured pattern",
+			pattern: `^127[.]0[.]0[.]1:4173$`,
+			raw:     "http://127.0.0.1:4173",
+			want:    "http://127.0.0.1:4173",
+			ok:      true,
+		},
+		{
 			name:    "preview origin from configured pattern",
 			pattern: `^preview-\d+\.frontend\.example\.com$`,
 			raw:     "https://preview-21.frontend.example.com",
@@ -44,6 +67,11 @@ func TestAllowedFrontendOrigin(t *testing.T) {
 			name:        "rejects http",
 			frontendURL: "https://frontend.example.com",
 			raw:         "http://frontend.example.com",
+		},
+		{
+			name:    "rejects non-local http even when pattern matches",
+			pattern: `^frontend[.]example[.]com$`,
+			raw:     "http://frontend.example.com",
 		},
 		{
 			name:        "rejects path",
@@ -86,8 +114,7 @@ func TestAllowedFrontendOrigin(t *testing.T) {
 	}
 }
 
-func TestLoginStoresAllowedRedirectOrigin(t *testing.T) {
-	t.Setenv(envAuthCookieSecure, "false")
+func TestLoginIncludesAllowedRedirectOriginInState(t *testing.T) {
 	t.Setenv(envAllowedFrontendOriginPattern, `^preview-\d+\.frontend\.example\.com$`)
 	gin.SetMode(gin.TestMode)
 
@@ -107,26 +134,31 @@ func TestLoginStoresAllowedRedirectOrigin(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusTemporaryRedirect, w.Code)
 	}
 
-	cookies := w.Result().Cookies()
-	var got *http.Cookie
-	for _, cookie := range cookies {
-		if cookie.Name == cookieFrontendURL {
-			got = cookie
-			break
-		}
+	location := w.Header().Get("Location")
+	if location == "" {
+		t.Fatal("expected redirect location")
 	}
-	if got == nil {
-		t.Fatal("expected frontend URL cookie")
-	}
-	gotValue, err := url.QueryUnescape(got.Value)
+	loginURL, err := url.Parse(location)
 	if err != nil {
-		t.Fatalf("failed to unescape cookie value: %v", err)
+		t.Fatalf("failed to parse redirect location: %v", err)
 	}
-	if gotValue != "https://preview-21.frontend.example.com" {
-		t.Fatalf("expected cookie value to be PR preview origin, got %q", gotValue)
+	rawState := loginURL.Query().Get("state")
+	if rawState == "" {
+		t.Fatal("expected oauth state")
 	}
-	if got.Path != cookiePathRoot {
-		t.Fatalf("expected cookie path %q, got %q", cookiePathRoot, got.Path)
+	stateBytes, err := base64.RawURLEncoding.DecodeString(rawState)
+	if err != nil {
+		t.Fatalf("failed to decode oauth state: %v", err)
+	}
+	var state oauthState
+	if err := json.Unmarshal(stateBytes, &state); err != nil {
+		t.Fatalf("failed to unmarshal oauth state: %v", err)
+	}
+	if state.RedirectOrigin != "https://preview-21.frontend.example.com" {
+		t.Fatalf("expected redirect origin in state, got %q", state.RedirectOrigin)
+	}
+	if state.Nonce == "" {
+		t.Fatal("expected nonce in state")
 	}
 }
 
@@ -154,12 +186,17 @@ func TestCallbackFailureRedirectsToStoredFrontendOrigin(t *testing.T) {
 	t.Setenv(envAllowedFrontendOriginPattern, `^preview-\d+\.frontend\.example\.com$`)
 	gin.SetMode(gin.TestMode)
 
-	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")))
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=bad-code", nil)
-	req.AddCookie(&http.Cookie{
-		Name:  cookieFrontendURL,
-		Value: "https://preview-21.frontend.example.com",
+	stateBytes, err := json.Marshal(oauthState{
+		Nonce:          "test-nonce",
+		RedirectOrigin: "https://preview-21.frontend.example.com",
 	})
+	if err != nil {
+		t.Fatalf("failed to marshal state: %v", err)
+	}
+	rawState := base64.RawURLEncoding.EncodeToString(stateBytes)
+
+	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")))
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=bad-code&state="+url.QueryEscape(rawState), nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
