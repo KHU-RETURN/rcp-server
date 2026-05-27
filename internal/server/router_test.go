@@ -116,6 +116,61 @@ func TestRouterCORSAllowsFrontendOrigin(t *testing.T) {
 	}
 }
 
+func TestRouterCORSAllowsPatternOrigin(t *testing.T) {
+	setGinMode(t, gin.TestMode)
+	t.Setenv(envAllowedOriginPattern, `^https://preview-[0-9]+[.]frontend[.]example[.]com$`)
+
+	router := NewRouter(&App{
+		Access:  &access.Handler{},
+		Auth:    &auth.Handler{},
+		Compute: &compute.Handler{},
+		Storage: &storage.Handler{},
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
+	req.Header.Set("Origin", "https://preview-21.frontend.example.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://preview-21.frontend.example.com" {
+		t.Fatalf("expected allowed origin, got %q", got)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("expected credentials to be allowed, got %q", got)
+	}
+}
+
+func TestRouterCORSRejectsPatternLookalikeOrigin(t *testing.T) {
+	setGinMode(t, gin.TestMode)
+	t.Setenv(envAllowedOriginPattern, `^https://preview-[0-9]+[.]frontend[.]example[.]com$`)
+
+	router := NewRouter(&App{
+		Access:  &access.Handler{},
+		Auth:    &auth.Handler{},
+		Compute: &compute.Handler{},
+		Storage: &storage.Handler{},
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
+	req.Header.Set("Origin", "https://preview-21.frontend.example.com.evil.example")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("expected no allowed origin, got %q", got)
+	}
+}
+
 func TestRouterCORSRejectsUnconfiguredOrigin(t *testing.T) {
 	setGinMode(t, gin.TestMode)
 

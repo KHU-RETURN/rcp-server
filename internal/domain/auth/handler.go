@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,13 +24,12 @@ const (
 
 	envFrontendURL                  = "FRONTEND_URL"
 	envAllowedFrontendOriginPattern = "RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN"
+	envAuthCookieSameSite           = "RCP_AUTH_COOKIE_SAMESITE"
 	envAuthCookieSecure             = "RCP_AUTH_COOKIE_SECURE"
 
 	cookieAccessToken  = "access_token"
 	cookieRefreshToken = "refresh_token"
-	cookieFrontendURL  = "frontend_url"
 
-	cookiePathRoot     = "/"
 	defaultFrontendURL = "http://localhost:4173"
 )
 
@@ -55,26 +57,17 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 
 // Login: GET /api/v1/auth/oauth/google
 func (h *Handler) Login(c *gin.Context) {
+	redirectOrigin := ""
 	if rawRedirectOrigin := c.Query("redirect_origin"); rawRedirectOrigin != "" {
-		redirectOrigin, ok := allowedFrontendOrigin(rawRedirectOrigin)
+		allowedOrigin, ok := allowedFrontendOrigin(rawRedirectOrigin)
 		if !ok {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid redirect_origin"})
 			return
 		}
-
-		c.SetSameSite(http.SameSiteLaxMode)
-		c.SetCookie(
-			cookieFrontendURL,
-			redirectOrigin,
-			60*10, // 10 minutes
-			cookiePathRoot,
-			"",
-			authCookieSecure(),
-			true, // HttpOnly
-		)
+		redirectOrigin = allowedOrigin
 	}
 
-	url := h.Svc.GetGoogleLoginURL()
+	url := h.Svc.GetGoogleLoginURL(redirectOrigin)
 	// 구글 승인 서버로 리다이렉트
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
@@ -87,17 +80,14 @@ func (h *Handler) Callback(c *gin.Context) {
 		return
 	}
 
-	frontendURL := frontendURLFromRequest(c)
+	frontendURL := frontendURLFromState(c.Query("state"))
 	user, err := h.Svc.ProcessGoogleCallback(c.Request.Context(), code)
 	if err != nil {
-		c.SetSameSite(http.SameSiteLaxMode)
-		clearFrontendURLCookie(c)
 		c.Redirect(http.StatusTemporaryRedirect, frontendURL+pathLoginError)
 		return
 	}
 
-	c.SetSameSite(http.SameSiteLaxMode)
-	clearFrontendURLCookie(c)
+	c.SetSameSite(authCookieSameSite())
 
 	c.SetCookie(
 		cookieAccessToken,
@@ -153,13 +143,26 @@ func getFrontendURL() string {
 	return strings.TrimSuffix(url, "/")
 }
 
-func frontendURLFromRequest(c *gin.Context) string {
-	raw, err := c.Cookie(cookieFrontendURL)
+func frontendURLFromState(raw string) string {
+	if raw == "" {
+		return getFrontendURL()
+	}
+
+	b, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
 		return getFrontendURL()
 	}
 
-	frontendURL, ok := allowedFrontendOrigin(raw)
+	var state oauthState
+	if err := json.Unmarshal(b, &state); err != nil {
+		return getFrontendURL()
+	}
+
+	if state.RedirectOrigin == "" {
+		return getFrontendURL()
+	}
+
+	frontendURL, ok := allowedFrontendOrigin(state.RedirectOrigin)
 	if !ok {
 		return getFrontendURL()
 	}
@@ -167,26 +170,19 @@ func frontendURLFromRequest(c *gin.Context) string {
 	return frontendURL
 }
 
-func clearFrontendURLCookie(c *gin.Context) {
-	c.SetCookie(
-		cookieFrontendURL,
-		"",
-		-1,
-		cookiePathRoot,
-		"",
-		authCookieSecure(),
-		true,
-	)
-}
-
 func allowedFrontendOrigin(raw string) (string, bool) {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 		return "", false
 	}
 
 	host := strings.ToLower(u.Host)
-	if frontendURL, ok := configuredFrontendOrigin(); ok && host == strings.TrimPrefix(frontendURL, "https://") {
+	if !allowedFrontendScheme(u.Scheme, host) {
+		return "", false
+	}
+
+	origin := u.Scheme + "://" + host
+	if frontendURL, ok := configuredFrontendOrigin(); ok && origin == frontendURL {
 		return frontendURL, true
 	}
 
@@ -200,7 +196,7 @@ func allowedFrontendOrigin(raw string) (string, bool) {
 		return "", false
 	}
 	if matched {
-		return "https://" + host, true
+		return origin, true
 	}
 
 	return "", false
@@ -209,13 +205,50 @@ func allowedFrontendOrigin(raw string) (string, bool) {
 func configuredFrontendOrigin() (string, bool) {
 	frontendURL := getFrontendURL()
 	u, err := url.Parse(frontendURL)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 		return "", false
 	}
 
-	return "https://" + strings.ToLower(u.Host), true
+	host := strings.ToLower(u.Host)
+	if !allowedFrontendScheme(u.Scheme, host) {
+		return "", false
+	}
+
+	return u.Scheme + "://" + host, true
+}
+
+func allowedFrontendScheme(scheme, host string) bool {
+	if scheme == "https" {
+		return true
+	}
+	return scheme == "http" && isLocalhost(host)
+}
+
+func isLocalhost(host string) bool {
+	hostname := host
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		hostname = parsedHost
+	}
+
+	switch strings.Trim(hostname, "[]") {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 func authCookieSecure() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv(envAuthCookieSecure)), "false")
+}
+
+func authCookieSameSite() http.SameSite {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(envAuthCookieSameSite))) {
+	case "none":
+		return http.SameSiteNoneMode
+	case "strict":
+		return http.SameSiteStrictMode
+	default:
+		return http.SameSiteLaxMode
+	}
 }
