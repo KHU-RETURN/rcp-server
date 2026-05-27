@@ -30,6 +30,10 @@ type Instance struct {
 	ImageID string `json:"image_id,omitempty"`
 	// FlavorID holds the value of the "flavor_id" field.
 	FlavorID string `json:"flavor_id,omitempty"`
+	// KeyName holds the value of the "key_name" field.
+	KeyName string `json:"key_name,omitempty"`
+	// Note holds the value of the "note" field.
+	Note string `json:"note,omitempty"`
 	// ProviderCreatedAt holds the value of the "provider_created_at" field.
 	ProviderCreatedAt time.Time `json:"provider_created_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -82,7 +86,7 @@ func (*Instance) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case instance.FieldOpenstackID, instance.FieldName, instance.FieldStatus, instance.FieldImageID, instance.FieldFlavorID:
+		case instance.FieldOpenstackID, instance.FieldName, instance.FieldStatus, instance.FieldImageID, instance.FieldFlavorID, instance.FieldKeyName, instance.FieldNote:
 			values[i] = new(sql.NullString)
 		case instance.FieldProviderCreatedAt, instance.FieldCreatedAt, instance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -142,6 +146,18 @@ func (_m *Instance) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field flavor_id", values[i])
 			} else if value.Valid {
 				_m.FlavorID = value.String
+			}
+		case instance.FieldKeyName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field key_name", values[i])
+			} else if value.Valid {
+				_m.KeyName = value.String
+			}
+		case instance.FieldNote:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field note", values[i])
+			} else if value.Valid {
+				_m.Note = value.String
 			}
 		case instance.FieldProviderCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -235,6 +251,12 @@ func (_m *Instance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("flavor_id=")
 	builder.WriteString(_m.FlavorID)
+	builder.WriteString(", ")
+	builder.WriteString("key_name=")
+	builder.WriteString(_m.KeyName)
+	builder.WriteString(", ")
+	builder.WriteString("note=")
+	builder.WriteString(_m.Note)
 	builder.WriteString(", ")
 	builder.WriteString("provider_created_at=")
 	builder.WriteString(_m.ProviderCreatedAt.Format(time.ANSIC))

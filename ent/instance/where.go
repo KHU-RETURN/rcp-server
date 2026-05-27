@@ -81,6 +81,16 @@ func FlavorID(v string) predicate.Instance {
 	return predicate.Instance(sql.FieldEQ(FieldFlavorID, v))
 }
 
+// KeyName applies equality check predicate on the "key_name" field. It's identical to KeyNameEQ.
+func KeyName(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldKeyName, v))
+}
+
+// Note applies equality check predicate on the "note" field. It's identical to NoteEQ.
+func Note(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldNote, v))
+}
+
 // ProviderCreatedAt applies equality check predicate on the "provider_created_at" field. It's identical to ProviderCreatedAtEQ.
 func ProviderCreatedAt(v time.Time) predicate.Instance {
 	return predicate.Instance(sql.FieldEQ(FieldProviderCreatedAt, v))
@@ -419,6 +429,136 @@ func FlavorIDEqualFold(v string) predicate.Instance {
 // FlavorIDContainsFold applies the ContainsFold predicate on the "flavor_id" field.
 func FlavorIDContainsFold(v string) predicate.Instance {
 	return predicate.Instance(sql.FieldContainsFold(FieldFlavorID, v))
+}
+
+// KeyNameEQ applies the EQ predicate on the "key_name" field.
+func KeyNameEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldKeyName, v))
+}
+
+// KeyNameNEQ applies the NEQ predicate on the "key_name" field.
+func KeyNameNEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldNEQ(FieldKeyName, v))
+}
+
+// KeyNameIn applies the In predicate on the "key_name" field.
+func KeyNameIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldIn(FieldKeyName, vs...))
+}
+
+// KeyNameNotIn applies the NotIn predicate on the "key_name" field.
+func KeyNameNotIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldNotIn(FieldKeyName, vs...))
+}
+
+// KeyNameGT applies the GT predicate on the "key_name" field.
+func KeyNameGT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGT(FieldKeyName, v))
+}
+
+// KeyNameGTE applies the GTE predicate on the "key_name" field.
+func KeyNameGTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGTE(FieldKeyName, v))
+}
+
+// KeyNameLT applies the LT predicate on the "key_name" field.
+func KeyNameLT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLT(FieldKeyName, v))
+}
+
+// KeyNameLTE applies the LTE predicate on the "key_name" field.
+func KeyNameLTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLTE(FieldKeyName, v))
+}
+
+// KeyNameContains applies the Contains predicate on the "key_name" field.
+func KeyNameContains(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContains(FieldKeyName, v))
+}
+
+// KeyNameHasPrefix applies the HasPrefix predicate on the "key_name" field.
+func KeyNameHasPrefix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasPrefix(FieldKeyName, v))
+}
+
+// KeyNameHasSuffix applies the HasSuffix predicate on the "key_name" field.
+func KeyNameHasSuffix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasSuffix(FieldKeyName, v))
+}
+
+// KeyNameEqualFold applies the EqualFold predicate on the "key_name" field.
+func KeyNameEqualFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEqualFold(FieldKeyName, v))
+}
+
+// KeyNameContainsFold applies the ContainsFold predicate on the "key_name" field.
+func KeyNameContainsFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContainsFold(FieldKeyName, v))
+}
+
+// NoteEQ applies the EQ predicate on the "note" field.
+func NoteEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldNote, v))
+}
+
+// NoteNEQ applies the NEQ predicate on the "note" field.
+func NoteNEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldNEQ(FieldNote, v))
+}
+
+// NoteIn applies the In predicate on the "note" field.
+func NoteIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldIn(FieldNote, vs...))
+}
+
+// NoteNotIn applies the NotIn predicate on the "note" field.
+func NoteNotIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldNotIn(FieldNote, vs...))
+}
+
+// NoteGT applies the GT predicate on the "note" field.
+func NoteGT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGT(FieldNote, v))
+}
+
+// NoteGTE applies the GTE predicate on the "note" field.
+func NoteGTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGTE(FieldNote, v))
+}
+
+// NoteLT applies the LT predicate on the "note" field.
+func NoteLT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLT(FieldNote, v))
+}
+
+// NoteLTE applies the LTE predicate on the "note" field.
+func NoteLTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLTE(FieldNote, v))
+}
+
+// NoteContains applies the Contains predicate on the "note" field.
+func NoteContains(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContains(FieldNote, v))
+}
+
+// NoteHasPrefix applies the HasPrefix predicate on the "note" field.
+func NoteHasPrefix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasPrefix(FieldNote, v))
+}
+
+// NoteHasSuffix applies the HasSuffix predicate on the "note" field.
+func NoteHasSuffix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasSuffix(FieldNote, v))
+}
+
+// NoteEqualFold applies the EqualFold predicate on the "note" field.
+func NoteEqualFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEqualFold(FieldNote, v))
+}
+
+// NoteContainsFold applies the ContainsFold predicate on the "note" field.
+func NoteContainsFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContainsFold(FieldNote, v))
 }
 
 // ProviderCreatedAtEQ applies the EQ predicate on the "provider_created_at" field.

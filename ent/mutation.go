@@ -606,6 +606,8 @@ type InstanceMutation struct {
 	status              *string
 	image_id            *string
 	flavor_id           *string
+	key_name            *string
+	note                *string
 	provider_created_at *time.Time
 	created_at          *time.Time
 	updated_at          *time.Time
@@ -903,6 +905,78 @@ func (m *InstanceMutation) ResetFlavorID() {
 	m.flavor_id = nil
 }
 
+// SetKeyName sets the "key_name" field.
+func (m *InstanceMutation) SetKeyName(s string) {
+	m.key_name = &s
+}
+
+// KeyName returns the value of the "key_name" field in the mutation.
+func (m *InstanceMutation) KeyName() (r string, exists bool) {
+	v := m.key_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKeyName returns the old "key_name" field's value of the Instance entity.
+// If the Instance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InstanceMutation) OldKeyName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKeyName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKeyName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKeyName: %w", err)
+	}
+	return oldValue.KeyName, nil
+}
+
+// ResetKeyName resets all changes to the "key_name" field.
+func (m *InstanceMutation) ResetKeyName() {
+	m.key_name = nil
+}
+
+// SetNote sets the "note" field.
+func (m *InstanceMutation) SetNote(s string) {
+	m.note = &s
+}
+
+// Note returns the value of the "note" field in the mutation.
+func (m *InstanceMutation) Note() (r string, exists bool) {
+	v := m.note
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNote returns the old "note" field's value of the Instance entity.
+// If the Instance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InstanceMutation) OldNote(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNote is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNote requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNote: %w", err)
+	}
+	return oldValue.Note, nil
+}
+
+// ResetNote resets all changes to the "note" field.
+func (m *InstanceMutation) ResetNote() {
+	m.note = nil
+}
+
 // SetProviderCreatedAt sets the "provider_created_at" field.
 func (m *InstanceMutation) SetProviderCreatedAt(t time.Time) {
 	m.provider_created_at = &t
@@ -1123,7 +1197,7 @@ func (m *InstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *InstanceMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 10)
 	if m.openstack_id != nil {
 		fields = append(fields, instance.FieldOpenstackID)
 	}
@@ -1138,6 +1212,12 @@ func (m *InstanceMutation) Fields() []string {
 	}
 	if m.flavor_id != nil {
 		fields = append(fields, instance.FieldFlavorID)
+	}
+	if m.key_name != nil {
+		fields = append(fields, instance.FieldKeyName)
+	}
+	if m.note != nil {
+		fields = append(fields, instance.FieldNote)
 	}
 	if m.provider_created_at != nil {
 		fields = append(fields, instance.FieldProviderCreatedAt)
@@ -1166,6 +1246,10 @@ func (m *InstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageID()
 	case instance.FieldFlavorID:
 		return m.FlavorID()
+	case instance.FieldKeyName:
+		return m.KeyName()
+	case instance.FieldNote:
+		return m.Note()
 	case instance.FieldProviderCreatedAt:
 		return m.ProviderCreatedAt()
 	case instance.FieldCreatedAt:
@@ -1191,6 +1275,10 @@ func (m *InstanceMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageID(ctx)
 	case instance.FieldFlavorID:
 		return m.OldFlavorID(ctx)
+	case instance.FieldKeyName:
+		return m.OldKeyName(ctx)
+	case instance.FieldNote:
+		return m.OldNote(ctx)
 	case instance.FieldProviderCreatedAt:
 		return m.OldProviderCreatedAt(ctx)
 	case instance.FieldCreatedAt:
@@ -1240,6 +1328,20 @@ func (m *InstanceMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFlavorID(v)
+		return nil
+	case instance.FieldKeyName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKeyName(v)
+		return nil
+	case instance.FieldNote:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNote(v)
 		return nil
 	case instance.FieldProviderCreatedAt:
 		v, ok := value.(time.Time)
@@ -1325,6 +1427,12 @@ func (m *InstanceMutation) ResetField(name string) error {
 		return nil
 	case instance.FieldFlavorID:
 		m.ResetFlavorID()
+		return nil
+	case instance.FieldKeyName:
+		m.ResetKeyName()
+		return nil
+	case instance.FieldNote:
+		m.ResetNote()
 		return nil
 	case instance.FieldProviderCreatedAt:
 		m.ResetProviderCreatedAt()

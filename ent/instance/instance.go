@@ -25,6 +25,10 @@ const (
 	FieldImageID = "image_id"
 	// FieldFlavorID holds the string denoting the flavor_id field in the database.
 	FieldFlavorID = "flavor_id"
+	// FieldKeyName holds the string denoting the key_name field in the database.
+	FieldKeyName = "key_name"
+	// FieldNote holds the string denoting the note field in the database.
+	FieldNote = "note"
 	// FieldProviderCreatedAt holds the string denoting the provider_created_at field in the database.
 	FieldProviderCreatedAt = "provider_created_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -61,6 +65,8 @@ var Columns = []string{
 	FieldStatus,
 	FieldImageID,
 	FieldFlavorID,
+	FieldKeyName,
+	FieldNote,
 	FieldProviderCreatedAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -89,6 +95,10 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultKeyName holds the default value on creation for the "key_name" field.
+	DefaultKeyName string
+	// DefaultNote holds the default value on creation for the "note" field.
+	DefaultNote string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -130,6 +140,16 @@ func ByImageID(opts ...sql.OrderTermOption) OrderOption {
 // ByFlavorID orders the results by the flavor_id field.
 func ByFlavorID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFlavorID, opts...).ToFunc()
+}
+
+// ByKeyName orders the results by the key_name field.
+func ByKeyName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKeyName, opts...).ToFunc()
+}
+
+// ByNote orders the results by the note field.
+func ByNote(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNote, opts...).ToFunc()
 }
 
 // ByProviderCreatedAt orders the results by the provider_created_at field.

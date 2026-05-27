@@ -35,12 +35,20 @@ func init() {
 	container.DefaultID = containerDescID.Default.(func() uuid.UUID)
 	instanceFields := schema.Instance{}.Fields()
 	_ = instanceFields
+	// instanceDescKeyName is the schema descriptor for key_name field.
+	instanceDescKeyName := instanceFields[6].Descriptor()
+	// instance.DefaultKeyName holds the default value on creation for the key_name field.
+	instance.DefaultKeyName = instanceDescKeyName.Default.(string)
+	// instanceDescNote is the schema descriptor for note field.
+	instanceDescNote := instanceFields[7].Descriptor()
+	// instance.DefaultNote holds the default value on creation for the note field.
+	instance.DefaultNote = instanceDescNote.Default.(string)
 	// instanceDescCreatedAt is the schema descriptor for created_at field.
-	instanceDescCreatedAt := instanceFields[7].Descriptor()
+	instanceDescCreatedAt := instanceFields[9].Descriptor()
 	// instance.DefaultCreatedAt holds the default value on creation for the created_at field.
 	instance.DefaultCreatedAt = instanceDescCreatedAt.Default.(func() time.Time)
 	// instanceDescUpdatedAt is the schema descriptor for updated_at field.
-	instanceDescUpdatedAt := instanceFields[8].Descriptor()
+	instanceDescUpdatedAt := instanceFields[10].Descriptor()
 	// instance.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	instance.DefaultUpdatedAt = instanceDescUpdatedAt.Default.(func() time.Time)
 	// instance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
