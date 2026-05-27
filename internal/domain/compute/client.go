@@ -106,6 +106,7 @@ func (c *Client) FetchInstances() ([]Server, error) {
 			Name:       s.Name,
 			Status:     s.Status,
 			Addresses:  s.Addresses,
+			KeyName:    s.KeyName,
 			AccessIPv4: s.AccessIPv4,
 			Created:    s.Created,
 		}

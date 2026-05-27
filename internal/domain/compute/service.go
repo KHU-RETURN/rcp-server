@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 
@@ -265,14 +266,16 @@ func (s *Service) UpdateInstance(ctx context.Context, ownerID uuid.UUID, id stri
 		req.Name = inst.Name
 	}
 
-	if req.Name != inst.Name {
-		if _, err := s.client.UpdateServerName(id, req.Name); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
-		}
-	}
-
 	if err := s.repo.UpdateInstanceMetadata(ctx, ownerID, id, req); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+
+	if req.Name != inst.Name {
+		if _, err := s.client.UpdateServerName(id, req.Name); err != nil {
+			log.Printf("CRITICAL: Failed to update OpenStack name for %s: %v", id, err)
+
+			return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+		}
 	}
 
 	return s.GetInstanceDetail(ctx, ownerID, id)

@@ -94,7 +94,7 @@ func (h *Handler) UpdateInstance(c *gin.Context) {
 
 	var req UpdateInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid request body"})
 		return
 	}
 
