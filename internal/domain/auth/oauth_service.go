@@ -106,7 +106,7 @@ func (s *Service) generateState(n int) string {
 
 func (s *Service) generateOAuthState(redirectOrigin string) string {
 	state := oauthState{
-		Nonce:          s.generateState(16),
+		Nonce:          s.generateState(oauthStateByteLen),
 		RedirectOrigin: redirectOrigin,
 	}
 	b, err := json.Marshal(state)
