@@ -24,6 +24,7 @@ const (
 
 	envFrontendURL                  = "FRONTEND_URL"
 	envAllowedFrontendOriginPattern = "RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN"
+	envAuthCookieSameSite           = "RCP_AUTH_COOKIE_SAMESITE"
 	envAuthCookieSecure             = "RCP_AUTH_COOKIE_SECURE"
 
 	cookieAccessToken  = "access_token"
@@ -82,12 +83,11 @@ func (h *Handler) Callback(c *gin.Context) {
 	frontendURL := frontendURLFromState(c.Query("state"))
 	user, err := h.Svc.ProcessGoogleCallback(c.Request.Context(), code)
 	if err != nil {
-		c.SetSameSite(http.SameSiteLaxMode)
 		c.Redirect(http.StatusTemporaryRedirect, frontendURL+pathLoginError)
 		return
 	}
 
-	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetSameSite(authCookieSameSite())
 
 	c.SetCookie(
 		cookieAccessToken,
@@ -240,4 +240,15 @@ func isLocalhost(host string) bool {
 
 func authCookieSecure() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv(envAuthCookieSecure)), "false")
+}
+
+func authCookieSameSite() http.SameSite {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(envAuthCookieSameSite))) {
+	case "none":
+		return http.SameSiteNoneMode
+	case "strict":
+		return http.SameSiteStrictMode
+	default:
+		return http.SameSiteLaxMode
+	}
 }

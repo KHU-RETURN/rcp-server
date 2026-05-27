@@ -211,3 +211,41 @@ func TestCallbackFailureRedirectsToStoredFrontendOrigin(t *testing.T) {
 		t.Fatalf("expected redirect %q, got %q", wantLocation, got)
 	}
 }
+
+func TestAuthCookieSameSite(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want http.SameSite
+	}{
+		{
+			name: "defaults to lax",
+			want: http.SameSiteLaxMode,
+		},
+		{
+			name: "allows none",
+			env:  "none",
+			want: http.SameSiteNoneMode,
+		},
+		{
+			name: "allows strict",
+			env:  "strict",
+			want: http.SameSiteStrictMode,
+		},
+		{
+			name: "falls back to lax for unknown value",
+			env:  "invalid",
+			want: http.SameSiteLaxMode,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(envAuthCookieSameSite, tt.env)
+
+			if got := authCookieSameSite(); got != tt.want {
+				t.Fatalf("expected SameSite %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
