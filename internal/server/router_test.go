@@ -89,7 +89,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 
 func TestRouterCORSAllowsFrontendOrigin(t *testing.T) {
 	setGinMode(t, gin.TestMode)
-	t.Setenv(envAllowedOrigins, "https://khu-return.com")
+	t.Setenv(envAllowedOrigins, "https://frontend.example.com")
 
 	router := NewRouter(&App{
 		Access:  &access.Handler{},
@@ -99,7 +99,7 @@ func TestRouterCORSAllowsFrontendOrigin(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
-	req.Header.Set("Origin", "https://khu-return.com")
+	req.Header.Set("Origin", "https://frontend.example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 	w := httptest.NewRecorder()
 
@@ -108,7 +108,7 @@ func TestRouterCORSAllowsFrontendOrigin(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected status 204, got %d", w.Code)
 	}
-	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://khu-return.com" {
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://frontend.example.com" {
 		t.Fatalf("expected allowed origin, got %q", got)
 	}
 	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
@@ -127,7 +127,7 @@ func TestRouterCORSRejectsUnconfiguredOrigin(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
-	req.Header.Set("Origin", "https://khu-return.com")
+	req.Header.Set("Origin", "https://frontend.example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 	w := httptest.NewRecorder()
 
