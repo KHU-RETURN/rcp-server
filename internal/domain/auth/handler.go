@@ -2,7 +2,9 @@ package auth
 
 import (
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -17,12 +19,15 @@ const (
 	pathLoginError    = "/login?error=auth_failed"
 	pathAuthCallback  = "/auth/callback"
 
-	envFrontendURL      = "FRONTEND_URL"
-	envAuthCookieSecure = "RCP_AUTH_COOKIE_SECURE"
+	envFrontendURL                  = "FRONTEND_URL"
+	envAllowedFrontendOriginPattern = "RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN"
+	envAuthCookieSecure             = "RCP_AUTH_COOKIE_SECURE"
 
 	cookieAccessToken  = "access_token"
 	cookieRefreshToken = "refresh_token"
+	cookieFrontendURL  = "frontend_url"
 
+	cookiePathRoot     = "/"
 	defaultFrontendURL = "http://localhost:4173"
 )
 
@@ -50,6 +55,25 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 
 // Login: GET /api/v1/auth/oauth/google
 func (h *Handler) Login(c *gin.Context) {
+	if rawRedirectOrigin := c.Query("redirect_origin"); rawRedirectOrigin != "" {
+		redirectOrigin, ok := allowedFrontendOrigin(rawRedirectOrigin)
+		if !ok {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid redirect_origin"})
+			return
+		}
+
+		c.SetSameSite(http.SameSiteLaxMode)
+		c.SetCookie(
+			cookieFrontendURL,
+			redirectOrigin,
+			60*10, // 10 minutes
+			cookiePathRoot,
+			"",
+			authCookieSecure(),
+			true, // HttpOnly
+		)
+	}
+
 	url := h.Svc.GetGoogleLoginURL()
 	// 구글 승인 서버로 리다이렉트
 	c.Redirect(http.StatusTemporaryRedirect, url)
@@ -63,13 +87,17 @@ func (h *Handler) Callback(c *gin.Context) {
 		return
 	}
 
+	frontendURL := frontendURLFromRequest(c)
 	user, err := h.Svc.ProcessGoogleCallback(c.Request.Context(), code)
 	if err != nil {
-		c.Redirect(http.StatusTemporaryRedirect, getFrontendURL()+pathLoginError)
+		c.SetSameSite(http.SameSiteLaxMode)
+		clearFrontendURLCookie(c)
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+pathLoginError)
 		return
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
+	clearFrontendURLCookie(c)
 
 	c.SetCookie(
 		cookieAccessToken,
@@ -91,7 +119,7 @@ func (h *Handler) Callback(c *gin.Context) {
 		true, // HttpOnly
 	)
 
-	c.Redirect(http.StatusFound, getFrontendURL()+pathAuthCallback)
+	c.Redirect(http.StatusFound, frontendURL+pathAuthCallback)
 }
 
 // GET /api/v1/auth/me
@@ -123,6 +151,69 @@ func getFrontendURL() string {
 		return defaultFrontendURL
 	}
 	return strings.TrimSuffix(url, "/")
+}
+
+func frontendURLFromRequest(c *gin.Context) string {
+	raw, err := c.Cookie(cookieFrontendURL)
+	if err != nil {
+		return getFrontendURL()
+	}
+
+	frontendURL, ok := allowedFrontendOrigin(raw)
+	if !ok {
+		return getFrontendURL()
+	}
+
+	return frontendURL
+}
+
+func clearFrontendURLCookie(c *gin.Context) {
+	c.SetCookie(
+		cookieFrontendURL,
+		"",
+		-1,
+		cookiePathRoot,
+		"",
+		authCookieSecure(),
+		true,
+	)
+}
+
+func allowedFrontendOrigin(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return "", false
+	}
+
+	host := strings.ToLower(u.Host)
+	if frontendURL, ok := configuredFrontendOrigin(); ok && host == strings.TrimPrefix(frontendURL, "https://") {
+		return frontendURL, true
+	}
+
+	pattern := strings.TrimSpace(os.Getenv(envAllowedFrontendOriginPattern))
+	if pattern == "" {
+		return "", false
+	}
+
+	matched, err := regexp.MatchString(pattern, host)
+	if err != nil {
+		return "", false
+	}
+	if matched {
+		return "https://" + host, true
+	}
+
+	return "", false
+}
+
+func configuredFrontendOrigin() (string, bool) {
+	frontendURL := getFrontendURL()
+	u, err := url.Parse(frontendURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return "", false
+	}
+
+	return "https://" + strings.ToLower(u.Host), true
 }
 
 func authCookieSecure() bool {
