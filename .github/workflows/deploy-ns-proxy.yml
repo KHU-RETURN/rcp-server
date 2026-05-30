@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
     paths:
       - 'cmd/ns-proxy/**'
+      - 'internal/utils/**'
       - 'deploy/systemd/ns-proxy.service'
       - '.github/workflows/deploy-ns-proxy.yml'
   workflow_dispatch:
