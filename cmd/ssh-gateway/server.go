@@ -231,12 +231,11 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	}
 	defer func() { _ = agentCloser.Close() }()
 
-	// Inner SSH handshake. The login user defaults to "root"; OpenStack cloud-
-	// init images vary (ubuntu/centos/...) — Phase 1 PoC uses "root" and the
-	// operator must ensure the keypair injects to root@.
+	// Inner SSH handshake. VM images vary by distro, so operators can override
+	// the login user while the legacy root default remains unchanged.
 	innerCtx, innerCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer innerCancel()
-	inner, err := dialInnerSSH(innerCtx, tcp, net.JoinHostPort(ip, "22"), "root", ag, s.hostKeyCB)
+	inner, err := dialInnerSSH(innerCtx, tcp, net.JoinHostPort(ip, "22"), s.cfg.VMUser, ag, s.hostKeyCB)
 	if err != nil {
 		_, _ = fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
 		return

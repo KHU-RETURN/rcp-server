@@ -18,9 +18,16 @@ import (
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	gccompute "github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+	"github.com/joho/godotenv"
 )
 
+var loadDotenv = godotenv.Load
+
 func main() {
+	if err := loadLocalEnv(); err != nil {
+		fatal(".env load failed: %v", err)
+	}
+
 	cfg, err := LoadConfig(os.Getenv)
 	if err != nil {
 		fatal("config load failed: %v", err)
@@ -74,6 +81,7 @@ func main() {
 		"nonce_ttl", cfg.NonceTTL,
 		"max_pending_sessions", cfg.MaxPendingSessions,
 		"fixed_network", cfg.FixedNetworkName,
+		"vm_user", cfg.VMUser,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -130,6 +138,13 @@ func newLogger(level string) *slog.Logger {
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "ssh-gateway fatal: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+func loadLocalEnv() error {
+	if err := loadDotenv(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // gopherResolver implements vmAddressResolver against the live OpenStack API.

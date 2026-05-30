@@ -20,6 +20,7 @@ type Config struct {
 	NonceTTL           time.Duration // pending-session lifetime
 	MaxPendingSessions int           // pending OAuth sessions cap
 	FixedNetworkName   string        // optional OpenStack network name for fixed IP selection
+	VMUser             string        // inner SSH login user
 	DBDriver           string        // ent DB driver
 	DBDSN              string        // ent DB DSN (opened without migration)
 	DBPath             string        // legacy sqlite path used when DB_DSN is unset
@@ -96,6 +97,10 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		return nil, fmt.Errorf("RCP_SSH_GW_MAX_PENDING_SESSIONS: must be > 0, got %d", maxPending)
 	}
 	fixedNetwork := strings.TrimSpace(getenv("RCP_SSH_GW_FIXED_NETWORK"))
+	vmUser := strings.TrimSpace(getenv("RCP_SSH_GW_VM_USER"))
+	if vmUser == "" {
+		vmUser = "root"
+	}
 
 	logLevel, err := utils.EnvLogLevel(getenv, "RCP_SSH_GW_LOG_LEVEL", "info")
 	if err != nil {
@@ -113,6 +118,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		NonceTTL:           ttl,
 		MaxPendingSessions: maxPending,
 		FixedNetworkName:   fixedNetwork,
+		VMUser:             vmUser,
 		DBDriver:           dbDriver,
 		DBDSN:              dbDSN,
 		DBPath:             dbPath,

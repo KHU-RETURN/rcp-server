@@ -1,6 +1,35 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"os"
+	"testing"
+)
+
+func TestLoadLocalEnvIgnoresMissingEnvFile(t *testing.T) {
+	old := loadDotenv
+	loadDotenv = func(filenames ...string) error {
+		return os.ErrNotExist
+	}
+	defer func() { loadDotenv = old }()
+
+	if err := loadLocalEnv(); err != nil {
+		t.Fatalf("expected missing .env to be ignored, got %v", err)
+	}
+}
+
+func TestLoadLocalEnvReturnsOtherErrors(t *testing.T) {
+	want := errors.New("permission denied")
+	old := loadDotenv
+	loadDotenv = func(filenames ...string) error {
+		return want
+	}
+	defer func() { loadDotenv = old }()
+
+	if err := loadLocalEnv(); !errors.Is(err, want) {
+		t.Fatalf("got %v want %v", err, want)
+	}
+}
 
 func TestFixedIPv4FromAddressesIgnoresFloatingIPs(t *testing.T) {
 	got, err := fixedIPv4FromAddresses(map[string]any{

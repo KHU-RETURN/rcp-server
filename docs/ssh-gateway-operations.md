@@ -29,6 +29,7 @@ If the notify envs are absent, normal web auth still works but SSH OAuth callbac
 - `RCP_SSH_GW_DB_PATH` for the API-owned SQLite database. Use `DB_DSN` only for a manual gateway-specific database override.
 - OpenStack auth envs used by the existing provider client
 - `RCP_SSH_GW_FIXED_NETWORK` when VMs can have fixed IPs on more than one OpenStack network
+- `RCP_SSH_GW_VM_USER` when VM images do not allow root SSH login
 
 The gateway opens Ent without running schema migration. Schema ownership stays with the API process, so the API must start and complete migration before the gateway is exposed.
 
