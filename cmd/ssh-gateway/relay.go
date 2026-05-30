@@ -17,6 +17,8 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+const copyDrainTimeout = time.Second
+
 // vmAddressResolver returns the dial-target IPv4 for an openstack_id. The PoC
 // implementation lives in main.go and uses gophercloud; tests can stub this.
 type vmAddressResolver interface {
@@ -85,22 +87,21 @@ func agentClientFromOuter(outer ssh.Conn) (agent.ExtendedAgent, io.Closer, error
 }
 
 // dialInnerSSH performs the inner SSH handshake to the VM using the user's
-// forwarded agent for publickey auth. Phase 1 uses InsecureIgnoreHostKey;
-// Phase 2 swaps in a TOFU-from-console-log callback.
-func dialInnerSSH(ctx context.Context, raw net.Conn, user string, ag agent.ExtendedAgent) (*ssh.Client, error) {
+// forwarded agent for publickey auth and the gateway-managed host key store.
+func dialInnerSSH(ctx context.Context, raw net.Conn, addr, user string, ag agent.ExtendedAgent, hostKeyCallback ssh.HostKeyCallback) (*ssh.Client, error) {
 	cfg := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeysCallback(ag.Signers),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec // PoC; tenant net is the 1st guard
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         15 * time.Second,
 	}
 	if dl, ok := ctx.Deadline(); ok {
 		_ = raw.SetDeadline(dl)
 		defer func() { _ = raw.SetDeadline(time.Time{}) }()
 	}
-	c, chans, reqs, err := ssh.NewClientConn(raw, raw.RemoteAddr().String(), cfg)
+	c, chans, reqs, err := ssh.NewClientConn(raw, addr, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("inner ssh handshake: %w", err)
 	}
@@ -110,7 +111,7 @@ func dialInnerSSH(ctx context.Context, raw net.Conn, user string, ag agent.Exten
 // pipeSession shuttles bytes + window changes between the outer session
 // channel and the inner session. Closes innerSess and inner once the outer
 // session ends.
-func pipeSession(log *slog.Logger, outerChan ssh.Channel, outerReqs <-chan *ssh.Request, inner *ssh.Client, ptyReq pendingPty) error {
+func pipeSession(log *slog.Logger, outerChan ssh.Channel, outerReqs <-chan *ssh.Request, inner *ssh.Client, ptyReq pendingPty, closeOuterConn func()) error {
 	innerSess, err := inner.NewSession()
 	if err != nil {
 		return fmt.Errorf("inner session: %w", err)
@@ -140,8 +141,14 @@ func pipeSession(log *slog.Logger, outerChan ssh.Channel, outerReqs <-chan *ssh.
 	}
 
 	var wg sync.WaitGroup
+	outerInputDone := make(chan struct{})
 	wg.Add(3)
-	go func() { defer wg.Done(); _, _ = io.Copy(innerStdin, outerChan); _ = innerStdin.Close() }()
+	go func() {
+		defer wg.Done()
+		defer close(outerInputDone)
+		_, _ = io.Copy(innerStdin, outerChan)
+		_ = innerStdin.Close()
+	}()
 	go func() { defer wg.Done(); _, _ = io.Copy(outerChan, innerStdout) }()
 	go func() { defer wg.Done(); _, _ = io.Copy(outerChan.Stderr(), innerStderr) }()
 
@@ -166,13 +173,56 @@ func pipeSession(log *slog.Logger, outerChan ssh.Channel, outerReqs <-chan *ssh.
 		}
 	}()
 
-	exitErr := innerSess.Wait()
-	wg.Wait()
+	innerWait := make(chan error, 1)
+	go func() { innerWait <- innerSess.Wait() }()
+
+	exitErr := waitForInnerOrOuter(innerWait, outerInputDone, func() {
+		_ = innerSess.Close()
+		_ = inner.Close()
+	}, 5*time.Second)
+	_ = innerStdin.Close()
+	_ = outerChan.Close()
+	if closeOuterConn != nil {
+		closeOuterConn()
+	}
+	if !waitForCopyDone(&wg, copyDrainTimeout) {
+		log.Warn("session copy goroutines did not drain before timeout")
+	}
 	if exitErr != nil {
 		log.Debug("inner session exited", "err", exitErr)
 	}
-	_ = outerChan.Close()
 	return nil
+}
+
+func waitForInnerOrOuter(innerWait <-chan error, outerDone <-chan struct{}, closeInner func(), timeout time.Duration) error {
+	select {
+	case err := <-innerWait:
+		return err
+	case <-outerDone:
+		if closeInner != nil {
+			closeInner()
+		}
+		select {
+		case err := <-innerWait:
+			return err
+		case <-time.After(timeout):
+			return errors.New("inner session did not exit after outer disconnect")
+		}
+	}
+}
+
+func waitForCopyDone(wg *sync.WaitGroup, timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // pendingPty captures the outer client's pty-req so the gateway can replay it

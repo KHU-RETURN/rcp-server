@@ -6,10 +6,12 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 // LoadOrCreateHostKey returns an ssh.Signer for the gateway's host key. If
@@ -45,4 +47,18 @@ func LoadOrCreateHostKey(path string) (ssh.Signer, error) {
 		return nil, err
 	}
 	return signer, nil
+}
+
+func loadInnerHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
+	return knownhosts.New(path)
+}
+
+func reloadingInnerHostKeyCallback(path string) ssh.HostKeyCallback {
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		cb, err := loadInnerHostKeyCallback(path)
+		if err != nil {
+			return fmt.Errorf("inner host key trust unavailable at %s: %w", path, err)
+		}
+		return cb(hostname, remote, key)
+	}
 }

@@ -36,8 +36,8 @@ func NewNotifyClient(sockPath string, secret []byte) *NotifyClient {
 	}
 }
 
-func (c *NotifyClient) Notify(ctx context.Context, nonce, userEmail string) error {
-	body, err := json.Marshal(NotifyRequest{Nonce: nonce, UserEmail: userEmail})
+func (c *NotifyClient) Notify(ctx context.Context, nonce, code, userEmail string) error {
+	body, err := json.Marshal(NotifyRequest{Nonce: nonce, Code: code, UserEmail: userEmail})
 	if err != nil {
 		return err
 	}

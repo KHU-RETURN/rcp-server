@@ -189,8 +189,9 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | `GG_OAUTH_SECRET` | **필수** | Google OAuth Client Secret |
 | `GG_REDIRECT_URL` | **필수** | Google OAuth Redirect URL |
 | `DB_DRIVER` | optional (기본 `sqlite3`) | ent DB 드라이버 |
-| `DB_DSN` | optional (기본 `file:rcp.db?...`) | DB DSN |
-| `RCP_FRONTEND_BASE_URL` | **필수** | OAuth 콜백의 SSH 분기에서 redirect할 프런트엔드 origin (예: `https://rcp.return.dev`). 미설정 시 부팅 fail-fast |
+| `DB_DSN` | optional (기본 `file:/var/lib/rcp/rcp.db?...`) | DB DSN |
+| `FRONTEND_URL` / `RCP_FRONTEND_BASE_URL` | **필수(둘 중 하나)** | OAuth 콜백 redirect 프런트엔드 origin (예: `https://rcp.return.dev`). 둘 다 있으면 `FRONTEND_URL` 우선 |
+| `RCP_VM_KNOWN_HOSTS_PATH` / `RCP_SSH_GW_KNOWN_HOSTS_PATH` | optional | web console과 ssh-gateway가 inner VM host key를 검증할 known_hosts 경로 |
 | `RCP_SSH_GW_NOTIFY_SOCK` | optional | ssh-gateway notify Unix socket 경로. 미설정 시 SSH 분기 비활성 |
 | `RCP_SSH_GW_NOTIFY_SECRET` | optional | ssh-gateway와 공유하는 HMAC-SHA256 시크릿 |
 
@@ -199,7 +200,7 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | 변수 | 의무 | 설명 |
 |------|------|------|
 | `RCP_NS_PROXY_SOCK` | optional (기본 `/run/rcp/ns-proxy.sock`) | SOCKS5 Unix socket 경로 |
-| `RCP_NS_PROXY_ALLOW_CIDR` | optional | dial 허용 CIDR 리스트 (쉼표 구분). 미지정 시 모두 허용 |
+| `RCP_NS_PROXY_ALLOW_CIDR` | **필수** | dial 허용 CIDR 리스트 (쉼표 구분). 빈 값은 fail-closed로 부팅 거부 |
 | `RCP_NS_PROXY_MAX_CONNS` | optional (기본 `1024`) | 동시 연결 상한 |
 | `RCP_NS_PROXY_DIAL_TIMEOUT` | optional (기본 `5s`) | 백엔드 dial 타임아웃 |
 | `RCP_NS_PROXY_SHUTDOWN_GRACE` | optional (기본 `30s`) | graceful shutdown 대기 |
@@ -209,12 +210,23 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 
 | 변수 | 의무 | 설명 |
 |------|------|------|
+| `OS_AUTH_URL` | **필수** | OpenStack Identity 엔드포인트 |
+| `OS_USERNAME` | **필수** | OpenStack 사용자 이름 |
+| `OS_PASSWORD` | **필수** | OpenStack 비밀번호 |
+| `OS_PROJECT_NAME` | **필수** | OpenStack 프로젝트 이름 |
+| `OS_USER_DOMAIN_NAME` | **필수** | OpenStack 사용자 도메인 |
+| `CF_ACCESS_CLIENT_ID` | **필수** | Cloudflare Access Client ID (OpenStack 프록시용) |
+| `CF_ACCESS_CLIENT_SECRET` | **필수** | Cloudflare Access Client Secret |
 | `RCP_SSH_GW_LISTEN` | optional (기본 `127.0.0.1:2222`) | outer SSH 리스닝. 외부 직접 노출하려면 `:2222`로 override (cloudflared 사용 권장) |
 | `RCP_SSH_GW_HOST_KEY_PATH` | optional (기본 `/etc/rcp/ssh-gateway/host_ed25519`) | host ed25519 key 영속화 경로 (없으면 생성) |
+| `RCP_SSH_GW_KNOWN_HOSTS_PATH` | optional (기본 `/etc/rcp/ssh-gateway/known_hosts`) | inner VM host key 신뢰 저장소. VM 키가 없으면 fail closed |
 | `RCP_SSH_GW_NOTIFY_SOCK` | optional (기본 `/run/rcp/ssh-gateway-notify.sock`) | api ↔ gateway notify 소켓 |
 | `RCP_SSH_GW_NOTIFY_SECRET` | **필수** | api와 공유 HMAC 시크릿 |
 | `RCP_SSH_GW_AUTH_URL_BASE` | **필수** | 사용자 터미널에 출력할 프런트 origin (예: `https://rcp.return.dev`) |
-| `RCP_SSH_GW_DB_PATH` | **필수** | ent SQLite 경로 (read-only) |
+| `RCP_SSH_GW_DB_PATH` | **필수(DB_DSN 미사용 시)** | ent SQLite 경로. gateway는 migration 없이 read/query 용도로 open |
+| `DB_DRIVER` / `DB_DSN` | optional | 수동 설치에서 gateway 전용 DSN을 직접 지정할 때만 사용. 배포 워크플로는 공유 `DB_DSN` 대신 `RCP_SSH_GW_DB_PATH`를 전달 |
 | `RCP_SSH_GW_NONCE_TTL` | optional (기본 `5m`) | pending-session 만료 |
+| `RCP_SSH_GW_MAX_PENDING_SESSIONS` | optional (기본 `1024`) | pending OAuth 세션 전역 상한 |
+| `RCP_SSH_GW_FIXED_NETWORK` | optional | multi-network VM에서 fixed IPv4를 고를 OpenStack network 이름 |
 | `RCP_NS_PROXY_SOCK` | optional (기본 `/run/rcp/ns-proxy.sock`) | ns-proxy SOCKS5 소켓 |
 | `RCP_SSH_GW_LOG_LEVEL` | optional (기본 `info`) | |

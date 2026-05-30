@@ -27,15 +27,7 @@ func main() {
 	}
 	log := newLogger(cfg.LogLevel)
 
-	dbDriver := strings.TrimSpace(os.Getenv("DB_DRIVER"))
-	if dbDriver == "" {
-		dbDriver = "sqlite3"
-	}
-	dbDSN := strings.TrimSpace(os.Getenv("DB_DSN"))
-	if dbDSN == "" {
-		dbDSN = "file:" + cfg.DBPath + "?cache=shared&_pragma=foreign_keys(1)"
-	}
-	db, err := database.NewEntClient(database.Config{Driver: dbDriver, DSN: dbDSN})
+	db, err := database.OpenEntClient(database.Config{Driver: cfg.DBDriver, DSN: cfg.DBDSN})
 	if err != nil {
 		fatal("db open: %v", err)
 	}
@@ -53,12 +45,12 @@ func main() {
 	if err != nil {
 		fatal("openstack auth: %v", err)
 	}
-	resolver, err := newGopherResolver(provider)
+	resolver, err := newGopherResolver(provider, cfg.FixedNetworkName)
 	if err != nil {
 		fatal("openstack compute client: %v", err)
 	}
 
-	store := newSessionStore(cfg.NonceTTL)
+	store := newSessionStore(cfg.NonceTTL, cfg.MaxPendingSessions)
 	r := newRepo(db)
 
 	notifyLn, err := listenNotifySocket(cfg.NotifySock, log)
@@ -80,6 +72,8 @@ func main() {
 		"notify_sock", cfg.NotifySock,
 		"ns_proxy_sock", cfg.NsProxySock,
 		"nonce_ttl", cfg.NonceTTL,
+		"max_pending_sessions", cfg.MaxPendingSessions,
+		"fixed_network", cfg.FixedNetworkName,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -141,15 +135,16 @@ func fatal(format string, args ...any) {
 // gopherResolver implements vmAddressResolver against the live OpenStack API.
 // It picks the first IPv4 address found in any network of the server.
 type gopherResolver struct {
-	compute *gophercloud.ServiceClient
+	compute      *gophercloud.ServiceClient
+	fixedNetwork string
 }
 
-func newGopherResolver(p *gophercloud.ProviderClient) (*gopherResolver, error) {
+func newGopherResolver(p *gophercloud.ProviderClient, fixedNetwork string) (*gopherResolver, error) {
 	c, err := goopenstack.NewComputeV2(p, gophercloud.EndpointOpts{Region: "RegionOne"})
 	if err != nil {
 		return nil, err
 	}
-	return &gopherResolver{compute: c}, nil
+	return &gopherResolver{compute: c, fixedNetwork: strings.TrimSpace(fixedNetwork)}, nil
 }
 
 func (g *gopherResolver) ResolveFixedIPv4(_ context.Context, openstackID string) (string, error) {
@@ -157,23 +152,55 @@ func (g *gopherResolver) ResolveFixedIPv4(_ context.Context, openstackID string)
 	if err != nil {
 		return "", err
 	}
-	for _, raw := range srv.Addresses {
+	return fixedIPv4FromAddresses(srv.Addresses, g.fixedNetwork)
+}
+
+func fixedIPv4FromAddresses(addresses map[string]any, fixedNetwork string) (string, error) {
+	fixedNetwork = strings.TrimSpace(fixedNetwork)
+	var fixedIPs []string
+	for network, raw := range addresses {
+		if fixedNetwork != "" && network != fixedNetwork {
+			continue
+		}
 		entries, ok := raw.([]any)
 		if !ok {
 			continue
 		}
 		for _, e := range entries {
 			m, ok := e.(map[string]any)
-			if !ok {
+			if !ok || !isIPv4Version(m["version"]) {
 				continue
 			}
-			if v, _ := m["version"].(float64); v != 4 {
+			if ipType, _ := m["OS-EXT-IPS:type"].(string); strings.TrimSpace(ipType) != "fixed" {
 				continue
 			}
-			if addr, _ := m["addr"].(string); addr != "" {
-				return addr, nil
+			if addr, _ := m["addr"].(string); strings.TrimSpace(addr) != "" {
+				fixedIPs = append(fixedIPs, strings.TrimSpace(addr))
 			}
 		}
 	}
-	return "", errors.New("no IPv4 address on server")
+	switch len(fixedIPs) {
+	case 0:
+		if fixedNetwork != "" {
+			return "", fmt.Errorf("no fixed IPv4 address on network %q", fixedNetwork)
+		}
+		return "", errors.New("no fixed IPv4 address on server")
+	case 1:
+		return fixedIPs[0], nil
+	default:
+		return "", fmt.Errorf("multiple fixed IPv4 addresses found; set RCP_SSH_GW_FIXED_NETWORK")
+	}
+}
+
+func isIPv4Version(v any) bool {
+	switch n := v.(type) {
+	case float64:
+		return n == 4
+	case int:
+		return n == 4
+	case string:
+		return n == "4"
+	default:
+		return false
+	}
 }

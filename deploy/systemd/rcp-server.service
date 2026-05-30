@@ -16,6 +16,7 @@ StandardError=journal
 NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true
+ReadWritePaths=/var/lib/rcp
 
 [Install]
 WantedBy=multi-user.target

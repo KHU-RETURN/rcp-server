@@ -47,7 +47,7 @@ func TestNotifyClient_PostsHMACSignedBody(t *testing.T) {
 	defer func() { _ = srv.Close() }()
 
 	c := NewNotifyClient(sock, []byte("secret"))
-	if err := c.Notify(context.Background(), "the-nonce", "u@khu.ac.kr"); err != nil {
+	if err := c.Notify(context.Background(), "the-nonce", "123456", "u@khu.ac.kr"); err != nil {
 		t.Fatalf("notify: %v", err)
 	}
 	body := <-gotBody
@@ -58,7 +58,7 @@ func TestNotifyClient_PostsHMACSignedBody(t *testing.T) {
 	if sig != want {
 		t.Fatalf("sig: got %q want %q", sig, want)
 	}
-	if string(body) != `{"nonce":"the-nonce","user_email":"u@khu.ac.kr"}` {
+	if string(body) != `{"nonce":"the-nonce","code":"123456","user_email":"u@khu.ac.kr"}` {
 		t.Fatalf("body: %q", body)
 	}
 }
@@ -79,7 +79,7 @@ func TestNotifyClient_NonOKReturnsError(t *testing.T) {
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 	c := NewNotifyClient(sock, []byte("s"))
-	err = c.Notify(context.Background(), "n", "u")
+	err = c.Notify(context.Background(), "n", "123456", "u")
 	if err == nil {
 		t.Fatal("expected error")
 	}

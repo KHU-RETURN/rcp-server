@@ -5,21 +5,31 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 )
 
 var (
-	ErrNonceUnknown = errors.New("nonce unknown or already consumed")
-	ErrNonceExpired = errors.New("nonce expired")
+	ErrNonceUnknown   = errors.New("nonce unknown or already consumed")
+	ErrNonceExpired   = errors.New("nonce expired")
+	ErrCodeMismatch   = errors.New("code mismatch")
+	ErrTooManyPending = errors.New("too many pending sessions")
+)
+
+const (
+	maxCodeAttempts           = 5
+	defaultMaxPendingSessions = 1024
 )
 
 // pendingSession is a single waiter created when a user opens an SSH session
 // to the gateway. The keyboard-interactive callback parks on Wait until either
 // the API webhook calls sessionStore.Resolve or the TTL elapses.
 type pendingSession struct {
-	Nonce    string
-	resolved chan resolution
+	Nonce        string
+	Code         string
+	codeAttempts int
+	resolved     chan resolution
 }
 
 type resolution struct {
@@ -40,13 +50,17 @@ func (p *pendingSession) Wait(timeout time.Duration) (string, error) {
 }
 
 type sessionStore struct {
-	mu  sync.Mutex
-	m   map[string]*pendingSession
-	ttl time.Duration
+	mu         sync.Mutex
+	m          map[string]*pendingSession
+	ttl        time.Duration
+	maxPending int
 }
 
-func newSessionStore(ttl time.Duration) *sessionStore {
-	return &sessionStore{m: make(map[string]*pendingSession), ttl: ttl}
+func newSessionStore(ttl time.Duration, maxPending int) *sessionStore {
+	if maxPending <= 0 {
+		maxPending = defaultMaxPendingSessions
+	}
+	return &sessionStore{m: make(map[string]*pendingSession), ttl: ttl, maxPending: maxPending}
 }
 
 // New creates a fresh nonce-backed pendingSession. The caller must call Wait
@@ -57,15 +71,32 @@ func (s *sessionStore) New() (*pendingSession, error) {
 		return nil, fmt.Errorf("rand: %w", err)
 	}
 	nonce := base64.RawURLEncoding.EncodeToString(buf)
-	p := &pendingSession{
-		Nonce:    nonce,
-		resolved: make(chan resolution, 1),
+	code, err := randomCode()
+	if err != nil {
+		return nil, err
 	}
 	s.mu.Lock()
+	if len(s.m) >= s.maxPending {
+		s.mu.Unlock()
+		return nil, ErrTooManyPending
+	}
+	p := &pendingSession{
+		Nonce:    nonce,
+		Code:     code,
+		resolved: make(chan resolution, 1),
+	}
 	s.m[nonce] = p
 	s.mu.Unlock()
 	go s.expireAfter(p)
 	return p, nil
+}
+
+func randomCode() (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		return "", fmt.Errorf("rand code: %w", err)
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
 }
 
 func (s *sessionStore) expireAfter(p *pendingSession) {
@@ -83,12 +114,21 @@ func (s *sessionStore) expireAfter(p *pendingSession) {
 
 // Resolve delivers the authenticated email to the waiting session. One-time
 // use: the entry is removed before delivering.
-func (s *sessionStore) Resolve(nonce, email string) error {
+func (s *sessionStore) Resolve(nonce, code, email string) error {
 	s.mu.Lock()
 	p, ok := s.m[nonce]
 	if !ok {
 		s.mu.Unlock()
 		return ErrNonceUnknown
+	}
+	if p.Code != code {
+		p.codeAttempts++
+		if p.codeAttempts >= maxCodeAttempts {
+			delete(s.m, nonce)
+			close(p.resolved)
+		}
+		s.mu.Unlock()
+		return ErrCodeMismatch
 	}
 	delete(s.m, nonce)
 	s.mu.Unlock()

@@ -24,6 +24,7 @@ type Server struct {
 	dialer    *nsProxyDialer
 	resolver  vmAddressResolver
 	sshConfig *ssh.ServerConfig
+	hostKeyCB ssh.HostKeyCallback
 }
 
 func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, resolver vmAddressResolver) (*Server, error) {
@@ -35,6 +36,7 @@ func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, reso
 	if err != nil {
 		return nil, err
 	}
+	hostKeyCB := reloadingInnerHostKeyCallback(cfg.KnownHostsPath)
 	sc := &ssh.ServerConfig{
 		KeyboardInteractiveCallback: kbdInteractiveAuthenticator(cfg, store),
 	}
@@ -47,6 +49,7 @@ func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, reso
 		dialer:    dialer,
 		resolver:  resolver,
 		sshConfig: sc,
+		hostKeyCB: hostKeyCB,
 	}, nil
 }
 
@@ -233,14 +236,14 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	// operator must ensure the keypair injects to root@.
 	innerCtx, innerCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer innerCancel()
-	inner, err := dialInnerSSH(innerCtx, tcp, "root", ag)
+	inner, err := dialInnerSSH(innerCtx, tcp, net.JoinHostPort(ip, "22"), "root", ag, s.hostKeyCB)
 	if err != nil {
 		_, _ = fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
 		return
 	}
 	defer func() { _ = inner.Close() }()
 
-	if err := pipeSession(s.log, ch, reqs, inner, pty); err != nil {
+	if err := pipeSession(s.log, ch, reqs, inner, pty, func() { _ = sshConn.Close() }); err != nil {
 		s.log.Info("pipe ended", "err", err)
 		return
 	}

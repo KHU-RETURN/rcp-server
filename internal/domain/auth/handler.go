@@ -45,20 +45,22 @@ const sshStatePrefix = "ssh:"
 // sshCallbackHandler is satisfied by *access.SSHService. Duck-typed to avoid
 // a back-edge from access to auth.
 type sshCallbackHandler interface {
-	HandleSSHCallback(ctx context.Context, nonce, userEmail string) error
+	HandleSSHCallback(ctx context.Context, nonce, code, userEmail string) error
 }
 
 type Handler struct {
-	Svc             *Service
-	ssh             sshCallbackHandler // nil disables the ssh-gateway callback branch
-	frontendBaseURL string
+	Svc              *Service
+	ssh              sshCallbackHandler // nil disables the ssh-gateway callback branch
+	frontendBaseURL  string
+	verifyGoogleCode func(context.Context, string) (string, error)
 }
 
 func NewHandler(svc *Service, ssh sshCallbackHandler, frontendBaseURL string) *Handler {
 	return &Handler{
-		Svc:             svc,
-		ssh:             ssh,
-		frontendBaseURL: strings.TrimRight(strings.TrimSpace(frontendBaseURL), "/"),
+		Svc:              svc,
+		ssh:              ssh,
+		frontendBaseURL:  strings.TrimRight(strings.TrimSpace(frontendBaseURL), "/"),
+		verifyGoogleCode: svc.VerifyGoogleCode,
 	}
 }
 
@@ -77,11 +79,15 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	}
 }
 
-// Login redirects to Google. An ssh:<nonce> state is reserved for the
+// Login redirects to Google. An ssh:<nonce>:<code> state is reserved for the
 // ssh-gateway keyboard-interactive flow; normal web login uses structured state.
 func (h *Handler) Login(c *gin.Context) {
 	state := strings.TrimSpace(c.Query("state"))
 	if strings.HasPrefix(state, sshStatePrefix) {
+		if _, ok := parseSSHState(state); !ok {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid ssh state"})
+			return
+		}
 		c.Redirect(http.StatusTemporaryRedirect, h.Svc.BuildLoginURL(state))
 		return
 	}
@@ -100,29 +106,15 @@ func (h *Handler) Login(c *gin.Context) {
 }
 
 func (h *Handler) Callback(c *gin.Context) {
+	state := c.Query("state")
+	if strings.HasPrefix(state, sshStatePrefix) {
+		h.handleSSHCallback(c, state)
+		return
+	}
+
 	code := c.Query("code")
 	if code == "" {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: ErrOAuthCodeRequired.Error()})
-		return
-	}
-	state := c.Query("state")
-
-	if strings.HasPrefix(state, sshStatePrefix) {
-		if h.ssh == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "ssh handler not configured"})
-			return
-		}
-		nonce := strings.TrimPrefix(state, sshStatePrefix)
-		email, err := h.Svc.VerifyGoogleCode(c.Request.Context(), code)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			return
-		}
-		if err := h.ssh.HandleSSHCallback(c.Request.Context(), nonce, email); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-			return
-		}
-		c.Redirect(http.StatusFound, h.defaultFrontendURL()+"/ssh/complete")
 		return
 	}
 
@@ -137,6 +129,63 @@ func (h *Handler) Callback(c *gin.Context) {
 	setAuthCookie(c, cookieRefreshToken, user.RefreshToken, int(refreshTokenTTL.Seconds()))
 
 	c.Redirect(http.StatusFound, frontendURL+pathAuthCallback)
+}
+
+func (h *Handler) handleSSHCallback(c *gin.Context, state string) {
+	code := c.Query("code")
+	sshState, ok := parseSSHState(state)
+	if code == "" || !ok || h.ssh == nil {
+		c.Redirect(http.StatusFound, h.sshCompleteURL("failed"))
+		return
+	}
+
+	email, err := h.verifyGoogleCode(c.Request.Context(), code)
+	if err != nil {
+		c.Redirect(http.StatusFound, h.sshCompleteURL("failed"))
+		return
+	}
+	if err := h.ssh.HandleSSHCallback(c.Request.Context(), sshState.nonce, sshState.code, email); err != nil {
+		c.Redirect(http.StatusFound, h.sshCompleteURL("failed"))
+		return
+	}
+	c.Redirect(http.StatusFound, h.sshCompleteURL(""))
+}
+
+type parsedSSHState struct {
+	nonce string
+	code  string
+}
+
+func parseSSHState(raw string) (parsedSSHState, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), sshStatePrefix)
+	if !ok {
+		return parsedSSHState{}, false
+	}
+	nonce, code, ok := strings.Cut(rest, ":")
+	if !ok || nonce == "" || !validSSHCode(code) {
+		return parsedSSHState{}, false
+	}
+	return parsedSSHState{nonce: nonce, code: code}, true
+}
+
+func validSSHCode(code string) bool {
+	if len(code) != 6 {
+		return false
+	}
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *Handler) sshCompleteURL(status string) string {
+	u := h.defaultFrontendURL() + "/ssh/complete"
+	if status == "" {
+		return u
+	}
+	return u + "?status=" + url.QueryEscape(status)
 }
 
 // GET /api/v1/auth/me
@@ -228,10 +277,6 @@ func getFrontendURL() string {
 	return defaultFrontendURL
 }
 
-func frontendURLFromState(raw string) string {
-	return frontendURLFromStateWith(raw, getFrontendURL(), allowedFrontendOrigin)
-}
-
 func frontendURLFromStateWith(raw, fallback string, allowOrigin func(string) (string, bool)) string {
 	if raw == "" {
 		return fallback
@@ -293,10 +338,6 @@ func allowedFrontendOriginWith(raw, configured string) (string, bool) {
 	}
 
 	return "", false
-}
-
-func configuredFrontendOrigin() (string, bool) {
-	return configuredFrontendOriginFromURL(getFrontendURL())
 }
 
 func configuredFrontendOriginFromURL(frontendURL string) (string, bool) {

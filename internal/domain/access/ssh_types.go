@@ -9,5 +9,6 @@ const (
 
 type NotifyRequest struct {
 	Nonce     string `json:"nonce"`
+	Code      string `json:"code"`
 	UserEmail string `json:"user_email"`
 }

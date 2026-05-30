@@ -38,14 +38,7 @@ func main() {
 		log.Fatalf("OpenStack 인증 실패: %v", err)
 	}
 
-	dbDriver := os.Getenv("DB_DRIVER")
-	if dbDriver == "" {
-		dbDriver = "sqlite3"
-	}
-	dbDSN := os.Getenv("DB_DSN")
-	if dbDSN == "" {
-		dbDSN = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)"
-	}
+	dbDriver, dbDSN := resolveDBConfig(os.Getenv)
 	db, err := database.NewEntClient(database.Config{
 		Driver: dbDriver,
 		DSN:    dbDSN,
@@ -67,9 +60,9 @@ func main() {
 	notifySock := strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SOCK"))
 	notifySecret := []byte(strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SECRET")))
 
-	frontendBaseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("RCP_FRONTEND_BASE_URL")), "/")
+	frontendBaseURL := resolveFrontendBaseURL(os.Getenv)
 	if frontendBaseURL == "" {
-		log.Fatalf("RCP_FRONTEND_BASE_URL: required (e.g. https://rcp.return.dev)")
+		log.Fatalf("RCP_FRONTEND_BASE_URL or FRONTEND_URL: required (e.g. https://rcp.return.dev)")
 	}
 
 	myApp, err := server.NewApp(server.AppDeps{
@@ -96,4 +89,26 @@ func main() {
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("HTTP 서버 시작 실패: %v", err)
 	}
+}
+
+func resolveFrontendBaseURL(getenv func(string) string) string {
+	if url := strings.TrimSpace(getenv("FRONTEND_URL")); url != "" {
+		return strings.TrimRight(url, "/")
+	}
+	if url := strings.TrimSpace(getenv("RCP_FRONTEND_BASE_URL")); url != "" {
+		return strings.TrimRight(url, "/")
+	}
+	return ""
+}
+
+func resolveDBConfig(getenv func(string) string) (string, string) {
+	driver := strings.TrimSpace(getenv("DB_DRIVER"))
+	if driver == "" {
+		driver = "sqlite3"
+	}
+	dsn := strings.TrimSpace(getenv("DB_DSN"))
+	if dsn == "" {
+		dsn = "file:/var/lib/rcp/rcp.db?cache=shared&_pragma=foreign_keys(1)"
+	}
+	return driver, dsn
 }

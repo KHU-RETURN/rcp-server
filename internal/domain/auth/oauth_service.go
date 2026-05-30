@@ -32,7 +32,7 @@ type oauthState struct {
 
 // BuildLoginURL은 Google OAuth 승인 페이지 URL을 만듭니다. stateOverride가
 // 비어 있으면 CSRF-safe 랜덤 state를 생성하고, 비어 있지 않으면 호출자가
-// 넘긴 state(예: ssh-gateway가 발급한 ssh:<nonce>)를 그대로 사용합니다.
+// 넘긴 state(예: ssh-gateway가 검증할 ssh:<nonce>:<code>)를 그대로 사용합니다.
 func (s *Service) BuildLoginURL(stateOverride string) string {
 	state := stateOverride
 	if state == "" {

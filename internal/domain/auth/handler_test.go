@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 )
+
+type fakeSSHCallback struct {
+	gotNonce, gotCode, gotEmail string
+	err                         error
+}
+
+func (f *fakeSSHCallback) HandleSSHCallback(_ context.Context, nonce, code, userEmail string) error {
+	f.gotNonce = nonce
+	f.gotCode = code
+	f.gotEmail = userEmail
+	return f.err
+}
 
 func newAuthRouter(repo userRepository) (*gin.Engine, *TokenService) {
 	tokenSvc := NewTokenService("test-secret")
@@ -431,6 +444,174 @@ func TestLoginRejectsInvalidRedirectOrigin(t *testing.T) {
 	}
 }
 
+func TestParseSSHStateRequiresTerminalCode(t *testing.T) {
+	got, ok := parseSSHState("ssh:nonce-abc:123456")
+	if !ok {
+		t.Fatal("expected ssh state to parse")
+	}
+	if got.nonce != "nonce-abc" || got.code != "123456" {
+		t.Fatalf("got %+v", got)
+	}
+
+	for _, raw := range []string{
+		"ssh:nonce-abc",
+		"ssh::123456",
+		"ssh:nonce-abc:",
+		"ssh:nonce-abc:12x456",
+	} {
+		if _, ok := parseSSHState(raw); ok {
+			t.Fatalf("expected %q to be rejected", raw)
+		}
+	}
+}
+
+func TestLoginRejectsSSHStateWithoutTerminalCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{
+		Endpoint: oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
+		ClientID: "client-id",
+	}, NewTokenService("test-secret")), nil, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/login?state=ssh:nonce-only", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	handler.Login(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestLoginPreservesValidSSHState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{
+		Endpoint: oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
+		ClientID: "client-id",
+	}, NewTokenService("test-secret")), nil, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/login?state=ssh:nonce-abc:123456", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	handler.Login(c)
+
+	if w.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status %d, got %d", http.StatusTemporaryRedirect, w.Code)
+	}
+	location, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse location: %v", err)
+	}
+	if got := location.Query().Get("state"); got != "ssh:nonce-abc:123456" {
+		t.Fatalf("state got %q", got)
+	}
+}
+
+func TestCallbackSSHStateNotifiesGatewayAndRedirectsToFrontend(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sshCallback := &fakeSSHCallback{}
+	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")), sshCallback, "https://rcp.return.dev/")
+	handler.verifyGoogleCode = func(_ context.Context, code string) (string, error) {
+		if code != "oauth-code" {
+			t.Fatalf("unexpected oauth code %q", code)
+		}
+		return "user@khu.ac.kr", nil
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=oauth-code&state=ssh:nonce-abc:123456", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	handler.Callback(c)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d", http.StatusFound, w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "https://rcp.return.dev/ssh/complete" {
+		t.Fatalf("redirect got %q", got)
+	}
+	if sshCallback.gotNonce != "nonce-abc" || sshCallback.gotCode != "123456" || sshCallback.gotEmail != "user@khu.ac.kr" {
+		t.Fatalf("callback got nonce=%q code=%q email=%q", sshCallback.gotNonce, sshCallback.gotCode, sshCallback.gotEmail)
+	}
+}
+
+func TestCallbackSSHStateFailuresRedirectToFrontend(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name      string
+		rawURL    string
+		withSSH   bool
+		verifyErr error
+		notifyErr error
+	}{
+		{
+			name:    "missing oauth code",
+			rawURL:  "/callback?state=ssh:nonce-abc:123456",
+			withSSH: true,
+		},
+		{
+			name:    "invalid ssh state",
+			rawURL:  "/callback?code=oauth-code&state=ssh:nonce-abc",
+			withSSH: true,
+		},
+		{
+			name:    "ssh handler missing",
+			rawURL:  "/callback?code=oauth-code&state=ssh:nonce-abc:123456",
+			withSSH: false,
+		},
+		{
+			name:      "google verification fails",
+			rawURL:    "/callback?code=oauth-code&state=ssh:nonce-abc:123456",
+			withSSH:   true,
+			verifyErr: errors.New("google failed"),
+		},
+		{
+			name:      "gateway notification fails",
+			rawURL:    "/callback?code=oauth-code&state=ssh:nonce-abc:123456",
+			withSSH:   true,
+			notifyErr: errors.New("notify failed"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sshCallback sshCallbackHandler
+			if tt.withSSH {
+				sshCallback = &fakeSSHCallback{err: tt.notifyErr}
+			}
+			handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")), sshCallback, "https://rcp.return.dev/")
+			handler.verifyGoogleCode = func(_ context.Context, _ string) (string, error) {
+				if tt.verifyErr != nil {
+					return "", tt.verifyErr
+				}
+				return "user@khu.ac.kr", nil
+			}
+
+			req := httptest.NewRequest(http.MethodGet, tt.rawURL, nil)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = req
+
+			handler.Callback(c)
+
+			if w.Code != http.StatusFound {
+				t.Fatalf("expected status %d, got %d", http.StatusFound, w.Code)
+			}
+			if got := w.Header().Get("Location"); got != "https://rcp.return.dev/ssh/complete?status=failed" {
+				t.Fatalf("redirect got %q", got)
+			}
+		})
+	}
+}
+
 func TestCallbackFailureRedirectsToStoredFrontendOrigin(t *testing.T) {
 	t.Setenv(envAuthCookieSecure, "false")
 	t.Setenv(envAllowedFrontendOriginPattern, `^preview-\d+\.frontend\.example\.com$`)
@@ -459,6 +640,16 @@ func TestCallbackFailureRedirectsToStoredFrontendOrigin(t *testing.T) {
 	wantLocation := "https://preview-21.frontend.example.com" + pathLoginError
 	if got := w.Header().Get("Location"); got != wantLocation {
 		t.Fatalf("expected redirect %q, got %q", wantLocation, got)
+	}
+}
+
+func TestSSHCompleteURLIncludesStatus(t *testing.T) {
+	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")), nil, "https://rcp.return.dev/")
+
+	got := handler.sshCompleteURL("failed")
+	want := "https://rcp.return.dev/ssh/complete?status=failed"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
 

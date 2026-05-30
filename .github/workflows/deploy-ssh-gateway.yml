@@ -1,0 +1,140 @@
+name: SSH Gateway CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "cmd/ssh-gateway/**"
+      - "internal/domain/access/ssh_*.go"
+      - "internal/domain/access/ssh_*_test.go"
+      - "internal/domain/access/hostkey_test.go"
+      - "internal/utils/**"
+      - "internal/infrastructure/database/**"
+      - "internal/infrastructure/openstack/**"
+      - "deploy/systemd/ssh-gateway.service.example"
+      - ".github/workflows/deploy-ssh-gateway.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Run Tests
+        run: go test ./cmd/ssh-gateway ./internal/domain/access ./internal/infrastructure/database -v
+
+      - name: Build ssh-gateway
+        run: GOOS=linux GOARCH=amd64 go build -v -o ssh-gateway ./cmd/ssh-gateway
+
+      - name: Transfer artifacts
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          source: "ssh-gateway,deploy/systemd/ssh-gateway.service.example"
+          target: "/tmp/rcp-ssh-gateway-deploy"
+
+      - name: Install binary and directories
+        uses: appleboy/ssh-action@v0.1.10
+        env:
+          RCP_SSH_GW_KNOWN_HOSTS_PATH: ${{ secrets.RCP_SSH_GW_KNOWN_HOSTS_PATH || '/etc/rcp/ssh-gateway/known_hosts' }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          envs: RCP_SSH_GW_KNOWN_HOSTS_PATH
+          script: |
+            set -euo pipefail
+            sudo install -m 0755 /tmp/rcp-ssh-gateway-deploy/ssh-gateway /usr/local/bin/ssh-gateway
+            _KH="${RCP_SSH_GW_KNOWN_HOSTS_PATH:-/etc/rcp/ssh-gateway/known_hosts}"
+            sudo install -d -m 0750 -o return -g return /etc/rcp /etc/rcp/ssh-gateway /var/lib/rcp "$(dirname "$_KH")"
+            sudo touch "$_KH"
+            sudo chown return:return "$_KH"
+            sudo chmod 0640 "$_KH"
+
+      - name: Write ssh-gateway env file
+        uses: appleboy/ssh-action@v0.1.10
+        env:
+          ENV_LIST: OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,RCP_SSH_GW_DB_PATH,RCP_SSH_GW_LISTEN,RCP_SSH_GW_HOST_KEY_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH,RCP_SSH_GW_NOTIFY_SOCK,RCP_SSH_GW_NOTIFY_SECRET,RCP_NS_PROXY_SOCK,RCP_SSH_GW_AUTH_URL_BASE,RCP_SSH_GW_NONCE_TTL,RCP_SSH_GW_MAX_PENDING_SESSIONS,RCP_SSH_GW_FIXED_NETWORK,RCP_SSH_GW_LOG_LEVEL
+          OS_AUTH_URL: ${{ secrets.OS_AUTH_URL }}
+          OS_USERNAME: ${{ secrets.OS_USERNAME }}
+          OS_PASSWORD: ${{ secrets.OS_PASSWORD }}
+          OS_PROJECT_NAME: ${{ secrets.OS_PROJECT_NAME }}
+          OS_USER_DOMAIN_NAME: ${{ secrets.OS_USER_DOMAIN_NAME }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          RCP_SSH_GW_DB_PATH: ${{ secrets.RCP_SSH_GW_DB_PATH || '/var/lib/rcp/rcp.db' }}
+          RCP_SSH_GW_LISTEN: ${{ secrets.RCP_SSH_GW_LISTEN || '127.0.0.1:2222' }}
+          RCP_SSH_GW_HOST_KEY_PATH: ${{ secrets.RCP_SSH_GW_HOST_KEY_PATH || '/etc/rcp/ssh-gateway/host_ed25519' }}
+          RCP_SSH_GW_KNOWN_HOSTS_PATH: ${{ secrets.RCP_SSH_GW_KNOWN_HOSTS_PATH || '/etc/rcp/ssh-gateway/known_hosts' }}
+          RCP_SSH_GW_NOTIFY_SOCK: ${{ secrets.RCP_SSH_GW_NOTIFY_SOCK || '/run/rcp/ssh-gateway-notify.sock' }}
+          RCP_SSH_GW_NOTIFY_SECRET: ${{ secrets.RCP_SSH_GW_NOTIFY_SECRET }}
+          RCP_NS_PROXY_SOCK: ${{ secrets.RCP_NS_PROXY_SOCK || '/run/rcp/ns-proxy.sock' }}
+          RCP_SSH_GW_AUTH_URL_BASE: ${{ secrets.RCP_SSH_GW_AUTH_URL_BASE || secrets.FRONTEND_URL || secrets.RCP_FRONTEND_BASE_URL }}
+          RCP_SSH_GW_NONCE_TTL: ${{ secrets.RCP_SSH_GW_NONCE_TTL || '5m' }}
+          RCP_SSH_GW_MAX_PENDING_SESSIONS: ${{ secrets.RCP_SSH_GW_MAX_PENDING_SESSIONS || '1024' }}
+          RCP_SSH_GW_FIXED_NETWORK: ${{ secrets.RCP_SSH_GW_FIXED_NETWORK }}
+          RCP_SSH_GW_LOG_LEVEL: ${{ secrets.RCP_SSH_GW_LOG_LEVEL || 'info' }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          envs: ${{ env.ENV_LIST }}
+          script: |
+            set -euo pipefail
+            sudo install -d -m 0750 -o return -g return /etc/rcp
+            tmp="$(mktemp)"
+            IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"
+            for _v in "${_VARS[@]}"; do
+              printf '%s=%s\n' "$_v" "${!_v}" >> "$tmp"
+            done
+            sudo install -m 0640 -o root -g return "$tmp" /etc/rcp/ssh-gateway.env
+            rm -f "$tmp"
+
+      - name: Install systemd unit
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -m 0644 -o root -g root \
+              /tmp/rcp-ssh-gateway-deploy/deploy/systemd/ssh-gateway.service.example \
+              /etc/systemd/system/ssh-gateway.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable ssh-gateway
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo systemctl restart ssh-gateway
+
+      - name: Cleanup deploy artifacts
+        if: always()
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            rm -rf /tmp/rcp-ssh-gateway-deploy

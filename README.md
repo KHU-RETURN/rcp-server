@@ -56,7 +56,7 @@ Host rcp-gw rcp-gw.return.dev
 ssh rcp-gw
 ```
 
-브라우저에서 OAuth 로그인 후 본인 VM 리스트가 표시되며, 선택하면 `cmd/ns-proxy`를 통해 tenant network의 VM에 셸 세션이 연결됩니다. RCP는 사용자 private key를 보관하지 않고 forwarding된 ssh-agent로만 인증합니다.
+터미널에 표시된 6자리 코드를 브라우저 인증 화면에 입력한 뒤 OAuth 로그인하면 본인 VM 리스트가 표시됩니다. 선택하면 `cmd/ns-proxy`를 통해 tenant network의 VM에 셸 세션이 연결됩니다. RCP는 사용자 private key를 보관하지 않고 forwarding된 ssh-agent로만 인증합니다.
 
 운영 가이드: [docs/ssh-gateway-operations.md](docs/ssh-gateway-operations.md)
 사용자 가이드: [docs/ssh-gateway-user-guide.md](docs/ssh-gateway-user-guide.md)
@@ -67,6 +67,7 @@ ssh rcp-gw
 
 - `.github/workflows/deploy.yml` — rcp-server (매 머지마다)
 - `.github/workflows/deploy-ns-proxy.yml` — ns-proxy (`cmd/ns-proxy/**`나 `deploy/systemd/ns-proxy.service` 변경 시, 또는 `workflow_dispatch` 수동 trigger)
+- `.github/workflows/deploy-ssh-gateway.yml` — ssh-gateway (`cmd/ssh-gateway/**`나 SSH gateway systemd 변경 시)
 
 ### 기여할 때 알아둘 것
 
@@ -81,4 +82,4 @@ ssh rcp-gw
 ## Notes
 
 - OpenStack 호출은 Cloudflare Access 헤더가 포함된 HTTP 클라이언트를 통해 수행됩니다.
-- 단위 테스트는 `go test ./...`로 실행합니다 — `cmd/ns-proxy`, `cmd/ssh-gateway`, `internal/domain/{auth,access,compute,ssh}`, `internal/server` 등에 커버리지가 있습니다.
+- 단위 테스트는 `go test ./...`로 실행합니다 — `cmd/ns-proxy`, `cmd/ssh-gateway`, `internal/domain/{auth,access,compute,storage}`, `internal/server` 등에 커버리지가 있습니다.

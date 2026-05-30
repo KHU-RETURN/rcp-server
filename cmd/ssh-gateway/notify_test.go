@@ -20,11 +20,11 @@ func sign(secret, body []byte) string {
 }
 
 func TestNotifyHandler_HMACOK(t *testing.T) {
-	store := newSessionStore(time.Minute)
+	store := newSessionStore(time.Minute, defaultMaxPendingSessions)
 	p, _ := store.New()
 	h := newNotifyHandler(store, []byte("secret"))
 
-	body := []byte(`{"nonce":"` + p.Nonce + `","user_email":"a@khu.ac.kr"}`)
+	body := []byte(`{"nonce":"` + p.Nonce + `","code":"` + p.Code + `","user_email":"a@khu.ac.kr"}`)
 	req := httptest.NewRequest(http.MethodPost, "/notify", bytes.NewReader(body))
 	req.Header.Set("X-RCP-Notify-Sig", sign([]byte("secret"), body))
 	rr := httptest.NewRecorder()
@@ -44,10 +44,10 @@ func TestNotifyHandler_HMACOK(t *testing.T) {
 }
 
 func TestNotifyHandler_HMACMismatch(t *testing.T) {
-	store := newSessionStore(time.Minute)
+	store := newSessionStore(time.Minute, defaultMaxPendingSessions)
 	p, _ := store.New()
 	h := newNotifyHandler(store, []byte("secret"))
-	body := []byte(`{"nonce":"` + p.Nonce + `","user_email":"a@khu.ac.kr"}`)
+	body := []byte(`{"nonce":"` + p.Nonce + `","code":"` + p.Code + `","user_email":"a@khu.ac.kr"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/notify", bytes.NewReader(body))
 	req.Header.Set("X-RCP-Notify-Sig", sign([]byte("WRONG"), body))
@@ -59,10 +59,24 @@ func TestNotifyHandler_HMACMismatch(t *testing.T) {
 	}
 }
 
-func TestNotifyHandler_UnknownNonce(t *testing.T) {
-	store := newSessionStore(time.Minute)
+func TestNotifyHandler_CodeMismatch(t *testing.T) {
+	store := newSessionStore(time.Minute, defaultMaxPendingSessions)
+	p, _ := store.New()
 	h := newNotifyHandler(store, []byte("secret"))
-	body := []byte(`{"nonce":"missing","user_email":"a@khu.ac.kr"}`)
+	body := []byte(`{"nonce":"` + p.Nonce + `","code":"000000","user_email":"a@khu.ac.kr"}`)
+	req := httptest.NewRequest(http.MethodPost, "/notify", bytes.NewReader(body))
+	req.Header.Set("X-RCP-Notify-Sig", sign([]byte("secret"), body))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}
+
+func TestNotifyHandler_UnknownNonce(t *testing.T) {
+	store := newSessionStore(time.Minute, defaultMaxPendingSessions)
+	h := newNotifyHandler(store, []byte("secret"))
+	body := []byte(`{"nonce":"missing","code":"123456","user_email":"a@khu.ac.kr"}`)
 	req := httptest.NewRequest(http.MethodPost, "/notify", bytes.NewReader(body))
 	req.Header.Set("X-RCP-Notify-Sig", sign([]byte("secret"), body))
 	rr := httptest.NewRecorder()
@@ -73,7 +87,7 @@ func TestNotifyHandler_UnknownNonce(t *testing.T) {
 }
 
 func TestNotifyHandler_RejectsNonPOST(t *testing.T) {
-	h := newNotifyHandler(newSessionStore(time.Minute), []byte("s"))
+	h := newNotifyHandler(newSessionStore(time.Minute, defaultMaxPendingSessions), []byte("s"))
 	for _, m := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
 		req := httptest.NewRequest(m, "/notify", strings.NewReader(""))
 		rr := httptest.NewRecorder()
@@ -85,7 +99,7 @@ func TestNotifyHandler_RejectsNonPOST(t *testing.T) {
 }
 
 func TestNotifyHandler_BadJSON(t *testing.T) {
-	store := newSessionStore(time.Minute)
+	store := newSessionStore(time.Minute, defaultMaxPendingSessions)
 	h := newNotifyHandler(store, []byte("s"))
 	body := []byte(`{not json`)
 	req := httptest.NewRequest(http.MethodPost, "/notify", bytes.NewReader(body))

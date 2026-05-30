@@ -48,13 +48,17 @@ func (h *notifyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b access.NotifyRequest
-	if err := json.Unmarshal(body, &b); err != nil || b.Nonce == "" || b.UserEmail == "" {
+	if err := json.Unmarshal(body, &b); err != nil || b.Nonce == "" || b.Code == "" || b.UserEmail == "" {
 		http.Error(w, "bad body", http.StatusBadRequest)
 		return
 	}
-	if err := h.store.Resolve(b.Nonce, b.UserEmail); err != nil {
+	if err := h.store.Resolve(b.Nonce, b.Code, b.UserEmail); err != nil {
 		if errors.Is(err, ErrNonceUnknown) {
 			http.Error(w, "gone", http.StatusGone)
+			return
+		}
+		if errors.Is(err, ErrCodeMismatch) {
+			http.Error(w, "code", http.StatusUnauthorized)
 			return
 		}
 		http.Error(w, "resolve", http.StatusInternalServerError)

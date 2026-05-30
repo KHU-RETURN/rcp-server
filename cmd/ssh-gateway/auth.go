@@ -18,11 +18,14 @@ func kbdInteractiveAuthenticator(cfg *Config, store *sessionStore) func(ssh.Conn
 	return func(_ ssh.ConnMetadata, challenge ssh.KeyboardInteractiveChallenge) (*ssh.Permissions, error) {
 		p, err := store.New()
 		if err != nil {
+			if errors.Is(err, ErrTooManyPending) {
+				return nil, errors.New("too many pending auth sessions")
+			}
 			return nil, fmt.Errorf("alloc nonce: %w", err)
 		}
 		prompt := fmt.Sprintf(
-			"Open: %s/ssh-auth?s=%s\r\n(waiting for browser auth, %s timeout)\r\n",
-			cfg.AuthURLBase, p.Nonce, cfg.NonceTTL,
+			"Open: %s/ssh-auth?s=%s\r\nCode: %s\r\n(waiting for browser auth, %s timeout)\r\n",
+			cfg.AuthURLBase, p.Nonce, p.Code, cfg.NonceTTL,
 		)
 		// Send the URL as an instruction with no answers requested. OpenSSH
 		// renders "instruction" before any prompts.
