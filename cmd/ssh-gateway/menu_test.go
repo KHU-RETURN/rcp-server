@@ -18,6 +18,13 @@ func TestRenderMenu(t *testing.T) {
 	var buf bytes.Buffer
 	RenderMenu(&buf, sample())
 	got := buf.String()
+	want := "\r\nAvailable VMs:\r\n" +
+		"  1) alpha                (ACTIVE)\r\n" +
+		"  2) beta                 (SHUTOFF)\r\n" +
+		"Select [1-2]: "
+	if got != want {
+		t.Fatalf("menu output:\ngot  %q\nwant %q", got, want)
+	}
 	if !strings.Contains(got, "1) alpha") || !strings.Contains(got, "(ACTIVE)") {
 		t.Fatalf("missing alpha row: %q", got)
 	}

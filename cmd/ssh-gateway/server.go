@@ -262,26 +262,42 @@ func promptForVM(rw io.ReadWriter, vms []VM) (VM, bool) {
 		if perr == nil {
 			return vm, true
 		}
-		_, _ = fmt.Fprintln(rw, "invalid selection, try again")
+		_, _ = fmt.Fprint(rw, "invalid selection, try again\r\n")
 	}
-	_, _ = fmt.Fprintln(rw, "too many invalid attempts; closing")
+	_, _ = fmt.Fprint(rw, "too many invalid attempts; closing\r\n")
 	return VM{}, false
 }
 
 // readLine reads up to a CR or LF from r. Treats CRLF and LF identically.
 func readLine(r io.Reader, scratch []byte) (string, error) {
-	var out strings.Builder
+	var out []byte
+	echo, _ := r.(io.Writer)
 	for {
 		n, err := r.Read(scratch[:1])
 		if n > 0 {
 			b := scratch[0]
 			if b == '\n' || b == '\r' {
-				return out.String(), nil
+				if echo != nil {
+					_, _ = io.WriteString(echo, "\r\n")
+				}
+				return string(out), nil
 			}
-			out.WriteByte(b)
+			if b == '\b' || b == 0x7f {
+				if len(out) > 0 {
+					out = out[:len(out)-1]
+					if echo != nil {
+						_, _ = io.WriteString(echo, "\b \b")
+					}
+				}
+				continue
+			}
+			out = append(out, b)
+			if echo != nil {
+				_, _ = echo.Write([]byte{b})
+			}
 		}
 		if err != nil {
-			return out.String(), err
+			return string(out), err
 		}
 	}
 }

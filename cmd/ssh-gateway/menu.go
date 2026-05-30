@@ -11,7 +11,7 @@ import (
 var ErrSelectionInvalid = errors.New("invalid selection")
 
 func RenderMenu(w io.Writer, vms []VM) {
-	_, _ = fmt.Fprintln(w, "Available VMs:")
+	_, _ = fmt.Fprint(w, "\r\nAvailable VMs:\r\n")
 	for i, vm := range vms {
 		_, _ = fmt.Fprintf(w, "  %d) %-20s (%s)\r\n", i+1, vm.Name, vm.Status)
 	}
