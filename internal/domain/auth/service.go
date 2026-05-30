@@ -14,6 +14,8 @@ var (
 	ErrUnsupportedEmailDomain = errors.New("경희대학교 계정(@khu.ac.kr)으로만 로그인할 수 있습니다")
 	ErrAccessTokenNotFound    = errors.New("access token not found")
 	ErrInvalidAccessToken     = errors.New("invalid access token")
+	ErrRefreshTokenNotFound   = errors.New("refresh token not found")
+	ErrInvalidRefreshToken    = errors.New("invalid refresh token")
 	ErrInvalidTokenType       = errors.New("invalid token type")
 	ErrUserNotFound           = errors.New("user not found")
 	ErrUserLookupFailed       = errors.New("failed to verify user")
@@ -24,6 +26,9 @@ var (
 type userRepository interface {
 	UpsertUser(ctx context.Context, user *User) error
 	FindByEmail(ctx context.Context, email string) (*User, error)
+	SetRefreshJTI(ctx context.Context, email string, jti *string) error
+	RotateRefreshJTI(ctx context.Context, email string, oldJTI, newJTI string) (bool, error)
+	ClearRefreshJTIIfMatches(ctx context.Context, email, expectedJTI string) (bool, error)
 }
 
 // Service는 인증 비즈니스 로직을 담당합니다.

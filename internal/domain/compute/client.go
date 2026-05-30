@@ -5,9 +5,12 @@ import (
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/pauseunpause"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 )
 
 type Client struct {
@@ -20,7 +23,7 @@ func NewClient(provider *gophercloud.ProviderClient) *Client {
 
 func (c *Client) serviceClient() (*gophercloud.ServiceClient, error) {
 	return goopenstack.NewComputeV2(c.provider, gophercloud.EndpointOpts{
-		Region: "RegionOne",
+		Region: openstack.Region,
 	})
 }
 
@@ -96,13 +99,16 @@ func (c *Client) FetchInstances() ([]Server, error) {
 	}
 
 	result := make([]Server, len(raw))
+
 	for i, s := range raw {
 		result[i] = Server{
 			ID:         s.ID,
 			Name:       s.Name,
 			Status:     s.Status,
 			Addresses:  s.Addresses,
+			KeyName:    s.KeyName,
 			AccessIPv4: s.AccessIPv4,
+			Created:    s.Created,
 		}
 	}
 	return result, nil
@@ -124,7 +130,9 @@ func (c *Client) FetchInstance(id string) (*Server, error) {
 		Name:       raw.Name,
 		Status:     raw.Status,
 		Addresses:  raw.Addresses,
+		KeyName:    raw.KeyName,
 		AccessIPv4: raw.AccessIPv4,
+		Created:    raw.Created,
 	}, nil
 }
 
@@ -134,6 +142,44 @@ func (c *Client) FetchDiagnostics(id string) (map[string]any, error) {
 		return nil, err
 	}
 	return diagnostics.Get(sc, id).Extract()
+}
+
+func (c *Client) UpdateServerName(id string, name string) (*Server, error) {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := servers.Update(sc, id, servers.UpdateOpts{Name: name}).Extract()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Server{
+		ID:         raw.ID,
+		Name:       raw.Name,
+		Status:     raw.Status,
+		Addresses:  raw.Addresses,
+		KeyName:    raw.KeyName,
+		AccessIPv4: raw.AccessIPv4,
+		Created:    raw.Created,
+	}, nil
+}
+
+func (c *Client) PauseServer(id string) error {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return err
+	}
+	return pauseunpause.Pause(sc, id).ExtractErr()
+}
+
+func (c *Client) UnpauseServer(id string) error {
+	sc, err := c.serviceClient()
+	if err != nil {
+		return err
+	}
+	return pauseunpause.Unpause(sc, id).ExtractErr()
 }
 
 func (c *Client) DeleteServer(id string) error {

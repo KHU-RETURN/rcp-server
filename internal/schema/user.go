@@ -22,6 +22,7 @@ func (User) Fields() []ent.Field {
 		field.String("google_access_token"),
 		field.String("google_refresh_token"),
 		field.Time("google_token_expiry"),
+		field.String("current_refresh_jti").Optional().Nillable(),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
@@ -31,5 +32,6 @@ func (User) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("instances", Instance.Type),
 		edge.To("keypairs", KeyPair.Type),
+		edge.To("containers", Container.Type),
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,14 +12,39 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
+const (
+	// 학내 계정만 로그인 허용 (이메일 suffix 매칭).
+	allowedEmailDomain = "@khu.ac.kr"
+
+	// Google ID Token claim 키.
+	googleIDTokenKey = "id_token"
+	claimKeyEmail    = "email"
+	claimKeyName     = "name"
+
+	// OAuth state 파라미터의 raw 바이트 길이 (base64 인코딩 전).
+	oauthStateByteLen = 16
+)
+
+type oauthState struct {
+	Nonce          string `json:"nonce"`
+	RedirectOrigin string `json:"redirect_origin,omitempty"`
+}
+
 // BuildLoginURL은 Google OAuth 승인 페이지 URL을 만듭니다. stateOverride가
 // 비어 있으면 CSRF-safe 랜덤 state를 생성하고, 비어 있지 않으면 호출자가
 // 넘긴 state(예: ssh-gateway가 발급한 ssh:<nonce>)를 그대로 사용합니다.
 func (s *Service) BuildLoginURL(stateOverride string) string {
 	state := stateOverride
 	if state == "" {
-		state = s.generateState(16)
+		state = s.generateState(oauthStateByteLen)
 	}
+	return s.OauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
+}
+
+// GetGoogleLoginURL은 사용자를 리다이렉트시킬 구글 승인 페이지 URL을 생성합니다.
+func (s *Service) GetGoogleLoginURL(redirectOrigin string) string {
+	// 실제 운영 환경에서는 state를 세션에 저장하고 콜백에서 검증해야 보안상 안전합니다.
+	state := s.generateOAuthState(redirectOrigin)
 	return s.OauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
 }
 
@@ -38,24 +64,27 @@ func (s *Service) verifyGoogleCode(ctx context.Context, code string) (*verifiedG
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
 	}
-	rawIDToken, _ := token.Extra("id_token").(string)
+
+	rawIDToken, _ := token.Extra(googleIDTokenKey).(string)
 	payload, err := idtoken.Validate(ctx, rawIDToken, s.OauthConfig.ClientID)
 	if err != nil {
-		return nil, fmt.Errorf("id_token invalid: %w", err)
+		return nil, fmt.Errorf("invalid id_token: %w", err)
 	}
-	email, ok := payload.Claims["email"].(string)
+
+	email, ok := payload.Claims[claimKeyEmail].(string)
 	if !ok || email == "" {
 		return nil, ErrEmailClaimNotFound
 	}
 
-	name, ok := payload.Claims["name"].(string)
+	name, ok := payload.Claims[claimKeyName].(string)
 	if !ok || name == "" {
 		return nil, ErrNameClaimNotFound
 	}
 
-	if !strings.HasSuffix(email, "@khu.ac.kr") {
+	if !strings.HasSuffix(email, allowedEmailDomain) {
 		return nil, ErrUnsupportedEmailDomain
 	}
+
 	return &verifiedGoogleIdentity{
 		email:       email,
 		name:        name,
@@ -71,17 +100,21 @@ func (s *Service) ProcessGoogleCallback(ctx context.Context, code string) (*User
 	if err != nil {
 		return nil, err
 	}
-	accessToken, refreshToken, expiry, err := s.TokenService.GenerateAuthTokens(id.email)
+
+	tokens, err := s.TokenService.GenerateAuthTokens(id.email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate service tokens: %w", err)
 	}
+
+	jti := tokens.RefreshJTI
 	user := &User{
-		Email:        id.email,
-		Name:         id.name,
-		GoogleID:     id.subject,
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		Expiry:       expiry,
+		Email:             id.email,
+		Name:              id.name,
+		GoogleID:          id.subject,
+		AccessToken:       tokens.AccessToken,
+		RefreshToken:      tokens.RefreshToken,
+		Expiry:            tokens.AccessExpiry,
+		CurrentRefreshJTI: &jti,
 		GoogleAuth: &GoogleInfo{
 			AccessToken:  id.googleToken.AccessToken,
 			RefreshToken: id.googleToken.RefreshToken,
@@ -104,10 +137,23 @@ func (s *Service) VerifyGoogleCode(ctx context.Context, code string) (string, er
 	return id.email, nil
 }
 
+// generateState는 CSRF 공격 방지를 위한 임의의 문자열을 생성합니다.
 func (s *Service) generateState(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		panic(fmt.Sprintf("failed to generate random state: %v", err))
 	}
-	return base64.URLEncoding.EncodeToString(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func (s *Service) generateOAuthState(redirectOrigin string) string {
+	state := oauthState{
+		Nonce:          s.generateState(oauthStateByteLen),
+		RedirectOrigin: redirectOrigin,
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		panic(fmt.Sprintf("failed to generate oauth state: %v", err))
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
 }

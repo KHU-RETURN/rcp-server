@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -59,6 +60,20 @@ func (_c *UserCreate) SetGoogleRefreshToken(v string) *UserCreate {
 // SetGoogleTokenExpiry sets the "google_token_expiry" field.
 func (_c *UserCreate) SetGoogleTokenExpiry(v time.Time) *UserCreate {
 	_c.mutation.SetGoogleTokenExpiry(v)
+	return _c
+}
+
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (_c *UserCreate) SetCurrentRefreshJti(v string) *UserCreate {
+	_c.mutation.SetCurrentRefreshJti(v)
+	return _c
+}
+
+// SetNillableCurrentRefreshJti sets the "current_refresh_jti" field if the given value is not nil.
+func (_c *UserCreate) SetNillableCurrentRefreshJti(v *string) *UserCreate {
+	if v != nil {
+		_c.SetCurrentRefreshJti(*v)
+	}
 	return _c
 }
 
@@ -132,6 +147,21 @@ func (_c *UserCreate) AddKeypairs(v ...*KeyPair) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddKeypairIDs(ids...)
+}
+
+// AddContainerIDs adds the "containers" edge to the Container entity by IDs.
+func (_c *UserCreate) AddContainerIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddContainerIDs(ids...)
+	return _c
+}
+
+// AddContainers adds the "containers" edges to the Container entity.
+func (_c *UserCreate) AddContainers(v ...*Container) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddContainerIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -269,6 +299,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldGoogleTokenExpiry, field.TypeTime, value)
 		_node.GoogleTokenExpiry = value
 	}
+	if value, ok := _c.mutation.CurrentRefreshJti(); ok {
+		_spec.SetField(user.FieldCurrentRefreshJti, field.TypeString, value)
+		_node.CurrentRefreshJti = &value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(user.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -302,6 +336,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ContainersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -430,6 +480,24 @@ func (u *UserUpsert) SetGoogleTokenExpiry(v time.Time) *UserUpsert {
 // UpdateGoogleTokenExpiry sets the "google_token_expiry" field to the value that was provided on create.
 func (u *UserUpsert) UpdateGoogleTokenExpiry() *UserUpsert {
 	u.SetExcluded(user.FieldGoogleTokenExpiry)
+	return u
+}
+
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (u *UserUpsert) SetCurrentRefreshJti(v string) *UserUpsert {
+	u.Set(user.FieldCurrentRefreshJti, v)
+	return u
+}
+
+// UpdateCurrentRefreshJti sets the "current_refresh_jti" field to the value that was provided on create.
+func (u *UserUpsert) UpdateCurrentRefreshJti() *UserUpsert {
+	u.SetExcluded(user.FieldCurrentRefreshJti)
+	return u
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (u *UserUpsert) ClearCurrentRefreshJti() *UserUpsert {
+	u.SetNull(user.FieldCurrentRefreshJti)
 	return u
 }
 
@@ -577,6 +645,27 @@ func (u *UserUpsertOne) SetGoogleTokenExpiry(v time.Time) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateGoogleTokenExpiry() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateGoogleTokenExpiry()
+	})
+}
+
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (u *UserUpsertOne) SetCurrentRefreshJti(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCurrentRefreshJti(v)
+	})
+}
+
+// UpdateCurrentRefreshJti sets the "current_refresh_jti" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateCurrentRefreshJti() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCurrentRefreshJti()
+	})
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (u *UserUpsertOne) ClearCurrentRefreshJti() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearCurrentRefreshJti()
 	})
 }
 
@@ -893,6 +982,27 @@ func (u *UserUpsertBulk) SetGoogleTokenExpiry(v time.Time) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateGoogleTokenExpiry() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateGoogleTokenExpiry()
+	})
+}
+
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (u *UserUpsertBulk) SetCurrentRefreshJti(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCurrentRefreshJti(v)
+	})
+}
+
+// UpdateCurrentRefreshJti sets the "current_refresh_jti" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateCurrentRefreshJti() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCurrentRefreshJti()
+	})
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (u *UserUpsertBulk) ClearCurrentRefreshJti() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearCurrentRefreshJti()
 	})
 }
 

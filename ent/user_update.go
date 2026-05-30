@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -115,6 +116,26 @@ func (_u *UserUpdate) SetNillableGoogleTokenExpiry(v *time.Time) *UserUpdate {
 	return _u
 }
 
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (_u *UserUpdate) SetCurrentRefreshJti(v string) *UserUpdate {
+	_u.mutation.SetCurrentRefreshJti(v)
+	return _u
+}
+
+// SetNillableCurrentRefreshJti sets the "current_refresh_jti" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableCurrentRefreshJti(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetCurrentRefreshJti(*v)
+	}
+	return _u
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (_u *UserUpdate) ClearCurrentRefreshJti() *UserUpdate {
+	_u.mutation.ClearCurrentRefreshJti()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *UserUpdate) SetUpdatedAt(v time.Time) *UserUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -149,6 +170,21 @@ func (_u *UserUpdate) AddKeypairs(v ...*KeyPair) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddKeypairIDs(ids...)
+}
+
+// AddContainerIDs adds the "containers" edge to the Container entity by IDs.
+func (_u *UserUpdate) AddContainerIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddContainerIDs(ids...)
+	return _u
+}
+
+// AddContainers adds the "containers" edges to the Container entity.
+func (_u *UserUpdate) AddContainers(v ...*Container) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContainerIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -196,6 +232,27 @@ func (_u *UserUpdate) RemoveKeypairs(v ...*KeyPair) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveKeypairIDs(ids...)
+}
+
+// ClearContainers clears all "containers" edges to the Container entity.
+func (_u *UserUpdate) ClearContainers() *UserUpdate {
+	_u.mutation.ClearContainers()
+	return _u
+}
+
+// RemoveContainerIDs removes the "containers" edge to Container entities by IDs.
+func (_u *UserUpdate) RemoveContainerIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveContainerIDs(ids...)
+	return _u
+}
+
+// RemoveContainers removes "containers" edges to Container entities.
+func (_u *UserUpdate) RemoveContainers(v ...*Container) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContainerIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -260,6 +317,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.GoogleTokenExpiry(); ok {
 		_spec.SetField(user.FieldGoogleTokenExpiry, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.CurrentRefreshJti(); ok {
+		_spec.SetField(user.FieldCurrentRefreshJti, field.TypeString, value)
+	}
+	if _u.mutation.CurrentRefreshJtiCleared() {
+		_spec.ClearField(user.FieldCurrentRefreshJti, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
@@ -347,6 +410,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContainersIDs(); len(nodes) > 0 && !_u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContainersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -458,6 +566,26 @@ func (_u *UserUpdateOne) SetNillableGoogleTokenExpiry(v *time.Time) *UserUpdateO
 	return _u
 }
 
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (_u *UserUpdateOne) SetCurrentRefreshJti(v string) *UserUpdateOne {
+	_u.mutation.SetCurrentRefreshJti(v)
+	return _u
+}
+
+// SetNillableCurrentRefreshJti sets the "current_refresh_jti" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableCurrentRefreshJti(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetCurrentRefreshJti(*v)
+	}
+	return _u
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (_u *UserUpdateOne) ClearCurrentRefreshJti() *UserUpdateOne {
+	_u.mutation.ClearCurrentRefreshJti()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *UserUpdateOne) SetUpdatedAt(v time.Time) *UserUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -492,6 +620,21 @@ func (_u *UserUpdateOne) AddKeypairs(v ...*KeyPair) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddKeypairIDs(ids...)
+}
+
+// AddContainerIDs adds the "containers" edge to the Container entity by IDs.
+func (_u *UserUpdateOne) AddContainerIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddContainerIDs(ids...)
+	return _u
+}
+
+// AddContainers adds the "containers" edges to the Container entity.
+func (_u *UserUpdateOne) AddContainers(v ...*Container) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContainerIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -539,6 +682,27 @@ func (_u *UserUpdateOne) RemoveKeypairs(v ...*KeyPair) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveKeypairIDs(ids...)
+}
+
+// ClearContainers clears all "containers" edges to the Container entity.
+func (_u *UserUpdateOne) ClearContainers() *UserUpdateOne {
+	_u.mutation.ClearContainers()
+	return _u
+}
+
+// RemoveContainerIDs removes the "containers" edge to Container entities by IDs.
+func (_u *UserUpdateOne) RemoveContainerIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveContainerIDs(ids...)
+	return _u
+}
+
+// RemoveContainers removes "containers" edges to Container entities.
+func (_u *UserUpdateOne) RemoveContainers(v ...*Container) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContainerIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -634,6 +798,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if value, ok := _u.mutation.GoogleTokenExpiry(); ok {
 		_spec.SetField(user.FieldGoogleTokenExpiry, field.TypeTime, value)
 	}
+	if value, ok := _u.mutation.CurrentRefreshJti(); ok {
+		_spec.SetField(user.FieldCurrentRefreshJti, field.TypeString, value)
+	}
+	if _u.mutation.CurrentRefreshJtiCleared() {
+		_spec.ClearField(user.FieldCurrentRefreshJti, field.TypeString)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -720,6 +890,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContainersIDs(); len(nodes) > 0 && !_u.mutation.ContainersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContainersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContainersTable,
+			Columns: []string{user.ContainersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

@@ -12,6 +12,9 @@ const (
 	ContextKeyUserEmail  = "userEmail"
 	ContextKeyAuthClaims = "authClaims"
 	ContextKeyUser       = "currentUser"
+
+	headerAuthorization = "Authorization"
+	schemeBearer        = "Bearer"
 )
 
 var errInvalidAuthorizationHeader = errors.New("invalid authorization header")
@@ -25,7 +28,7 @@ func (h *Handler) AuthRequired() gin.HandlerFunc {
 		}
 
 		claims, err := h.Svc.TokenService.ValidateToken(tokenString)
-		if err != nil || claims.Type != "access" {
+		if err != nil || claims.Type != tokenTypeAccess {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: ErrInvalidAccessToken.Error()})
 			return
 		}
@@ -48,7 +51,7 @@ func (h *Handler) AuthRequired() gin.HandlerFunc {
 }
 
 func accessTokenFromRequest(c *gin.Context) (string, error) {
-	header := c.GetHeader("Authorization")
+	header := c.GetHeader(headerAuthorization)
 	if strings.TrimSpace(header) != "" {
 		return extractBearerToken(header)
 	}
@@ -60,9 +63,19 @@ func accessTokenFromRequest(c *gin.Context) (string, error) {
 	return token, nil
 }
 
+// refreshTokenFromRequest는 refresh token을 cookie에서만 읽습니다.
+// Authorization 헤더는 access 전용이므로 의도적으로 fallback을 두지 않습니다.
+func refreshTokenFromRequest(c *gin.Context) (string, error) {
+	token, err := c.Cookie(cookieRefreshToken)
+	if err != nil || token == "" {
+		return "", ErrRefreshTokenNotFound
+	}
+	return token, nil
+}
+
 func extractBearerToken(header string) (string, error) {
 	parts := strings.Fields(header)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+	if len(parts) != 2 || !strings.EqualFold(parts[0], schemeBearer) || parts[1] == "" {
 		return "", errInvalidAuthorizationHeader
 	}
 

@@ -30,6 +30,8 @@ type User struct {
 	GoogleRefreshToken string `json:"google_refresh_token,omitempty"`
 	// GoogleTokenExpiry holds the value of the "google_token_expiry" field.
 	GoogleTokenExpiry time.Time `json:"google_token_expiry,omitempty"`
+	// CurrentRefreshJti holds the value of the "current_refresh_jti" field.
+	CurrentRefreshJti *string `json:"current_refresh_jti,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -46,9 +48,11 @@ type UserEdges struct {
 	Instances []*Instance `json:"instances,omitempty"`
 	// Keypairs holds the value of the keypairs edge.
 	Keypairs []*KeyPair `json:"keypairs,omitempty"`
+	// Containers holds the value of the containers edge.
+	Containers []*Container `json:"containers,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // InstancesOrErr returns the Instances value or an error if the edge
@@ -69,12 +73,21 @@ func (e UserEdges) KeypairsOrErr() ([]*KeyPair, error) {
 	return nil, &NotLoadedError{edge: "keypairs"}
 }
 
+// ContainersOrErr returns the Containers value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ContainersOrErr() ([]*Container, error) {
+	if e.loadedTypes[2] {
+		return e.Containers, nil
+	}
+	return nil, &NotLoadedError{edge: "containers"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case user.FieldEmail, user.FieldName, user.FieldGoogleID, user.FieldGoogleAccessToken, user.FieldGoogleRefreshToken:
+		case user.FieldEmail, user.FieldName, user.FieldGoogleID, user.FieldGoogleAccessToken, user.FieldGoogleRefreshToken, user.FieldCurrentRefreshJti:
 			values[i] = new(sql.NullString)
 		case user.FieldGoogleTokenExpiry, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -137,6 +150,13 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.GoogleTokenExpiry = value.Time
 			}
+		case user.FieldCurrentRefreshJti:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field current_refresh_jti", values[i])
+			} else if value.Valid {
+				_m.CurrentRefreshJti = new(string)
+				*_m.CurrentRefreshJti = value.String
+			}
 		case user.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -170,6 +190,11 @@ func (_m *User) QueryInstances() *InstanceQuery {
 // QueryKeypairs queries the "keypairs" edge of the User entity.
 func (_m *User) QueryKeypairs() *KeyPairQuery {
 	return NewUserClient(_m.config).QueryKeypairs(_m)
+}
+
+// QueryContainers queries the "containers" edge of the User entity.
+func (_m *User) QueryContainers() *ContainerQuery {
+	return NewUserClient(_m.config).QueryContainers(_m)
 }
 
 // Update returns a builder for updating this User.
@@ -212,6 +237,11 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("google_token_expiry=")
 	builder.WriteString(_m.GoogleTokenExpiry.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.CurrentRefreshJti; v != nil {
+		builder.WriteString("current_refresh_jti=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

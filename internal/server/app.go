@@ -3,18 +3,21 @@ package server
 import (
 	"fmt"
 
+	"github.com/gophercloud/gophercloud"
+	"golang.org/x/oauth2"
+
 	"github.com/KHU-RETURN/rcp-server/ent"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
-	"github.com/gophercloud/gophercloud"
-	"golang.org/x/oauth2"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 )
 
 type App struct {
 	Compute *compute.Handler
 	Access  *access.Handler
 	Auth    *auth.Handler
+	Storage *storage.Handler
 }
 
 type AppDeps struct {
@@ -22,6 +25,7 @@ type AppDeps struct {
 	EntClient        *ent.Client
 	OAuthConfig      *oauth2.Config
 	OpenStackProject string
+	DefaultNetworkID string
 	JWTSecret        string
 	SSHGatewaySock   string
 	SSHGatewaySecret []byte
@@ -39,8 +43,9 @@ func NewApp(deps AppDeps) (*App, error) {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
 	return &App{
-		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject),
+		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
 		Access:  access.Init(deps.Provider, deps.EntClient),
 		Auth:    authHandler,
+		Storage: storage.Init(deps.Provider, deps.EntClient),
 	}, nil
 }

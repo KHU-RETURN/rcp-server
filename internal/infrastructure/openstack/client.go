@@ -1,9 +1,10 @@
 package openstack
 
 import (
-	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/http"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
+
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/http"
 )
 
 type ProviderConfig struct {
@@ -23,6 +24,7 @@ func NewProviderClient(cfg ProviderConfig) (*gophercloud.ProviderClient, error) 
 		Password:         cfg.Password,
 		TenantName:       cfg.ProjectName,
 		DomainName:       cfg.DomainName,
+		AllowReauth:      true,
 	}
 
 	provider, err := openstack.NewClient(opts.IdentityEndpoint)

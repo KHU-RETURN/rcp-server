@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/KHU-RETURN/rcp-server/ent"
 	_ "github.com/lib/pq"
 	"modernc.org/sqlite"
+
+	"github.com/KHU-RETURN/rcp-server/ent"
 )
 
 func init() {

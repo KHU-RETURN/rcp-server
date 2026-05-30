@@ -77,6 +77,7 @@ func main() {
 		EntClient:        db,
 		OAuthConfig:      oauth,
 		OpenStackProject: os.Getenv("OS_PROJECT_ID"),
+		DefaultNetworkID: os.Getenv("RCP_DEFAULT_NETWORK_ID"),
 		JWTSecret:        jwtSecret,
 		SSHGatewaySock:   notifySock,
 		SSHGatewaySecret: notifySecret,

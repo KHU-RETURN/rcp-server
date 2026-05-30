@@ -3,8 +3,9 @@ package server
 import (
 	"net/http"
 
-	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/gin-gonic/gin"
+
+	"github.com/KHU-RETURN/rcp-server/internal/api"
 )
 
 func NewRouter(app *App) *gin.Engine {
@@ -27,6 +28,7 @@ func NewRouter(app *App) *gin.Engine {
 
 		app.Access.InitRoutes(protected)
 		app.Compute.InitRoutes(protected)
+		app.Storage.InitRoutes(protected)
 	}
 
 	return r

@@ -8,6 +8,29 @@ import (
 )
 
 var (
+	// ContainersColumns holds the columns for the "containers" table.
+	ContainersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "openstack_name", Type: field.TypeUUID, Unique: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_containers", Type: field.TypeUUID},
+	}
+	// ContainersTable holds the schema information for the "containers" table.
+	ContainersTable = &schema.Table{
+		Name:       "containers",
+		Columns:    ContainersColumns,
+		PrimaryKey: []*schema.Column{ContainersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "containers_users_containers",
+				Columns:    []*schema.Column{ContainersColumns[5]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// InstancesColumns holds the columns for the "instances" table.
 	InstancesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -16,6 +39,8 @@ var (
 		{Name: "status", Type: field.TypeString},
 		{Name: "image_id", Type: field.TypeString},
 		{Name: "flavor_id", Type: field.TypeString},
+		{Name: "key_name", Type: field.TypeString, Default: ""},
+		{Name: "note", Type: field.TypeString, Default: ""},
 		{Name: "provider_created_at", Type: field.TypeTime},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -30,13 +55,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "instances_key_pairs_instances",
-				Columns:    []*schema.Column{InstancesColumns[9]},
+				Columns:    []*schema.Column{InstancesColumns[11]},
 				RefColumns: []*schema.Column{KeyPairsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "instances_users_instances",
-				Columns:    []*schema.Column{InstancesColumns[10]},
+				Columns:    []*schema.Column{InstancesColumns[12]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -76,6 +101,7 @@ var (
 		{Name: "google_access_token", Type: field.TypeString},
 		{Name: "google_refresh_token", Type: field.TypeString},
 		{Name: "google_token_expiry", Type: field.TypeTime},
+		{Name: "current_refresh_jti", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -87,6 +113,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ContainersTable,
 		InstancesTable,
 		KeyPairsTable,
 		UsersTable,
@@ -94,6 +121,7 @@ var (
 )
 
 func init() {
+	ContainersTable.ForeignKeys[0].RefTable = UsersTable
 	InstancesTable.ForeignKeys[0].RefTable = KeyPairsTable
 	InstancesTable.ForeignKeys[1].RefTable = UsersTable
 	KeyPairsTable.ForeignKeys[0].RefTable = UsersTable

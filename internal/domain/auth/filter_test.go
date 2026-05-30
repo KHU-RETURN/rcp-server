@@ -63,12 +63,12 @@ func TestAuthRequired(t *testing.T) {
 			c.JSON(http.StatusOK, gin.H{"email": email})
 		})
 
-		token, _, _, err := tokenSvc.GenerateAuthTokens("user@khu.ac.kr")
+		pair, err := tokenSvc.GenerateAuthTokens("user@khu.ac.kr")
 		if err != nil {
 			t.Fatalf("failed to generate token: %v", err)
 		}
 
-		return r, token
+		return r, pair.AccessToken
 	}
 
 	t.Run("rejects request without authorization header", func(t *testing.T) {
@@ -105,10 +105,11 @@ func TestAuthRequired(t *testing.T) {
 		tokenSvc := NewTokenService("test-secret")
 		handler := NewHandler(NewService(repo, &oauth2.Config{}, tokenSvc), nil, "")
 
-		_, refreshToken, _, err := tokenSvc.GenerateAuthTokens("user@khu.ac.kr")
+		pair, err := tokenSvc.GenerateAuthTokens("user@khu.ac.kr")
 		if err != nil {
 			t.Fatalf("failed to generate refresh token: %v", err)
 		}
+		refreshToken := pair.RefreshToken
 
 		r := gin.New()
 		protected := r.Group("/protected")

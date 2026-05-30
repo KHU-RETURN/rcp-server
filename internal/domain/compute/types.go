@@ -10,6 +10,8 @@ type Instance struct {
 	Status      string
 	ImageID     string
 	FlavorID    string
+	KeyName     string
+	Note        string
 	Created     time.Time
 }
 
@@ -43,7 +45,7 @@ type Server struct {
 	KeyName        string
 	SecurityGroups []map[string]any
 	AccessIPv4     string
-	Created        time.Time
+	Created        time.Time `json:"created"`
 }
 
 type NetworkID struct {
@@ -55,6 +57,7 @@ type CreateServerOpts struct {
 	ImageRef       string
 	FlavorRef      string
 	KeyName        string
+	Note           string
 	SecurityGroups []string
 	Networks       []NetworkID
 }
@@ -80,7 +83,14 @@ type CreateInstanceRequest struct {
 	FlavorID       string   `json:"flavor_id" binding:"required"`
 	NetworkID      string   `json:"network_id"`
 	KeyName        string   `json:"key_name"`
+	Note           string   `json:"note"`
 	SecurityGroups []string `json:"security_groups"`
+}
+
+type UpdateInstanceRequest struct {
+	Name    string `json:"name"`
+	KeyName string `json:"key_name"`
+	Note    string `json:"note"`
 }
 
 type CreateInstanceResponse struct {
@@ -101,6 +111,8 @@ type InstanceDetailResponse struct {
 	Status     string         `json:"status"`
 	Image      string         `json:"image"`
 	Flavor     FlavorResponse `json:"flavor"`
+	KeyName    string         `json:"key_name"`
+	Note       string         `json:"note"`
 	FixedIP    string         `json:"fixed_ip,omitempty"`
 	FloatingIP string         `json:"floating_ip,omitempty"`
 	Usage      UsageStats     `json:"usage"`

@@ -16,7 +16,8 @@ RCP-Server 프로젝트의 구조, 개발 규칙, 코드 컨벤션, API 엔드�
 |   |-- domain/               # 도메인별 구현
 |   |   |-- access/
 |   |   |-- auth/
-|   |   `-- compute/
+|   |   |-- compute/
+|   |   `-- storage/
 |   |-- infrastructure/       # 외부 시스템 연동
 |   |   |-- database/         #   SQLite 연결
 |   |   |-- http/             #   Cloudflare Access 헤더 주입 HTTP 클라이언트
@@ -140,6 +141,18 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | POST | `/api/v1/access/keypairs` | CreateKeyPair | 키페어 생성 |
 | GET | `/api/v1/access/keypairs/:name` | GetKeyPair | 키페어 조회 |
 | DELETE | `/api/v1/access/keypairs/:name` | DeleteKeyPair | 키페어 삭제 |
+
+### Storage (인증 필요)
+
+| Method | Path | Handler | 설명 |
+|--------|------|---------|------|
+| GET | `/api/v1/storage/containers` | ListContainers | 내 container 목록 조회 |
+| POST | `/api/v1/storage/containers` | CreateContainer | container 생성 |
+| DELETE | `/api/v1/storage/containers/:name` | DeleteContainer | container 삭제 (`?force=true`로 강제 삭제) |
+| GET | `/api/v1/storage/containers/:name/objects` | ListObjects | object 목록 조회 |
+| POST | `/api/v1/storage/containers/:name/objects` | UploadObject | 파일 업로드 (multipart/form-data, key=`file`) |
+| GET | `/api/v1/storage/containers/:name/objects/*key` | DownloadObject | 파일 다운로드 (스트리밍) |
+| DELETE | `/api/v1/storage/containers/:name/objects/*key` | DeleteObject | 파일 삭제 |
 
 ---
 

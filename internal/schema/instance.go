@@ -21,6 +21,8 @@ func (Instance) Fields() []ent.Field {
 		field.String("status"),
 		field.String("image_id"),
 		field.String("flavor_id"),
+		field.String("key_name").Default(""),
+		field.String("note").Default(""),
 		field.Time("provider_created_at"),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),

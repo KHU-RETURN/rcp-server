@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -26,6 +27,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// Container is the client for interacting with the Container builders.
+	Container *ContainerClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
 	// KeyPair is the client for interacting with the KeyPair builders.
@@ -43,6 +46,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.Container = NewContainerClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
 	c.KeyPair = NewKeyPairClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -136,11 +140,12 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:      ctx,
-		config:   cfg,
-		Instance: NewInstanceClient(cfg),
-		KeyPair:  NewKeyPairClient(cfg),
-		User:     NewUserClient(cfg),
+		ctx:       ctx,
+		config:    cfg,
+		Container: NewContainerClient(cfg),
+		Instance:  NewInstanceClient(cfg),
+		KeyPair:   NewKeyPairClient(cfg),
+		User:      NewUserClient(cfg),
 	}, nil
 }
 
@@ -158,18 +163,19 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:      ctx,
-		config:   cfg,
-		Instance: NewInstanceClient(cfg),
-		KeyPair:  NewKeyPairClient(cfg),
-		User:     NewUserClient(cfg),
+		ctx:       ctx,
+		config:    cfg,
+		Container: NewContainerClient(cfg),
+		Instance:  NewInstanceClient(cfg),
+		KeyPair:   NewKeyPairClient(cfg),
+		User:      NewUserClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Instance.
+//		Container.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -191,6 +197,7 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.Container.Use(hooks...)
 	c.Instance.Use(hooks...)
 	c.KeyPair.Use(hooks...)
 	c.User.Use(hooks...)
@@ -199,6 +206,7 @@ func (c *Client) Use(hooks ...Hook) {
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
+	c.Container.Intercept(interceptors...)
 	c.Instance.Intercept(interceptors...)
 	c.KeyPair.Intercept(interceptors...)
 	c.User.Intercept(interceptors...)
@@ -207,6 +215,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *ContainerMutation:
+		return c.Container.mutate(ctx, m)
 	case *InstanceMutation:
 		return c.Instance.mutate(ctx, m)
 	case *KeyPairMutation:
@@ -215,6 +225,155 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.User.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// ContainerClient is a client for the Container schema.
+type ContainerClient struct {
+	config
+}
+
+// NewContainerClient returns a client for the Container from the given config.
+func NewContainerClient(c config) *ContainerClient {
+	return &ContainerClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `container.Hooks(f(g(h())))`.
+func (c *ContainerClient) Use(hooks ...Hook) {
+	c.hooks.Container = append(c.hooks.Container, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `container.Intercept(f(g(h())))`.
+func (c *ContainerClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Container = append(c.inters.Container, interceptors...)
+}
+
+// Create returns a builder for creating a Container entity.
+func (c *ContainerClient) Create() *ContainerCreate {
+	mutation := newContainerMutation(c.config, OpCreate)
+	return &ContainerCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Container entities.
+func (c *ContainerClient) CreateBulk(builders ...*ContainerCreate) *ContainerCreateBulk {
+	return &ContainerCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ContainerClient) MapCreateBulk(slice any, setFunc func(*ContainerCreate, int)) *ContainerCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ContainerCreateBulk{err: fmt.Errorf("calling to ContainerClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ContainerCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ContainerCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Container.
+func (c *ContainerClient) Update() *ContainerUpdate {
+	mutation := newContainerMutation(c.config, OpUpdate)
+	return &ContainerUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ContainerClient) UpdateOne(_m *Container) *ContainerUpdateOne {
+	mutation := newContainerMutation(c.config, OpUpdateOne, withContainer(_m))
+	return &ContainerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ContainerClient) UpdateOneID(id uuid.UUID) *ContainerUpdateOne {
+	mutation := newContainerMutation(c.config, OpUpdateOne, withContainerID(id))
+	return &ContainerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Container.
+func (c *ContainerClient) Delete() *ContainerDelete {
+	mutation := newContainerMutation(c.config, OpDelete)
+	return &ContainerDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ContainerClient) DeleteOne(_m *Container) *ContainerDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ContainerClient) DeleteOneID(id uuid.UUID) *ContainerDeleteOne {
+	builder := c.Delete().Where(container.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ContainerDeleteOne{builder}
+}
+
+// Query returns a query builder for Container.
+func (c *ContainerClient) Query() *ContainerQuery {
+	return &ContainerQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeContainer},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Container entity by its id.
+func (c *ContainerClient) Get(ctx context.Context, id uuid.UUID) (*Container, error) {
+	return c.Query().Where(container.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ContainerClient) GetX(ctx context.Context, id uuid.UUID) *Container {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOwner queries the owner edge of a Container.
+func (c *ContainerClient) QueryOwner(_m *Container) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(container.Table, container.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, container.OwnerTable, container.OwnerColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ContainerClient) Hooks() []Hook {
+	return c.hooks.Container
+}
+
+// Interceptors returns the client interceptors.
+func (c *ContainerClient) Interceptors() []Interceptor {
+	return c.inters.Container
+}
+
+func (c *ContainerClient) mutate(ctx context.Context, m *ContainerMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ContainerCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ContainerUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ContainerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ContainerDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Container mutation op: %q", m.Op())
 	}
 }
 
@@ -688,6 +847,22 @@ func (c *UserClient) QueryKeypairs(_m *User) *KeyPairQuery {
 	return query
 }
 
+// QueryContainers queries the containers edge of a User.
+func (c *UserClient) QueryContainers(_m *User) *ContainerQuery {
+	query := (&ContainerClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(container.Table, container.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ContainersTable, user.ContainersColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *UserClient) Hooks() []Hook {
 	return c.hooks.User
@@ -716,9 +891,9 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Instance, KeyPair, User []ent.Hook
+		Container, Instance, KeyPair, User []ent.Hook
 	}
 	inters struct {
-		Instance, KeyPair, User []ent.Interceptor
+		Container, Instance, KeyPair, User []ent.Interceptor
 	}
 )

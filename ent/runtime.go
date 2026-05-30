@@ -5,6 +5,7 @@ package ent
 import (
 	"time"
 
+	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -16,14 +17,38 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	containerFields := schema.Container{}.Fields()
+	_ = containerFields
+	// containerDescCreatedAt is the schema descriptor for created_at field.
+	containerDescCreatedAt := containerFields[3].Descriptor()
+	// container.DefaultCreatedAt holds the default value on creation for the created_at field.
+	container.DefaultCreatedAt = containerDescCreatedAt.Default.(func() time.Time)
+	// containerDescUpdatedAt is the schema descriptor for updated_at field.
+	containerDescUpdatedAt := containerFields[4].Descriptor()
+	// container.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	container.DefaultUpdatedAt = containerDescUpdatedAt.Default.(func() time.Time)
+	// container.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	container.UpdateDefaultUpdatedAt = containerDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// containerDescID is the schema descriptor for id field.
+	containerDescID := containerFields[0].Descriptor()
+	// container.DefaultID holds the default value on creation for the id field.
+	container.DefaultID = containerDescID.Default.(func() uuid.UUID)
 	instanceFields := schema.Instance{}.Fields()
 	_ = instanceFields
+	// instanceDescKeyName is the schema descriptor for key_name field.
+	instanceDescKeyName := instanceFields[6].Descriptor()
+	// instance.DefaultKeyName holds the default value on creation for the key_name field.
+	instance.DefaultKeyName = instanceDescKeyName.Default.(string)
+	// instanceDescNote is the schema descriptor for note field.
+	instanceDescNote := instanceFields[7].Descriptor()
+	// instance.DefaultNote holds the default value on creation for the note field.
+	instance.DefaultNote = instanceDescNote.Default.(string)
 	// instanceDescCreatedAt is the schema descriptor for created_at field.
-	instanceDescCreatedAt := instanceFields[7].Descriptor()
+	instanceDescCreatedAt := instanceFields[9].Descriptor()
 	// instance.DefaultCreatedAt holds the default value on creation for the created_at field.
 	instance.DefaultCreatedAt = instanceDescCreatedAt.Default.(func() time.Time)
 	// instanceDescUpdatedAt is the schema descriptor for updated_at field.
-	instanceDescUpdatedAt := instanceFields[8].Descriptor()
+	instanceDescUpdatedAt := instanceFields[10].Descriptor()
 	// instance.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	instance.DefaultUpdatedAt = instanceDescUpdatedAt.Default.(func() time.Time)
 	// instance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -51,11 +76,11 @@ func init() {
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[7].Descriptor()
+	userDescCreatedAt := userFields[8].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[8].Descriptor()
+	userDescUpdatedAt := userFields[9].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

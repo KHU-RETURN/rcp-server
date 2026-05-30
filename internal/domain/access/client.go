@@ -10,6 +10,8 @@ import (
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+
+	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 )
 
 type Client struct {
@@ -27,7 +29,7 @@ func NewClient(provider *gophercloud.ProviderClient) *Client {
 
 func (c *Client) serviceClient() (*gophercloud.ServiceClient, error) {
 	return goopenstack.NewComputeV2(c.provider, gophercloud.EndpointOpts{
-		Region: "RegionOne",
+		Region: openstack.Region,
 	})
 }
 

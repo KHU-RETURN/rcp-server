@@ -86,6 +86,11 @@ func GoogleTokenExpiry(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldGoogleTokenExpiry, v))
 }
 
+// CurrentRefreshJti applies equality check predicate on the "current_refresh_jti" field. It's identical to CurrentRefreshJtiEQ.
+func CurrentRefreshJti(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldCurrentRefreshJti, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -461,6 +466,81 @@ func GoogleTokenExpiryLTE(v time.Time) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldGoogleTokenExpiry, v))
 }
 
+// CurrentRefreshJtiEQ applies the EQ predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiNEQ applies the NEQ predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiIn applies the In predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldCurrentRefreshJti, vs...))
+}
+
+// CurrentRefreshJtiNotIn applies the NotIn predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldCurrentRefreshJti, vs...))
+}
+
+// CurrentRefreshJtiGT applies the GT predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiGTE applies the GTE predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiLT applies the LT predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiLTE applies the LTE predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiContains applies the Contains predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiHasPrefix applies the HasPrefix predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiHasSuffix applies the HasSuffix predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiIsNil applies the IsNil predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldCurrentRefreshJti))
+}
+
+// CurrentRefreshJtiNotNil applies the NotNil predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldCurrentRefreshJti))
+}
+
+// CurrentRefreshJtiEqualFold applies the EqualFold predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldCurrentRefreshJti, v))
+}
+
+// CurrentRefreshJtiContainsFold applies the ContainsFold predicate on the "current_refresh_jti" field.
+func CurrentRefreshJtiContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldCurrentRefreshJti, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -579,6 +659,29 @@ func HasKeypairs() predicate.User {
 func HasKeypairsWith(preds ...predicate.KeyPair) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newKeypairsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasContainers applies the HasEdge predicate on the "containers" edge.
+func HasContainers() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ContainersTable, ContainersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasContainersWith applies the HasEdge predicate on the "containers" edge with a given conditions (other predicates).
+func HasContainersWith(preds ...predicate.Container) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newContainersStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)
