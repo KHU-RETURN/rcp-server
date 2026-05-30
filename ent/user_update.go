@@ -116,6 +116,26 @@ func (_u *UserUpdate) SetNillableGoogleTokenExpiry(v *time.Time) *UserUpdate {
 	return _u
 }
 
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (_u *UserUpdate) SetCurrentRefreshJti(v string) *UserUpdate {
+	_u.mutation.SetCurrentRefreshJti(v)
+	return _u
+}
+
+// SetNillableCurrentRefreshJti sets the "current_refresh_jti" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableCurrentRefreshJti(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetCurrentRefreshJti(*v)
+	}
+	return _u
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (_u *UserUpdate) ClearCurrentRefreshJti() *UserUpdate {
+	_u.mutation.ClearCurrentRefreshJti()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *UserUpdate) SetUpdatedAt(v time.Time) *UserUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -297,6 +317,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.GoogleTokenExpiry(); ok {
 		_spec.SetField(user.FieldGoogleTokenExpiry, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.CurrentRefreshJti(); ok {
+		_spec.SetField(user.FieldCurrentRefreshJti, field.TypeString, value)
+	}
+	if _u.mutation.CurrentRefreshJtiCleared() {
+		_spec.ClearField(user.FieldCurrentRefreshJti, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
@@ -540,6 +566,26 @@ func (_u *UserUpdateOne) SetNillableGoogleTokenExpiry(v *time.Time) *UserUpdateO
 	return _u
 }
 
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (_u *UserUpdateOne) SetCurrentRefreshJti(v string) *UserUpdateOne {
+	_u.mutation.SetCurrentRefreshJti(v)
+	return _u
+}
+
+// SetNillableCurrentRefreshJti sets the "current_refresh_jti" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableCurrentRefreshJti(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetCurrentRefreshJti(*v)
+	}
+	return _u
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (_u *UserUpdateOne) ClearCurrentRefreshJti() *UserUpdateOne {
+	_u.mutation.ClearCurrentRefreshJti()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *UserUpdateOne) SetUpdatedAt(v time.Time) *UserUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -751,6 +797,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.GoogleTokenExpiry(); ok {
 		_spec.SetField(user.FieldGoogleTokenExpiry, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.CurrentRefreshJti(); ok {
+		_spec.SetField(user.FieldCurrentRefreshJti, field.TypeString, value)
+	}
+	if _u.mutation.CurrentRefreshJtiCleared() {
+		_spec.ClearField(user.FieldCurrentRefreshJti, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)

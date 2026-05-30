@@ -15,6 +15,9 @@ type User struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
 	Expiry       time.Time `json:"expiry"`
+	// CurrentRefreshJTI는 서버측에서 추적하는 활성 refresh token 식별자입니다.
+	// nil이면 활성 세션 없음(logout 상태). 회전 시 매번 교체됩니다.
+	CurrentRefreshJTI *string `json:"-"`
 	// 구글 전용 정보 (서버 내부에서만 사용, 클라이언트에 노출 안 함)
 	GoogleAuth *GoogleInfo `json:"-"`
 }
@@ -24,6 +27,11 @@ type MeResponse struct {
 	Email       string    `json:"email"`
 	Name        string    `json:"name"`
 	AccessToken string    `json:"access_token"`
+}
+
+type RefreshResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
 }
 
 type ErrorResponse struct {

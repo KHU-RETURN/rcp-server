@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,6 +19,8 @@ const (
 	routeOAuthGooglePrefix = "/oauth/google"
 
 	pathMe            = "/me"
+	pathRefresh       = "/refresh"
+	pathLogout        = "/logout"
 	pathOAuthCallback = "/callback"
 	pathLoginError    = "/login?error=auth_failed"
 	pathAuthCallback  = "/auth/callback"
@@ -45,6 +48,8 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	authGroup := rg.Group(routeAuthPrefix)
 	{
 		authGroup.GET(pathMe, h.Me)
+		authGroup.POST(pathRefresh, h.Refresh)
+		authGroup.POST(pathLogout, h.Logout)
 		oauthGroup := authGroup.Group(routeOAuthGooglePrefix)
 		{
 			// 사용자를 구글 로그인 페이지로 보냄
@@ -89,25 +94,8 @@ func (h *Handler) Callback(c *gin.Context) {
 
 	c.SetSameSite(authCookieSameSite())
 
-	c.SetCookie(
-		cookieAccessToken,
-		user.AccessToken,
-		60*60, // 1 hour
-		"/",
-		"",
-		authCookieSecure(),
-		true, // HttpOnly
-	)
-
-	c.SetCookie(
-		cookieRefreshToken,
-		user.RefreshToken,
-		60*60*24*14, // 14 days
-		"/",
-		"",
-		authCookieSecure(),
-		true, // HttpOnly
-	)
+	setAuthCookie(c, cookieAccessToken, user.AccessToken, int(accessTokenTTL.Seconds()))
+	setAuthCookie(c, cookieRefreshToken, user.RefreshToken, int(refreshTokenTTL.Seconds()))
 
 	c.Redirect(http.StatusFound, frontendURL+pathAuthCallback)
 }
@@ -132,6 +120,48 @@ func (h *Handler) Me(c *gin.Context) {
 		Email:       user.Email,
 		AccessToken: token,
 	})
+}
+
+// Refresh: POST /api/v1/auth/refresh
+// refresh_token 쿠키를 검증하고 access/refresh 토큰을 회전 발급합니다.
+// 이전 refresh token은 서버측 jti 회전으로 즉시 무효화됩니다.
+func (h *Handler) Refresh(c *gin.Context) {
+	refreshToken, err := refreshTokenFromRequest(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: ErrRefreshTokenNotFound.Error()})
+		return
+	}
+
+	tokens, err := h.Svc.RefreshAccessToken(c.Request.Context(), refreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: ErrInvalidRefreshToken.Error()})
+		return
+	}
+
+	expiresIn := int(time.Until(tokens.AccessExpiry).Seconds())
+
+	setAuthCookie(c, cookieAccessToken, tokens.AccessToken, expiresIn)
+	setAuthCookie(c, cookieRefreshToken, tokens.RefreshToken, int(refreshTokenTTL.Seconds()))
+
+	c.JSON(http.StatusOK, RefreshResponse{
+		AccessToken: tokens.AccessToken,
+		ExpiresIn:   expiresIn,
+	})
+}
+
+// Logout: POST /api/v1/auth/logout
+// 쿠키 만료는 서버측 jti 무효화 성공/실패와 무관하게 항상 보장.
+func (h *Handler) Logout(c *gin.Context) {
+	refreshToken, _ := c.Cookie(cookieRefreshToken)
+
+	setAuthCookie(c, cookieAccessToken, "", -1)
+	setAuthCookie(c, cookieRefreshToken, "", -1)
+
+	if _, err := h.Svc.Logout(c.Request.Context(), refreshToken); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: ErrUserLookupFailed.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func getFrontendURL() string {
@@ -240,6 +270,13 @@ func isLocalhost(host string) bool {
 
 func authCookieSecure() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv(envAuthCookieSecure)), "false")
+}
+
+// setAuthCookie는 auth 쿠키의 공통 속성(SameSite, HttpOnly, Secure, path=/)을 일괄 적용합니다.
+// 만료 시키려면 maxAge=-1, value=""로 호출.
+func setAuthCookie(c *gin.Context, name, value string, maxAge int) {
+	c.SetSameSite(authCookieSameSite())
+	c.SetCookie(name, value, maxAge, "/", "", authCookieSecure(), true)
 }
 
 func authCookieSameSite() http.SameSite {

@@ -2305,6 +2305,7 @@ type UserMutation struct {
 	google_access_token  *string
 	google_refresh_token *string
 	google_token_expiry  *time.Time
+	current_refresh_jti  *string
 	created_at           *time.Time
 	updated_at           *time.Time
 	clearedFields        map[string]struct{}
@@ -2642,6 +2643,55 @@ func (m *UserMutation) ResetGoogleTokenExpiry() {
 	m.google_token_expiry = nil
 }
 
+// SetCurrentRefreshJti sets the "current_refresh_jti" field.
+func (m *UserMutation) SetCurrentRefreshJti(s string) {
+	m.current_refresh_jti = &s
+}
+
+// CurrentRefreshJti returns the value of the "current_refresh_jti" field in the mutation.
+func (m *UserMutation) CurrentRefreshJti() (r string, exists bool) {
+	v := m.current_refresh_jti
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentRefreshJti returns the old "current_refresh_jti" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldCurrentRefreshJti(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentRefreshJti is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentRefreshJti requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentRefreshJti: %w", err)
+	}
+	return oldValue.CurrentRefreshJti, nil
+}
+
+// ClearCurrentRefreshJti clears the value of the "current_refresh_jti" field.
+func (m *UserMutation) ClearCurrentRefreshJti() {
+	m.current_refresh_jti = nil
+	m.clearedFields[user.FieldCurrentRefreshJti] = struct{}{}
+}
+
+// CurrentRefreshJtiCleared returns if the "current_refresh_jti" field was cleared in this mutation.
+func (m *UserMutation) CurrentRefreshJtiCleared() bool {
+	_, ok := m.clearedFields[user.FieldCurrentRefreshJti]
+	return ok
+}
+
+// ResetCurrentRefreshJti resets all changes to the "current_refresh_jti" field.
+func (m *UserMutation) ResetCurrentRefreshJti() {
+	m.current_refresh_jti = nil
+	delete(m.clearedFields, user.FieldCurrentRefreshJti)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UserMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -2910,7 +2960,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.email != nil {
 		fields = append(fields, user.FieldEmail)
 	}
@@ -2928,6 +2978,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.google_token_expiry != nil {
 		fields = append(fields, user.FieldGoogleTokenExpiry)
+	}
+	if m.current_refresh_jti != nil {
+		fields = append(fields, user.FieldCurrentRefreshJti)
 	}
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
@@ -2955,6 +3008,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.GoogleRefreshToken()
 	case user.FieldGoogleTokenExpiry:
 		return m.GoogleTokenExpiry()
+	case user.FieldCurrentRefreshJti:
+		return m.CurrentRefreshJti()
 	case user.FieldCreatedAt:
 		return m.CreatedAt()
 	case user.FieldUpdatedAt:
@@ -2980,6 +3035,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldGoogleRefreshToken(ctx)
 	case user.FieldGoogleTokenExpiry:
 		return m.OldGoogleTokenExpiry(ctx)
+	case user.FieldCurrentRefreshJti:
+		return m.OldCurrentRefreshJti(ctx)
 	case user.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case user.FieldUpdatedAt:
@@ -3035,6 +3092,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetGoogleTokenExpiry(v)
 		return nil
+	case user.FieldCurrentRefreshJti:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentRefreshJti(v)
+		return nil
 	case user.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -3078,7 +3142,11 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *UserMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(user.FieldCurrentRefreshJti) {
+		fields = append(fields, user.FieldCurrentRefreshJti)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -3091,6 +3159,11 @@ func (m *UserMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *UserMutation) ClearField(name string) error {
+	switch name {
+	case user.FieldCurrentRefreshJti:
+		m.ClearCurrentRefreshJti()
+		return nil
+	}
 	return fmt.Errorf("unknown User nullable field %s", name)
 }
 
@@ -3115,6 +3188,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldGoogleTokenExpiry:
 		m.ResetGoogleTokenExpiry()
+		return nil
+	case user.FieldCurrentRefreshJti:
+		m.ResetCurrentRefreshJti()
 		return nil
 	case user.FieldCreatedAt:
 		m.ResetCreatedAt()

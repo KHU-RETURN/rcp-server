@@ -101,6 +101,7 @@ var (
 		{Name: "google_access_token", Type: field.TypeString},
 		{Name: "google_refresh_token", Type: field.TypeString},
 		{Name: "google_token_expiry", Type: field.TypeTime},
+		{Name: "current_refresh_jti", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
