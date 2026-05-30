@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -14,6 +16,7 @@ var (
 	ErrContainerNotFound      = errors.New("container not found")
 	ErrContainerNotEmpty      = errors.New("container not empty, use force=true to delete all")
 	ErrContainerAlreadyExists = errors.New("container name already in use")
+	ErrObjectPrefixNotFound   = errors.New("object prefix not found")
 	ErrStorageOperationFailed = errors.New("storage operation failed")
 )
 
@@ -150,6 +153,54 @@ func (s *Service) DownloadObject(ctx context.Context, ownerID uuid.UUID, contain
 	return nil
 }
 
+func (s *Service) ArchiveObjects(ctx context.Context, ownerID uuid.UUID, containerName, prefix string, w io.Writer) error {
+	c, err := s.resolveContainer(ctx, ownerID, containerName)
+	if err != nil {
+		return err
+	}
+
+	prefix = normalizeObjectPrefix(prefix)
+	objs, err := s.client.ListObjects(c.OpenstackName.String())
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+	}
+
+	matches := make([]ObjectInfo, 0, len(objs))
+	for _, obj := range objs {
+		if prefix == "" || strings.HasPrefix(obj.Name, prefix) {
+			matches = append(matches, obj)
+		}
+	}
+	if len(matches) == 0 {
+		return ErrObjectPrefixNotFound
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].Name < matches[j].Name
+	})
+
+	zw := zip.NewWriter(w)
+	for _, obj := range matches {
+		entryName, err := safeZipEntryName(obj.Name)
+		if err != nil {
+			_ = zw.Close()
+			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+		}
+		entry, err := zw.Create(entryName)
+		if err != nil {
+			_ = zw.Close()
+			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+		}
+		if err := s.client.DownloadObject(c.OpenstackName.String(), obj.Name, entry); err != nil {
+			_ = zw.Close()
+			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+	}
+	return nil
+}
+
 func (s *Service) DeleteObject(ctx context.Context, ownerID uuid.UUID, containerName, objectName string) error {
 	c, err := s.resolveContainer(ctx, ownerID, containerName)
 	if err != nil {
@@ -170,4 +221,25 @@ func (s *Service) resolveContainer(ctx context.Context, ownerID uuid.UUID, name 
 		return nil, ErrContainerNotFound
 	}
 	return c, nil
+}
+
+func normalizeObjectPrefix(prefix string) string {
+	prefix = strings.TrimLeft(prefix, "/")
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	return prefix
+}
+
+func safeZipEntryName(name string) (string, error) {
+	cleaned := strings.TrimLeft(name, "/")
+	if cleaned == "" {
+		return "", fmt.Errorf("empty object name")
+	}
+	for _, segment := range strings.Split(cleaned, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", fmt.Errorf("unsafe object name %q", name)
+		}
+	}
+	return cleaned, nil
 }

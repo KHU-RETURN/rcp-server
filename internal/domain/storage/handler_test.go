@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -316,6 +317,68 @@ func TestHandlerDownloadObject(t *testing.T) {
 		}
 		if w.Body.String() != "file content" {
 			t.Fatalf("unexpected body: %q", w.Body.String())
+		}
+	})
+}
+
+func TestHandlerArchiveObjects(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("streams zip archive for prefix", func(t *testing.T) {
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{
+					{Name: "docs/readme.txt"},
+					{Name: "docs/nested/a.txt"},
+					{Name: "other.txt"},
+				}, nil
+			},
+			downloadObjectFn: func(_, objectName string, w io.Writer) error {
+				_, _ = io.WriteString(w, "content:"+objectName)
+				return nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		req := httptest.NewRequest(
+			http.MethodGet,
+			api.BasePath+"/storage/containers/my-bucket/archive?prefix=docs%2F",
+			nil,
+		)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		withTestUser(v1)
+		newTestHandler(client, repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		if got := w.Header().Get(api.HeaderContentType); got != "application/zip" {
+			t.Fatalf("expected application/zip content type, got %q", got)
+		}
+		if got := w.Header().Get("Content-Disposition"); got != `attachment; filename="docs.zip"` {
+			t.Fatalf("unexpected content disposition: %q", got)
+		}
+
+		zr, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
+		if err != nil {
+			t.Fatalf("zip.NewReader: %v", err)
+		}
+		got := make(map[string]bool, len(zr.File))
+		for _, f := range zr.File {
+			got[f.Name] = true
+		}
+		if !got["docs/readme.txt"] || !got["docs/nested/a.txt"] {
+			t.Fatalf("missing expected zip entries: %v", got)
+		}
+		if got["other.txt"] {
+			t.Fatal("archive included object outside prefix")
 		}
 	})
 }
