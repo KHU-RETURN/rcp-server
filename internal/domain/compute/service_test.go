@@ -610,6 +610,63 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects creation when user instance count limit is reached", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{{ID: "flavor-1", VCPUs: 1, RAM: 1024, Disk: 10}}, nil
+			},
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				t.Fatal("CreateServer should not be called when limit is reached")
+				return nil, nil
+			},
+		}
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-1"}, {OpenstackID: "server-2"}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, "project-1", "", UserUsageLimits{Instances: 2})
+		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
+			Name:      "vm",
+			ImageRef:  "image-1",
+			FlavorRef: "flavor-1",
+		})
+		if !errors.Is(err, ErrUserUsageLimitExceeded) {
+			t.Fatalf("expected ErrUserUsageLimitExceeded, got %v", err)
+		}
+	})
+
+	t.Run("rejects creation when user resource usage limit is reached", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "small", VCPUs: 1, RAM: 1024, Disk: 10},
+					{ID: "medium", VCPUs: 2, RAM: 2048, Disk: 20},
+				}, nil
+			},
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				t.Fatal("CreateServer should not be called when usage limit is reached")
+				return nil, nil
+			},
+		}
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-1", FlavorID: "small"}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, "project-1", "", UserUsageLimits{VCPUs: 2, RAMMB: 4096, DiskGB: 40})
+		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
+			Name:      "vm",
+			ImageRef:  "image-1",
+			FlavorRef: "medium",
+		})
+		if !errors.Is(err, ErrUserUsageLimitExceeded) {
+			t.Fatalf("expected ErrUserUsageLimitExceeded, got %v", err)
+		}
+	})
+
 	t.Run("returns operation failed when repo save errors", func(t *testing.T) {
 		client := &fakeClient{
 			createServerFn: func(opts CreateServerOpts) (*Server, error) {
