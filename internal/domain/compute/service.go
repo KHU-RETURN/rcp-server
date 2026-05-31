@@ -45,6 +45,8 @@ type Service struct {
 	flavorExpire     time.Time
 	flavorInflight   *flavorFetch // 콜드 스타트(캐시 비어있음)에서 fetch를 공유하기 위한 핸들
 	flavorRefreshing bool         // 만료된 캐시를 백그라운드에서 갱신 중인지 여부
+
+	userUsageLimits UserUsageLimits
 }
 
 // flavorFetch는 콜드 스타트 시 동시 호출자들이 하나의 upstream fetch 결과를 공유하기 위한 핸들이다.
@@ -63,14 +65,21 @@ var (
 	ErrCreateInstanceFlavorRequired = errors.New("flavor_id is required")
 	ErrInstanceNotFound             = errors.New("instance not found")
 	ErrInstanceOperationFailed      = errors.New("instance operation failed")
+	ErrFlavorNotFound               = errors.New("flavor not found")
+	ErrUserUsageLimitExceeded       = errors.New("user usage limit exceeded")
 )
 
-func NewService(client computeClient, repo instanceRepo, projectID, defaultNetworkID string) *Service {
+func NewService(client computeClient, repo instanceRepo, projectID, defaultNetworkID string, userUsageLimits ...UserUsageLimits) *Service {
+	limits := UserUsageLimits{}
+	if len(userUsageLimits) > 0 {
+		limits = normalizeUserUsageLimits(userUsageLimits[0])
+	}
 	return &Service{
 		client:           client,
 		repo:             repo,
 		projectID:        projectID,
 		defaultNetworkID: strings.TrimSpace(defaultNetworkID),
+		userUsageLimits:  limits,
 	}
 }
 
@@ -453,6 +462,9 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 	if err := validateCreateServerOpts(normalizedOpts); err != nil {
 		return nil, err
 	}
+	if err := s.ensureUserUsageLimits(ctx, ownerID, normalizedOpts.FlavorRef); err != nil {
+		return nil, err
+	}
 
 	server, err := s.client.CreateServer(normalizedOpts)
 	if err != nil {
@@ -481,6 +493,47 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 	return buildCreateInstanceResponse(server, normalizedOpts), nil
 }
 
+func (s *Service) ensureUserUsageLimits(ctx context.Context, ownerID uuid.UUID, requestedFlavorID string) error {
+	if s.userUsageLimits.isZero() {
+		return nil
+	}
+
+	instances, err := s.repo.ListByOwner(ctx, ownerID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+
+	flavors, err := s.client.FetchFlavors()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	flavorMap := make(map[string]Flavor, len(flavors))
+	for _, flavor := range flavors {
+		flavorMap[flavor.ID] = flavor
+	}
+
+	requestedFlavor, ok := flavorMap[requestedFlavorID]
+	if !ok {
+		return ErrFlavorNotFound
+	}
+
+	usage := UserUsage{Instances: len(instances)}
+	for _, inst := range instances {
+		flavor, ok := flavorMap[inst.FlavorID]
+		if !ok {
+			continue
+		}
+		usage.addFlavor(flavor)
+	}
+	usage.Instances++
+	usage.addFlavor(requestedFlavor)
+
+	if usage.exceeds(s.userUsageLimits) {
+		return ErrUserUsageLimitExceeded
+	}
+	return nil
+}
+
 func (s *Service) fetchFlavorMap() (map[string]FlavorResponse, error) {
 	rawFlavors, err := s.fetchFlavors()
 	if err != nil {
@@ -491,6 +544,41 @@ func (s *Service) fetchFlavorMap() (map[string]FlavorResponse, error) {
 		m[f.ID] = FlavorResponse(f)
 	}
 	return m, nil
+}
+
+func normalizeUserUsageLimits(limits UserUsageLimits) UserUsageLimits {
+	return UserUsageLimits{
+		Instances: max(limits.Instances, 0),
+		VCPUs:     max(limits.VCPUs, 0),
+		RAMMB:     max(limits.RAMMB, 0),
+		DiskGB:    max(limits.DiskGB, 0),
+	}
+}
+
+func (limits UserUsageLimits) isZero() bool {
+	return limits.Instances <= 0 && limits.VCPUs <= 0 && limits.RAMMB <= 0 && limits.DiskGB <= 0
+}
+
+func (usage *UserUsage) addFlavor(flavor Flavor) {
+	usage.VCPUs += flavor.VCPUs
+	usage.RAMMB += flavor.RAM
+	usage.DiskGB += flavor.Disk
+}
+
+func (usage UserUsage) exceeds(limits UserUsageLimits) bool {
+	if limits.Instances > 0 && usage.Instances > limits.Instances {
+		return true
+	}
+	if limits.VCPUs > 0 && usage.VCPUs > limits.VCPUs {
+		return true
+	}
+	if limits.RAMMB > 0 && usage.RAMMB > limits.RAMMB {
+		return true
+	}
+	if limits.DiskGB > 0 && usage.DiskGB > limits.DiskGB {
+		return true
+	}
+	return false
 }
 
 type serverAddress struct {

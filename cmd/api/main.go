@@ -2,12 +2,15 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/database"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
@@ -75,6 +78,11 @@ func main() {
 		log.Fatalf("RCP_FRONTEND_BASE_URL or FRONTEND_URL: required (e.g. https://rcp.return.dev)")
 	}
 
+	usageLimits, err := loadUserUsageLimits()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	myApp, err := server.NewApp(server.AppDeps{
 		Provider:         provider,
 		EntClient:        db,
@@ -87,6 +95,7 @@ func main() {
 		NSProxySock:      nsProxySock,
 		HTTPProxyAddress: httpProxyAddress,
 		FrontendBaseURL:  frontendBaseURL,
+		UsageLimits:      usageLimits,
 	})
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
@@ -145,4 +154,45 @@ func resolveDBConfig(getenv func(string) string) (string, string) {
 		dsn = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 	}
 	return driver, dsn
+}
+
+func loadUserUsageLimits() (compute.UserUsageLimits, error) {
+	instances, err := parseNonNegativeEnv("RCP_MAX_INSTANCES_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+	vcpus, err := parseNonNegativeEnv("RCP_MAX_VCPUS_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+	ramMB, err := parseNonNegativeEnv("RCP_MAX_RAM_MB_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+	diskGB, err := parseNonNegativeEnv("RCP_MAX_DISK_GB_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+
+	return compute.UserUsageLimits{
+		Instances: instances,
+		VCPUs:     vcpus,
+		RAMMB:     ramMB,
+		DiskGB:    diskGB,
+	}, nil
+}
+
+func parseNonNegativeEnv(name string) (int, error) {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s must be greater than or equal to 0", name)
+	}
+	return value, nil
 }

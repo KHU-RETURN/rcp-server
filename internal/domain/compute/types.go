@@ -42,6 +42,20 @@ type QuotaDetailSet struct {
 	Instances QuotaDetail
 }
 
+type UserUsageLimits struct {
+	Instances int
+	VCPUs     int
+	RAMMB     int
+	DiskGB    int
+}
+
+type UserUsage struct {
+	Instances int
+	VCPUs     int
+	RAMMB     int
+	DiskGB    int
+}
+
 type Server struct {
 	ID             string
 	Name           string
