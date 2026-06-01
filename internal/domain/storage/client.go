@@ -60,6 +60,9 @@ func (c *Client) ListObjects(containerName string) ([]ObjectInfo, error) {
 	}
 	pages, err := objects.List(sc, containerName, objects.ListOpts{Full: true}).AllPages()
 	if err != nil {
+		if isNotFound(err) {
+			return nil, nil // 컨테이너가 이미 삭제된 경우 빈 목록 반환
+		}
 		return nil, err
 	}
 	raw, err := objects.ExtractInfo(pages)

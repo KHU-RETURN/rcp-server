@@ -11,6 +11,9 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 )
 
+// bodyLimitError는 MaxBytesReader가 초과 시 반환하는 에러 타입이다.
+type bodyLimitError = http.MaxBytesError
+
 type Handler struct {
 	Svc *Service
 }
@@ -134,8 +137,19 @@ func (h *Handler) UploadObject(c *gin.Context) {
 		return
 	}
 
+	// FormFile이 전체 파일을 /tmp에 버퍼링하기 전에 body 크기를 제한한다.
+	// 한도를 초과하는 파일은 디스크를 채우기 전에 차단된다.
+	if maxBytes := h.Svc.StorageLimitBytes(); maxBytes > 0 {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+	}
+
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
+		var limitErr *bodyLimitError
+		if errors.As(err, &limitErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, api.ErrorResponse{Error: "file exceeds storage quota limit"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
 		return
 	}

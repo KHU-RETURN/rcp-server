@@ -357,17 +357,18 @@ func TestServiceDeleteContainer(t *testing.T) {
 	})
 
 	t.Run("returns ErrContainerNotFound when DB row already gone (concurrent double-delete)", func(t *testing.T) {
-		var swiftDeleteCalled bool
+		// Swift-first 순서: Swift 삭제(404-tolerant) → DB 삭제(0 rows) → ErrContainerNotFound.
+		// Swift는 호출되지만 DB가 이미 사라져 NotFound를 반환한다.
 		client := &fakeStorageClient{
 			listObjectsFn:     func(_ string) ([]ObjectInfo, error) { return nil, nil },
-			deleteContainerFn: func(_ string) error { swiftDeleteCalled = true; return nil },
+			deleteContainerFn: func(_ string) error { return nil }, // 404-tolerant: 이미 삭제된 경우도 success
 		}
 		repo := &fakeContainerRepo{
 			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
 				return existingContainer, nil
 			},
 			deleteFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
-				return false, nil // 0 rows — 다른 요청이 이미 삭제
+				return false, nil // 0 rows — 다른 요청이 이미 DB에서 삭제
 			},
 		}
 
@@ -376,12 +377,9 @@ func TestServiceDeleteContainer(t *testing.T) {
 		if !errors.Is(err, ErrContainerNotFound) {
 			t.Fatalf("expected ErrContainerNotFound, got %v", err)
 		}
-		if swiftDeleteCalled {
-			t.Fatal("Swift delete should not be called when DB row was already gone")
-		}
 	})
 
-	t.Run("DB is deleted before Swift (quota freed atomically before external call)", func(t *testing.T) {
+	t.Run("Swift is deleted before DB (prevents Swift orphan on delete failure)", func(t *testing.T) {
 		var order []string
 		client := &fakeStorageClient{
 			listObjectsFn:     func(_ string) ([]ObjectInfo, error) { return nil, nil },
@@ -401,8 +399,8 @@ func TestServiceDeleteContainer(t *testing.T) {
 		if err := svc.DeleteContainer(ctx, testOwnerID, "my-bucket", false); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(order) != 2 || order[0] != "db" || order[1] != "swift" {
-			t.Fatalf("expected [db swift], got %v", order)
+		if len(order) != 2 || order[0] != "swift" || order[1] != "db" {
+			t.Fatalf("expected [swift db], got %v", order)
 		}
 	})
 }
@@ -466,9 +464,9 @@ func TestServiceUploadObject(t *testing.T) {
 		}
 	})
 
-	t.Run("allows upload when total storage is within GB limit", func(t *testing.T) {
+	t.Run("allows upload when total storage is strictly within GB limit", func(t *testing.T) {
 		const gb = int64(1024 * 1024 * 1024)
-		// 현재 40 GB, 한도 50 GB, 새 파일 9 GB → 허용
+		// 현재 40 GB, 한도 50 GB, 새 파일 9 GB → 합계 49 GB < 50 GB → 허용
 		client := &fakeStorageClient{
 			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
 				return []ObjectInfo{{SizeBytes: 40 * gb}}, nil
@@ -487,6 +485,30 @@ func TestServiceUploadObject(t *testing.T) {
 		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "ok.bin", nil, "", 9*gb)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects upload when total would exactly reach the limit (>= boundary)", func(t *testing.T) {
+		const gb = int64(1024 * 1024 * 1024)
+		// 현재 40 GB, 한도 50 GB, 새 파일 10 GB → 합계 50 GB = 한도 → 거부 (>= 이므로)
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{{SizeBytes: 40 * gb}}, nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Container, error) {
+				return []Container{{Name: "my-bucket", OpenstackName: testContainerUUID}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "exact.bin", nil, "", 10*gb)
+		if !errors.Is(err, ErrUserStorageLimitExceeded) {
+			t.Fatalf("expected ErrUserStorageLimitExceeded at exact boundary, got %v", err)
 		}
 	})
 

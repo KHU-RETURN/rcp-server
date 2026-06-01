@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 )
@@ -53,16 +54,17 @@ func NewService(client storageClient, repo containerRepo, limits ...UserStorageL
 func (s *Service) CreateContainer(ctx context.Context, ownerID uuid.UUID, name string) (*ContainerResponse, error) {
 	name = strings.TrimSpace(name)
 
+	// 한도 체크를 중복 이름 체크보다 먼저: 한도 초과 시 429, 이름 중복 시 409 순서 보장.
+	if err := s.ensureUserStorageLimits(ctx, ownerID); err != nil {
+		return nil, err
+	}
+
 	existing, err := s.repo.FindByName(ctx, ownerID, name)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 	if existing != nil {
 		return nil, ErrContainerAlreadyExists
-	}
-
-	if err := s.ensureUserStorageLimits(ctx, ownerID); err != nil {
-		return nil, err
 	}
 
 	openstackName := uuid.New()
@@ -117,19 +119,19 @@ func (s *Service) DeleteContainer(ctx context.Context, ownerID uuid.UUID, name s
 		}
 	}
 
-	// DB를 먼저 atomic하게 삭제한다.
-	// 0 rows → 동시 요청이 이미 처리했음 → Swift는 건드리지 않고 NotFound 반환.
+	// Swift를 먼저 삭제: 동시 요청의 경우 client 레벨에서 404→success 처리됨.
+	// Swift 성공 후 DB 삭제: 0 rows → 다른 요청이 이미 DB를 삭제 → NotFound 반환.
+	// (DB-first 순서는 Swift 실패 시 DB row가 사라져 컨테이너가 영구 고아가 되는 문제 있음)
+	if err := s.client.DeleteContainer(c.OpenstackName.String()); err != nil {
+		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+	}
+
 	deleted, err := s.repo.Delete(ctx, ownerID, name)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 	if !deleted {
 		return ErrContainerNotFound
-	}
-
-	// DB 삭제 성공 시에만 Swift에서 제거 (404는 client 레벨에서 성공으로 처리됨).
-	if err := s.client.DeleteContainer(c.OpenstackName.String()); err != nil {
-		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 	return nil
 }
@@ -190,21 +192,52 @@ func (s *Service) ensureUserStorageSizeLimit(ctx context.Context, ownerID uuid.U
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
-	var totalBytes int64
-	for _, c := range containers {
-		objs, err := s.client.ListObjects(c.OpenstackName.String())
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
-		}
-		for _, o := range objs {
-			totalBytes += o.SizeBytes
-		}
+
+	// 컨테이너별 오브젝트 목록을 병렬로 조회해 총 사용량 집계.
+	type listResult struct {
+		bytes int64
+		err   error
 	}
+	results := make([]listResult, len(containers))
+	var wg sync.WaitGroup
+	for i, c := range containers {
+		wg.Add(1)
+		go func(i int, swiftName string) {
+			defer wg.Done()
+			objs, err := s.client.ListObjects(swiftName)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			for _, o := range objs {
+				results[i].bytes += o.SizeBytes
+			}
+		}(i, c.OpenstackName.String())
+	}
+	wg.Wait()
+
+	var totalBytes int64
+	for _, r := range results {
+		if r.err != nil {
+			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, r.err)
+		}
+		totalBytes += r.bytes
+	}
+
 	limitBytes := int64(s.userLimits.StorageGB) * 1024 * 1024 * 1024
-	if totalBytes+additionalBytes > limitBytes {
+	if totalBytes+additionalBytes >= limitBytes {
 		return ErrUserStorageLimitExceeded
 	}
 	return nil
+}
+
+// StorageLimitBytes는 유저당 총 스토리지 한도를 바이트 단위로 반환한다.
+// 한도 미설정(0)이면 0을 반환한다.
+func (s *Service) StorageLimitBytes() int64 {
+	if s.userLimits.StorageGB <= 0 {
+		return 0
+	}
+	return int64(s.userLimits.StorageGB) * 1024 * 1024 * 1024
 }
 
 func (s *Service) ensureUserStorageLimits(ctx context.Context, ownerID uuid.UUID) error {
