@@ -12,3 +12,10 @@ func Init(provider *gophercloud.ProviderClient, entClient *ent.Client) *Handler 
 	svc := NewService(osClient, repo)
 	return NewHandler(svc)
 }
+
+// InitSSH wires the ssh-gateway notify client and SSH callback service.
+// auth domain consumes the returned *SSHService via its sshCallbackHandler
+// interface (duck-typed).
+func InitSSH(notifySockPath string, notifySecret []byte) *SSHService {
+	return NewSSHService(NewNotifyClient(notifySockPath, notifySecret))
+}

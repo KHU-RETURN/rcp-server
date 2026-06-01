@@ -6,13 +6,23 @@
 
 ## Run
 
+세 개의 바이너리로 구성됩니다.
+
+| 바이너리 | 역할 |
+|----------|------|
+| `cmd/api` | REST API 서버 (Gin, OpenStack 연동, OAuth) |
+| `cmd/ns-proxy` | tenant 네트워크로의 SOCKS5 게이트웨이 (qrouter netns, Unix socket) |
+| `cmd/ssh-gateway` | 사용자 → VM SSH 베스천 (OAuth keyboard-interactive + ns-proxy 릴레이) |
+
 환경 변수를 준비한 뒤 아래 명령으로 실행합니다.
 
 ```bash
-go run ./cmd/api
+go run ./cmd/api          # 기본 :8080
+go run ./cmd/ns-proxy     # /run/rcp/ns-proxy.sock
+go run ./cmd/ssh-gateway  # 기본 127.0.0.1:2222 (cloudflared 뒤)
 ```
 
-기본 주소는 `http://localhost:8080`입니다.
+API 기본 주소는 `http://localhost:8080`, SSH 게이트웨이는 `127.0.0.1:2222`(외부 직접 노출 X, cloudflared 터널 경유)입니다.
 
 ## API Docs Generation
 
@@ -29,12 +39,35 @@ go generate ./cmd/api
 - `http://localhost:8080/docs`
 - `http://localhost:8080/openapi.yaml`
 
+## SSH Access
+
+사용자는 표준 OpenSSH 클라이언트 + `cloudflared`로 본인 VM에 접속합니다. 게이트웨이는 호스트 로컬(`127.0.0.1:2222`)에서만 listen하고, 외부 트래픽은 Cloudflare Tunnel이 `rcp-gw.return.dev`를 그 소켓으로 라우팅합니다.
+
+```sshconfig
+# ~/.ssh/config
+Host rcp-gw rcp-gw.return.dev
+  HostName rcp-gw.return.dev
+  User any
+  ForwardAgent yes
+  ProxyCommand cloudflared access ssh --hostname %h
+```
+
+```bash
+ssh rcp-gw
+```
+
+터미널에 표시된 6자리 코드를 브라우저 인증 화면에 입력한 뒤 OAuth 로그인하면 본인 VM 리스트가 표시됩니다. 선택하면 `cmd/ns-proxy`를 통해 tenant network의 VM에 셸 세션이 연결됩니다. RCP는 사용자 private key를 보관하지 않고 forwarding된 ssh-agent로만 인증합니다.
+
+운영 가이드: [docs/ssh-gateway-operations.md](docs/ssh-gateway-operations.md)
+사용자 가이드: [docs/ssh-gateway-user-guide.md](docs/ssh-gateway-user-guide.md)
+
 ## Deployment
 
 `main` 브랜치 머지 시 `compute-1` 호스트로 자동 배포됩니다.
 
 - `.github/workflows/deploy.yml` — rcp-server (매 머지마다)
 - `.github/workflows/deploy-ns-proxy.yml` — ns-proxy (`cmd/ns-proxy/**`나 `deploy/systemd/ns-proxy.service` 변경 시, 또는 `workflow_dispatch` 수동 trigger)
+- `.github/workflows/deploy-ssh-gateway.yml` — ssh-gateway (`cmd/ssh-gateway/**`나 SSH gateway systemd 변경 시)
 
 ### 기여할 때 알아둘 것
 
@@ -49,4 +82,4 @@ go generate ./cmd/api
 ## Notes
 
 - OpenStack 호출은 Cloudflare Access 헤더가 포함된 HTTP 클라이언트를 통해 수행됩니다.
-- 아직 테스트 코드는 없고, 현재 검증은 `go test ./...` 수준의 컴파일 검증에 가깝습니다.
+- 단위 테스트는 `go test ./...`로 실행합니다 — `cmd/ns-proxy`, `cmd/ssh-gateway`, `internal/domain/{auth,access,compute,storage}`, `internal/server` 등에 커버리지가 있습니다.

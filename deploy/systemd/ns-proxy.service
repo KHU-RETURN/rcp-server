@@ -16,6 +16,7 @@ ExecStart=/usr/local/bin/ns-proxy
 # /run/rcp/ 자동 생성 + 권한 (재부팅 후에도 유지)
 RuntimeDirectory=rcp
 RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
 
 # 보안 강화
 NoNewPrivileges=true

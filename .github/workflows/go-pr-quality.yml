@@ -96,6 +96,35 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: api
+            output: server
+            target: ./cmd/api/main.go
+          - name: ns-proxy
+            output: ns-proxy
+            target: ./cmd/ns-proxy
+          - name: ssh-gateway
+            output: ssh-gateway
+            target: ./cmd/ssh-gateway
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+
+      - name: Build ${{ matrix.name }}
+        run: GOOS=linux GOARCH=amd64 go build -v -o "${{ matrix.output }}" "${{ matrix.target }}"
+
   vuln:
     name: Vulnerability Scan
     runs-on: ubuntu-latest
