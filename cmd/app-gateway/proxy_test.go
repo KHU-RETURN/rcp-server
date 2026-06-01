@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"net/http/httputil"
 	"testing"
 )
 
@@ -17,19 +18,20 @@ func TestNewReverseProxyPreservesOriginalHost(t *testing.T) {
 	}
 	req.Host = "return.apps.khu-return.com"
 
-	rp.Director(req)
+	out := req.Clone(req.Context())
+	rp.Rewrite(&httputil.ProxyRequest{In: req, Out: out})
 
-	if req.Host != "return.apps.khu-return.com" {
-		t.Fatalf("Host got %q", req.Host)
+	if out.Host != "return.apps.khu-return.com" {
+		t.Fatalf("Host got %q", out.Host)
 	}
-	if req.URL.Scheme != "http" {
-		t.Fatalf("scheme got %q", req.URL.Scheme)
+	if out.URL.Scheme != "http" {
+		t.Fatalf("scheme got %q", out.URL.Scheme)
 	}
-	if req.URL.Host != "10.0.0.8:80" {
-		t.Fatalf("target host got %q", req.URL.Host)
+	if out.URL.Host != "10.0.0.8:80" {
+		t.Fatalf("target host got %q", out.URL.Host)
 	}
-	if req.URL.Path != "/path" || req.URL.RawQuery != "q=1" {
-		t.Fatalf("path/query got %q?%q", req.URL.Path, req.URL.RawQuery)
+	if out.URL.Path != "/path" || out.URL.RawQuery != "q=1" {
+		t.Fatalf("path/query got %q?%q", out.URL.Path, out.URL.RawQuery)
 	}
 }
 

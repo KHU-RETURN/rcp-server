@@ -56,20 +56,17 @@ func transportViaNSProxy(sockPath string) (*http.Transport, error) {
 
 func newReverseProxy(fixedIP string, targetPort int, sockPath string) (*httputil.ReverseProxy, error) {
 	target := &url.URL{Scheme: "http", Host: net.JoinHostPort(fixedIP, strconv.Itoa(targetPort))}
-	rp := httputil.NewSingleHostReverseProxy(target)
 	transport, err := transportViaNSProxy(sockPath)
 	if err != nil {
 		return nil, err
 	}
-	rp.Transport = transport
-
-	originalDirector := rp.Director
-	rp.Director = func(req *http.Request) {
-		originalHost := req.Host
-		originalDirector(req)
-		req.Host = originalHost
-		req.URL.Scheme = target.Scheme
-		req.URL.Host = target.Host
+	rp := &httputil.ReverseProxy{
+		Transport: transport,
+		Rewrite: func(req *httputil.ProxyRequest) {
+			req.SetURL(target)
+			req.Out.Host = req.In.Host
+			req.SetXForwarded()
+		},
 	}
 	return rp, nil
 }

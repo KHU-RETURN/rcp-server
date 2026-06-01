@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"os"
@@ -42,7 +43,7 @@ func TestNewLoggerAcceptsKnownLevels(t *testing.T) {
 
 func TestNewLoggerIsUsable(t *testing.T) {
 	logger := newLogger("debug")
-	if !logger.Enabled(nil, slog.LevelDebug) {
+	if !logger.Enabled(context.Background(), slog.LevelDebug) {
 		t.Fatalf("debug logger should enable debug")
 	}
 }
