@@ -150,8 +150,9 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | POST | `/api/v1/storage/containers` | CreateContainer | container 생성 |
 | DELETE | `/api/v1/storage/containers/:name` | DeleteContainer | container 삭제 (`?force=true`로 강제 삭제) |
 | GET | `/api/v1/storage/containers/:name/objects` | ListObjects | object 목록 조회 |
-| POST | `/api/v1/storage/containers/:name/objects` | UploadObject | 파일 업로드 (multipart/form-data, key=`file`) |
+| POST | `/api/v1/storage/containers/:name/objects/*key` | UploadObject | 파일 업로드 (multipart/form-data, key=`file`) |
 | GET | `/api/v1/storage/containers/:name/objects/*key` | DownloadObject | 파일 다운로드 (스트리밍) |
+| GET | `/api/v1/storage/containers/:name/archive?prefix=path/` | ArchiveObjects | prefix 아래 object를 zip으로 다운로드 |
 | DELETE | `/api/v1/storage/containers/:name/objects/*key` | DeleteObject | 파일 삭제 |
 
 ---
