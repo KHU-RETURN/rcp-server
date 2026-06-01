@@ -108,7 +108,7 @@ func resolveDBConfig(getenv func(string) string) (string, string) {
 	}
 	dsn := strings.TrimSpace(getenv("DB_DSN"))
 	if dsn == "" {
-		dsn = "file:/var/lib/rcp/rcp.db?cache=shared&_pragma=foreign_keys(1)"
+		dsn = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)"
 	}
 	return driver, dsn
 }
