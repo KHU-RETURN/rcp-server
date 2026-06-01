@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -530,6 +532,98 @@ func TestServiceUploadObject(t *testing.T) {
 		_ = svc.UploadObject(ctx, testOwnerID, "my-bucket", "file.bin", nil, "", 999*1024*1024*1024)
 		if listObjectsCalled {
 			t.Fatal("ListObjects should not be called when StorageGB limit is disabled")
+		}
+	})
+}
+
+func TestServiceArchiveObjects(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("streams zip for objects under prefix", func(t *testing.T) {
+		objectsByName := map[string]string{
+			"docs/readme.txt":    "readme",
+			"docs/nested/a.txt":  "nested",
+			"images/ignored.txt": "ignored",
+		}
+		client := &fakeStorageClient{
+			listObjectsFn: func(containerName string) ([]ObjectInfo, error) {
+				if containerName != testContainerUUID.String() {
+					t.Fatalf("expected Swift container %q, got %q", testContainerUUID, containerName)
+				}
+				return []ObjectInfo{
+					{Name: "images/ignored.txt"},
+					{Name: "docs/nested/a.txt"},
+					{Name: "docs/readme.txt"},
+				}, nil
+			},
+			downloadObjectFn: func(containerName, objectName string, w io.Writer) error {
+				if containerName != testContainerUUID.String() {
+					t.Fatalf("expected Swift container %q, got %q", testContainerUUID, containerName)
+				}
+				_, err := io.WriteString(w, objectsByName[objectName])
+				return err
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		var buf bytes.Buffer
+		svc := NewService(client, repo)
+		if err := svc.ArchiveObjects(ctx, testOwnerID, "my-bucket", "docs/", &buf); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		if err != nil {
+			t.Fatalf("zip.NewReader: %v", err)
+		}
+		got := map[string]string{}
+		for _, f := range zr.File {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatalf("open zip entry %q: %v", f.Name, err)
+			}
+			content, err := io.ReadAll(rc)
+			_ = rc.Close()
+			if err != nil {
+				t.Fatalf("read zip entry %q: %v", f.Name, err)
+			}
+			got[f.Name] = string(content)
+		}
+
+		if len(got) != 2 {
+			t.Fatalf("expected 2 archived objects, got %d: %v", len(got), got)
+		}
+		if got["docs/readme.txt"] != "readme" {
+			t.Fatalf("expected docs/readme.txt content, got %q", got["docs/readme.txt"])
+		}
+		if got["docs/nested/a.txt"] != "nested" {
+			t.Fatalf("expected docs/nested/a.txt content, got %q", got["docs/nested/a.txt"])
+		}
+		if _, ok := got["images/ignored.txt"]; ok {
+			t.Fatal("archive included object outside prefix")
+		}
+	})
+
+	t.Run("returns ErrObjectPrefixNotFound when prefix has no objects", func(t *testing.T) {
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{{Name: "other/file.txt"}}, nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		svc := NewService(client, repo)
+		err := svc.ArchiveObjects(ctx, testOwnerID, "my-bucket", "missing/", io.Discard)
+		if !errors.Is(err, ErrObjectPrefixNotFound) {
+			t.Fatalf("expected ErrObjectPrefixNotFound, got %v", err)
 		}
 	})
 }

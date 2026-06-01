@@ -2,16 +2,19 @@ package access
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/net/websocket"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
@@ -28,19 +31,24 @@ const (
 	envWebConsoleBaseURL        = "RCP_WEB_CONSOLE_BASE_URL"
 	envWebConsoleAllowedOrigins = "RCP_WEB_CONSOLE_ALLOWED_ORIGINS"
 	envNSProxySock              = "RCP_NS_PROXY_SOCK"
+	envVMKnownHostsPath         = "RCP_VM_KNOWN_HOSTS_PATH"
+	envSSHGatewayKnownHostsPath = "RCP_SSH_GW_KNOWN_HOSTS_PATH"
 
-	defaultNSProxySock = "/run/rcp/ns-proxy.sock"
+	defaultNSProxySock      = "/run/rcp/ns-proxy.sock"
+	defaultVMKnownHostsPath = "/etc/rcp/ssh-gateway/known_hosts"
 )
 
 type Handler struct {
-	Svc             *Service
-	NSProxySockPath string
+	Svc               *Service
+	NSProxySockPath   string
+	VMHostKeyCallback ssh.HostKeyCallback
 }
 
 func NewHandler(svc *Service) *Handler {
 	return &Handler{
-		Svc:             svc,
-		NSProxySockPath: defaultNSProxySockPath(),
+		Svc:               svc,
+		NSProxySockPath:   defaultNSProxySockPath(),
+		VMHostKeyCallback: defaultVMHostKeyCallback(),
 	}
 }
 
@@ -227,7 +235,7 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(console.Signer),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- web console uses short-lived keys for tenant VMs without managed host key inventory.
+		HostKeyCallback: h.VMHostKeyCallback,
 	}
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(tcpConn, console.Host+":22", sshCfg)
@@ -274,6 +282,41 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 	h.Svc.DeleteAuthorizedKey(console.InstanceID, console.Username, console.AuthorizedKey)
 	close(done)
 	return err
+}
+
+func defaultVMHostKeyCallback() ssh.HostKeyCallback {
+	return reloadingVMHostKeyCallback(configuredVMKnownHostsPath())
+}
+
+func reloadingVMHostKeyCallback(path string) ssh.HostKeyCallback {
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		cb, err := loadVMHostKeyCallback(path)
+		if err != nil {
+			return fmt.Errorf("vm host key trust unavailable at %s: %w", path, err)
+		}
+		return cb(hostname, remote, key)
+	}
+}
+
+func configuredVMKnownHostsPath() string {
+	if v := strings.TrimSpace(os.Getenv(envVMKnownHostsPath)); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv(envSSHGatewayKnownHostsPath)); v != "" {
+		return v
+	}
+	return defaultVMKnownHostsPath
+}
+
+func loadVMHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
+	clean := strings.TrimSpace(path)
+	if clean == "" {
+		clean = defaultVMKnownHostsPath
+	}
+	if !filepath.IsAbs(clean) {
+		return nil, fmt.Errorf("known_hosts path must be absolute: %q", clean)
+	}
+	return knownhosts.New(clean)
 }
 
 func copySSHToWebSocket(ws *websocket.Conn, r io.Reader, mu *sync.Mutex, done <-chan struct{}) {

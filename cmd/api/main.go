@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
@@ -41,14 +42,7 @@ func main() {
 		log.Fatalf("OpenStack 인증 실패: %v", err)
 	}
 
-	dbDriver := os.Getenv("DB_DRIVER")
-	if dbDriver == "" {
-		dbDriver = "sqlite3"
-	}
-	dbDSN := os.Getenv("DB_DSN")
-	if dbDSN == "" {
-		dbDSN = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)"
-	}
+	dbDriver, dbDSN := resolveDBConfig(os.Getenv)
 	db, err := database.NewEntClient(database.Config{
 		Driver: dbDriver,
 		DSN:    dbDSN,
@@ -77,7 +71,27 @@ func main() {
 		log.Fatal(err)
 	}
 
-	myApp, err := server.NewApp(provider, db, oauth, os.Getenv("OS_PROJECT_ID"), jwtSecret, os.Getenv("RCP_DEFAULT_NETWORK_ID"), usageLimits, storageLimits)
+	notifySock := strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SOCK"))
+	notifySecret := []byte(strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SECRET")))
+
+	frontendBaseURL := resolveFrontendBaseURL(os.Getenv)
+	if frontendBaseURL == "" {
+		log.Fatalf("RCP_FRONTEND_BASE_URL or FRONTEND_URL: required (e.g. https://rcp.return.dev)")
+	}
+
+	myApp, err := server.NewApp(server.AppDeps{
+		Provider:         provider,
+		EntClient:        db,
+		OAuthConfig:      oauth,
+		OpenStackProject: os.Getenv("OS_PROJECT_ID"),
+		DefaultNetworkID: os.Getenv("RCP_DEFAULT_NETWORK_ID"),
+		JWTSecret:        jwtSecret,
+		SSHGatewaySock:   notifySock,
+		SSHGatewaySecret: notifySecret,
+		FrontendBaseURL:  frontendBaseURL,
+		UsageLimits:      usageLimits,
+		StorageLimits:    storageLimits,
+	})
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
 	}
@@ -91,18 +105,6 @@ func main() {
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("HTTP 서버 시작 실패: %v", err)
 	}
-}
-
-func loadUserStorageLimits() (storage.UserStorageLimits, error) {
-	containers, err := parseNonNegativeEnv("RCP_MAX_CONTAINERS_PER_USER")
-	if err != nil {
-		return storage.UserStorageLimits{}, err
-	}
-	storageGB, err := parseNonNegativeEnv("RCP_MAX_STORAGE_GB_PER_USER")
-	if err != nil {
-		return storage.UserStorageLimits{}, err
-	}
-	return storage.UserStorageLimits{Containers: containers, StorageGB: storageGB}, nil
 }
 
 func loadUserUsageLimits() (compute.UserUsageLimits, error) {
@@ -122,13 +124,46 @@ func loadUserUsageLimits() (compute.UserUsageLimits, error) {
 	if err != nil {
 		return compute.UserUsageLimits{}, err
 	}
-
 	return compute.UserUsageLimits{
 		Instances: instances,
 		VCPUs:     vcpus,
 		RAMMB:     ramMB,
 		DiskGB:    diskGB,
 	}, nil
+}
+
+func loadUserStorageLimits() (storage.UserStorageLimits, error) {
+	containers, err := parseNonNegativeEnv("RCP_MAX_CONTAINERS_PER_USER")
+	if err != nil {
+		return storage.UserStorageLimits{}, err
+	}
+	storageGB, err := parseNonNegativeEnv("RCP_MAX_STORAGE_GB_PER_USER")
+	if err != nil {
+		return storage.UserStorageLimits{}, err
+	}
+	return storage.UserStorageLimits{Containers: containers, StorageGB: storageGB}, nil
+}
+
+func resolveFrontendBaseURL(getenv func(string) string) string {
+	if url := strings.TrimSpace(getenv("FRONTEND_URL")); url != "" {
+		return strings.TrimRight(url, "/")
+	}
+	if url := strings.TrimSpace(getenv("RCP_FRONTEND_BASE_URL")); url != "" {
+		return strings.TrimRight(url, "/")
+	}
+	return ""
+}
+
+func resolveDBConfig(getenv func(string) string) (string, string) {
+	driver := strings.TrimSpace(getenv("DB_DRIVER"))
+	if driver == "" {
+		driver = "sqlite3"
+	}
+	dsn := strings.TrimSpace(getenv("DB_DSN"))
+	if dsn == "" {
+		dsn = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)"
+	}
+	return driver, dsn
 }
 
 func parseNonNegativeEnv(name string) (int, error) {

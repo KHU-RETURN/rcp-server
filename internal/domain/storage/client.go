@@ -23,6 +23,10 @@ type Client struct {
 	provider *gophercloud.ProviderClient
 }
 
+type responseHeaderWriter interface {
+	Header() http.Header
+}
+
 func NewClient(provider *gophercloud.ProviderClient) *Client {
 	return &Client{provider: provider}
 }
@@ -102,6 +106,7 @@ func (c *Client) DownloadObject(containerName, objectName string, w io.Writer) e
 		return result.Err
 	}
 	defer func() { _ = result.Body.Close() }()
+	copyDownloadHeaders(w, result.Header)
 	if _, err := io.Copy(w, result.Body); err != nil {
 		return fmt.Errorf("stream error: %w", err)
 	}
@@ -126,4 +131,24 @@ func (c *Client) BulkDeleteObjects(containerName string, names []string) error {
 		return err
 	}
 	return objects.BulkDelete(sc, containerName, names).Err
+}
+
+func copyDownloadHeaders(w io.Writer, headers http.Header) {
+	hw, ok := w.(responseHeaderWriter)
+	if !ok || headers == nil {
+		return
+	}
+
+	for _, name := range []string{
+		"Content-Type",
+		"Content-Length",
+		"Content-Disposition",
+		"Content-Encoding",
+		"ETag",
+		"Last-Modified",
+	} {
+		if value := headers.Get(name); value != "" {
+			hw.Header().Set(name, value)
+		}
+	}
 }

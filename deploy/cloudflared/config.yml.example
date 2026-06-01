@@ -1,0 +1,27 @@
+# Cloudflare Tunnel config for RCP ssh-gateway.
+# /etc/cloudflared/config.yml 로 복사해 적용한 뒤 `systemctl restart cloudflared`.
+#
+# 사전 준비 (호스트에서 1회):
+#   1. cloudflared 설치: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+#   2. cloudflared tunnel login            # 브라우저로 CF 인증
+#   3. cloudflared tunnel create rcp-gw    # 터널 생성. <UUID>.json 자격증명 파일 발급됨
+#   4. <UUID>.json 을 /etc/cloudflared/ 아래로 복사
+#   5. cloudflared tunnel route dns rcp-gw rcp-gw.return.dev   # CF DNS에 CNAME 자동 등록
+#
+# 인그레스 규칙: rcp-gw.return.dev 로 들어오는 SSH를 호스트의 ssh-gateway로 라우팅.
+
+tunnel: <REPLACE-WITH-TUNNEL-UUID>
+credentials-file: /etc/cloudflared/<REPLACE-WITH-TUNNEL-UUID>.json
+
+# 터널 → 호스트 로컬 ssh-gateway. ssh-gateway가 127.0.0.1:2222에 바인딩되어
+# 있으므로 외부에서는 절대 직접 닿을 수 없고, 모든 트래픽은 이 ingress로만
+# 들어온다.
+ingress:
+  - hostname: rcp-gw.return.dev
+    service: ssh://127.0.0.1:2222
+  - service: http_status:404
+
+# 선택적인 터널 옵션:
+# warp-routing:
+#   enabled: false
+# loglevel: info

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net"
@@ -26,6 +27,7 @@ const (
 	pathAuthCallback  = "/auth/callback"
 
 	envFrontendURL                  = "FRONTEND_URL"
+	envFrontendBaseURL              = "RCP_FRONTEND_BASE_URL"
 	envAllowedFrontendOriginPattern = "RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN"
 	envAuthCookieSameSite           = "RCP_AUTH_COOKIE_SAMESITE"
 	envAuthCookieSecure             = "RCP_AUTH_COOKIE_SECURE"
@@ -36,12 +38,30 @@ const (
 	defaultFrontendURL = "http://localhost:4173"
 )
 
-type Handler struct {
-	Svc *Service
+// sshStatePrefix marks an OAuth state string as belonging to the ssh-gateway
+// keyboard-interactive flow; the suffix is the gateway-issued nonce.
+const sshStatePrefix = "ssh:"
+
+// sshCallbackHandler is satisfied by *access.SSHService. Duck-typed to avoid
+// a back-edge from access to auth.
+type sshCallbackHandler interface {
+	HandleSSHCallback(ctx context.Context, nonce, code, userEmail string) error
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{Svc: svc}
+type Handler struct {
+	Svc              *Service
+	ssh              sshCallbackHandler // nil disables the ssh-gateway callback branch
+	frontendBaseURL  string
+	verifyGoogleCode func(context.Context, string) (string, error)
+}
+
+func NewHandler(svc *Service, ssh sshCallbackHandler, frontendBaseURL string) *Handler {
+	return &Handler{
+		Svc:              svc,
+		ssh:              ssh,
+		frontendBaseURL:  strings.TrimRight(strings.TrimSpace(frontendBaseURL), "/"),
+		verifyGoogleCode: svc.VerifyGoogleCode,
+	}
 }
 
 func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
@@ -52,7 +72,6 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		authGroup.POST(pathLogout, h.Logout)
 		oauthGroup := authGroup.Group(routeOAuthGooglePrefix)
 		{
-			// 사용자를 구글 로그인 페이지로 보냄
 			oauthGroup.GET("", h.Login)
 			// 구글 로그인 후 돌아오는 경로
 			oauthGroup.GET(pathOAuthCallback, h.Callback)
@@ -60,11 +79,22 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	}
 }
 
-// Login: GET /api/v1/auth/oauth/google
+// Login redirects to Google. An ssh:<nonce>:<code> state is reserved for the
+// ssh-gateway keyboard-interactive flow; normal web login uses structured state.
 func (h *Handler) Login(c *gin.Context) {
+	state := strings.TrimSpace(c.Query("state"))
+	if strings.HasPrefix(state, sshStatePrefix) {
+		if _, ok := parseSSHState(state); !ok {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid ssh state"})
+			return
+		}
+		c.Redirect(http.StatusTemporaryRedirect, h.Svc.BuildLoginURL(state))
+		return
+	}
+
 	redirectOrigin := ""
 	if rawRedirectOrigin := c.Query("redirect_origin"); rawRedirectOrigin != "" {
-		allowedOrigin, ok := allowedFrontendOrigin(rawRedirectOrigin)
+		allowedOrigin, ok := h.allowedFrontendOrigin(rawRedirectOrigin)
 		if !ok {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid redirect_origin"})
 			return
@@ -72,32 +102,90 @@ func (h *Handler) Login(c *gin.Context) {
 		redirectOrigin = allowedOrigin
 	}
 
-	url := h.Svc.GetGoogleLoginURL(redirectOrigin)
-	// 구글 승인 서버로 리다이렉트
-	c.Redirect(http.StatusTemporaryRedirect, url)
+	c.Redirect(http.StatusTemporaryRedirect, h.Svc.GetGoogleLoginURL(redirectOrigin))
 }
 
-// Callback: GET /api/v1/auth/oauth/google/callback
 func (h *Handler) Callback(c *gin.Context) {
+	state := c.Query("state")
+	if strings.HasPrefix(state, sshStatePrefix) {
+		h.handleSSHCallback(c, state)
+		return
+	}
+
 	code := c.Query("code")
 	if code == "" {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: ErrOAuthCodeRequired.Error()})
 		return
 	}
 
-	frontendURL := frontendURLFromState(c.Query("state"))
+	frontendURL := h.frontendURLFromState(state)
 	user, err := h.Svc.ProcessGoogleCallback(c.Request.Context(), code)
 	if err != nil {
 		c.Redirect(http.StatusTemporaryRedirect, frontendURL+pathLoginError)
 		return
 	}
 
-	c.SetSameSite(authCookieSameSite())
-
 	setAuthCookie(c, cookieAccessToken, user.AccessToken, int(accessTokenTTL.Seconds()))
 	setAuthCookie(c, cookieRefreshToken, user.RefreshToken, int(refreshTokenTTL.Seconds()))
 
 	c.Redirect(http.StatusFound, frontendURL+pathAuthCallback)
+}
+
+func (h *Handler) handleSSHCallback(c *gin.Context, state string) {
+	code := c.Query("code")
+	sshState, ok := parseSSHState(state)
+	if code == "" || !ok || h.ssh == nil {
+		c.Redirect(http.StatusFound, h.sshCompleteURL("failed"))
+		return
+	}
+
+	email, err := h.verifyGoogleCode(c.Request.Context(), code)
+	if err != nil {
+		c.Redirect(http.StatusFound, h.sshCompleteURL("failed"))
+		return
+	}
+	if err := h.ssh.HandleSSHCallback(c.Request.Context(), sshState.nonce, sshState.code, email); err != nil {
+		c.Redirect(http.StatusFound, h.sshCompleteURL("failed"))
+		return
+	}
+	c.Redirect(http.StatusFound, h.sshCompleteURL(""))
+}
+
+type parsedSSHState struct {
+	nonce string
+	code  string
+}
+
+func parseSSHState(raw string) (parsedSSHState, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), sshStatePrefix)
+	if !ok {
+		return parsedSSHState{}, false
+	}
+	nonce, code, ok := strings.Cut(rest, ":")
+	if !ok || nonce == "" || !validSSHCode(code) {
+		return parsedSSHState{}, false
+	}
+	return parsedSSHState{nonce: nonce, code: code}, true
+}
+
+func validSSHCode(code string) bool {
+	if len(code) != 6 {
+		return false
+	}
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *Handler) sshCompleteURL(status string) string {
+	u := h.defaultFrontendURL() + "/ssh/complete"
+	if status == "" {
+		return u
+	}
+	return u + "?status=" + url.QueryEscape(status)
 }
 
 // GET /api/v1/auth/me
@@ -164,43 +252,63 @@ func (h *Handler) Logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func getFrontendURL() string {
-	url := os.Getenv(envFrontendURL)
-	if url == "" {
-		// 설정이 없으면 개발 환경(로컬)으로 간주
-		return defaultFrontendURL
+func (h *Handler) defaultFrontendURL() string {
+	if h.frontendBaseURL != "" {
+		return h.frontendBaseURL
 	}
-	return strings.TrimSuffix(url, "/")
+	return getFrontendURL()
 }
 
-func frontendURLFromState(raw string) string {
+func (h *Handler) frontendURLFromState(raw string) string {
+	return frontendURLFromStateWith(raw, h.defaultFrontendURL(), h.allowedFrontendOrigin)
+}
+
+func (h *Handler) allowedFrontendOrigin(raw string) (string, bool) {
+	return allowedFrontendOriginWith(raw, h.defaultFrontendURL())
+}
+
+func getFrontendURL() string {
+	if url := strings.TrimSpace(os.Getenv(envFrontendURL)); url != "" {
+		return strings.TrimSuffix(url, "/")
+	}
+	if url := strings.TrimSpace(os.Getenv(envFrontendBaseURL)); url != "" {
+		return strings.TrimSuffix(url, "/")
+	}
+	return defaultFrontendURL
+}
+
+func frontendURLFromStateWith(raw, fallback string, allowOrigin func(string) (string, bool)) string {
 	if raw == "" {
-		return getFrontendURL()
+		return fallback
 	}
 
 	b, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
-		return getFrontendURL()
+		return fallback
 	}
 
 	var state oauthState
 	if err := json.Unmarshal(b, &state); err != nil {
-		return getFrontendURL()
+		return fallback
 	}
 
 	if state.RedirectOrigin == "" {
-		return getFrontendURL()
+		return fallback
 	}
 
-	frontendURL, ok := allowedFrontendOrigin(state.RedirectOrigin)
+	frontendURL, ok := allowOrigin(state.RedirectOrigin)
 	if !ok {
-		return getFrontendURL()
+		return fallback
 	}
 
 	return frontendURL
 }
 
 func allowedFrontendOrigin(raw string) (string, bool) {
+	return allowedFrontendOriginWith(raw, getFrontendURL())
+}
+
+func allowedFrontendOriginWith(raw, configured string) (string, bool) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 		return "", false
@@ -212,7 +320,7 @@ func allowedFrontendOrigin(raw string) (string, bool) {
 	}
 
 	origin := u.Scheme + "://" + host
-	if frontendURL, ok := configuredFrontendOrigin(); ok && origin == frontendURL {
+	if frontendURL, ok := configuredFrontendOriginFromURL(configured); ok && origin == frontendURL {
 		return frontendURL, true
 	}
 
@@ -232,8 +340,7 @@ func allowedFrontendOrigin(raw string) (string, bool) {
 	return "", false
 }
 
-func configuredFrontendOrigin() (string, bool) {
-	frontendURL := getFrontendURL()
+func configuredFrontendOriginFromURL(frontendURL string) (string, bool) {
 	u, err := url.Parse(frontendURL)
 	if err != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 		return "", false

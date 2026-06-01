@@ -20,25 +20,34 @@ type App struct {
 	Storage *storage.Handler
 }
 
-func NewApp(
-	p *gophercloud.ProviderClient,
-	client *ent.Client,
-	oauthConfig *oauth2.Config,
-	projectID string,
-	jwtSecret string,
-	defaultNetworkID string,
-	usageLimits compute.UserUsageLimits,
-	storageLimits storage.UserStorageLimits,
-) (*App, error) {
-	authHandler, err := auth.Init(client, oauthConfig, jwtSecret)
+type AppDeps struct {
+	Provider         *gophercloud.ProviderClient
+	EntClient        *ent.Client
+	OAuthConfig      *oauth2.Config
+	OpenStackProject string
+	DefaultNetworkID string
+	JWTSecret        string
+	SSHGatewaySock   string
+	SSHGatewaySecret []byte
+	FrontendBaseURL  string
+	UsageLimits      compute.UserUsageLimits
+	StorageLimits    storage.UserStorageLimits
+}
+
+func NewApp(deps AppDeps) (*App, error) {
+	var sshSvc *access.SSHService
+	if deps.SSHGatewaySock != "" && len(deps.SSHGatewaySecret) > 0 {
+		sshSvc = access.InitSSH(deps.SSHGatewaySock, deps.SSHGatewaySecret)
+	}
+
+	authHandler, err := auth.Init(deps.EntClient, deps.OAuthConfig, deps.JWTSecret, sshSvc, deps.FrontendBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
-
 	return &App{
-		Compute: compute.Init(p, client, projectID, defaultNetworkID, usageLimits),
-		Access:  access.Init(p, client),
+		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID, deps.UsageLimits),
+		Access:  access.Init(deps.Provider, deps.EntClient),
 		Auth:    authHandler,
-		Storage: storage.Init(p, client, storageLimits),
+		Storage: storage.Init(deps.Provider, deps.EntClient, deps.StorageLimits),
 	}, nil
 }

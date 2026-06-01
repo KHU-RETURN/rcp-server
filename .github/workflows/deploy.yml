@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Tailscale
         uses: tailscale/github-action@v2
@@ -17,7 +17,7 @@ jobs:
           authkey: ${{ secrets.TS_AUTHKEY }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
@@ -28,7 +28,7 @@ jobs:
         run: GOOS=linux GOARCH=amd64 go build -v -o server ./cmd/api/main.go
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rcp-server-${{ github.sha }}
           path: server
@@ -57,8 +57,9 @@ jobs:
       - name: Write .env file
         uses: appleboy/ssh-action@v0.1.10
         env:
-          ENV_LIST: RCP_JWT_SECRET,OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,OS_PROJECT_ID,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,GG_OAUTH_CLIENT,GG_OAUTH_SECRET,GG_REDIRECT_URL,DB_DRIVER,DB_DSN,PORT,RCP_NS_PROXY_SOCK,RCP_WEB_CONSOLE_BASE_URL,RCP_WEB_CONSOLE_ALLOWED_ORIGINS,FRONTEND_URL,RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN,RCP_AUTH_COOKIE_SAMESITE,RCP_AUTH_COOKIE_SECURE,RCP_ALLOWED_ORIGINS,RCP_ALLOWED_ORIGIN_PATTERN,RCP_DEFAULT_NETWORK_ID
+          ENV_LIST: RCP_JWT_SECRET,OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,OS_PROJECT_ID,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,GG_OAUTH_CLIENT,GG_OAUTH_SECRET,GG_REDIRECT_URL,DB_DRIVER,DB_DSN,PORT,RCP_NS_PROXY_SOCK,RCP_WEB_CONSOLE_BASE_URL,RCP_WEB_CONSOLE_ALLOWED_ORIGINS,RCP_VM_KNOWN_HOSTS_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH,FRONTEND_URL,RCP_FRONTEND_BASE_URL,RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN,RCP_AUTH_COOKIE_SAMESITE,RCP_AUTH_COOKIE_SECURE,RCP_ALLOWED_ORIGINS,RCP_ALLOWED_ORIGIN_PATTERN,RCP_DEFAULT_NETWORK_ID,RCP_SSH_GW_NOTIFY_SOCK,RCP_SSH_GW_NOTIFY_SECRET
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          RCP_FRONTEND_BASE_URL: ${{ secrets.RCP_FRONTEND_BASE_URL }}
           RCP_JWT_SECRET: ${{ secrets.RCP_JWT_SECRET }}
           OS_AUTH_URL: ${{ secrets.OS_AUTH_URL }}
           OS_USERNAME: ${{ secrets.OS_USERNAME }}
@@ -75,8 +76,12 @@ jobs:
           DB_DSN: ${{ secrets.DB_DSN }}
           PORT: ${{ secrets.PORT }}
           RCP_NS_PROXY_SOCK: ${{ secrets.RCP_NS_PROXY_SOCK }}
+          RCP_SSH_GW_NOTIFY_SOCK: ${{ secrets.RCP_SSH_GW_NOTIFY_SOCK }}
+          RCP_SSH_GW_NOTIFY_SECRET: ${{ secrets.RCP_SSH_GW_NOTIFY_SECRET }}
           RCP_WEB_CONSOLE_BASE_URL: ${{ secrets.RCP_WEB_CONSOLE_BASE_URL }}
           RCP_WEB_CONSOLE_ALLOWED_ORIGINS: ${{ secrets.RCP_WEB_CONSOLE_ALLOWED_ORIGINS }}
+          RCP_VM_KNOWN_HOSTS_PATH: ${{ secrets.RCP_VM_KNOWN_HOSTS_PATH }}
+          RCP_SSH_GW_KNOWN_HOSTS_PATH: ${{ secrets.RCP_SSH_GW_KNOWN_HOSTS_PATH }}
           RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN: ${{ secrets.RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN }}
           RCP_AUTH_COOKIE_SAMESITE: ${{ secrets.RCP_AUTH_COOKIE_SAMESITE }}
           RCP_AUTH_COOKIE_SECURE: ${{ secrets.RCP_AUTH_COOKIE_SECURE }}
@@ -91,6 +96,11 @@ jobs:
           script: |
             set -euo pipefail
             mkdir -p ~/rcp-server
+            _KH="${RCP_VM_KNOWN_HOSTS_PATH:-${RCP_SSH_GW_KNOWN_HOSTS_PATH:-/etc/rcp/ssh-gateway/known_hosts}}"
+            sudo install -d -m 0750 -o return -g return /etc/rcp /etc/rcp/ssh-gateway /var/lib/rcp "$(dirname "$_KH")"
+            sudo touch "$_KH"
+            sudo chown return:return "$_KH"
+            sudo chmod 0640 "$_KH"
             umask 077
             : > ~/rcp-server/.env
             IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"

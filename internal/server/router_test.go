@@ -33,6 +33,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	var foundAuthorizedKeys bool
 	var foundStorageContainers bool
 	var foundStorageUploadObject bool
+	var foundStorageArchiveObjects bool
 
 	for _, route := range routes {
 		if route.Method == http.MethodGet && route.Path == api.BasePath+"/auth/me" {
@@ -59,6 +60,9 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 		if route.Method == http.MethodPost && route.Path == api.BasePath+"/storage/containers/:name/objects/*key" {
 			foundStorageUploadObject = true
 		}
+		if route.Method == http.MethodGet && route.Path == api.BasePath+"/storage/containers/:name/archive" {
+			foundStorageArchiveObjects = true
+		}
 	}
 
 	if !foundFlavors {
@@ -84,6 +88,9 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	}
 	if !foundStorageUploadObject {
 		t.Fatalf("%s %s/storage/containers/:name/objects route was not registered", http.MethodPost, api.BasePath)
+	}
+	if !foundStorageArchiveObjects {
+		t.Fatalf("%s %s/storage/containers/:name/archive route was not registered", http.MethodGet, api.BasePath)
 	}
 }
 

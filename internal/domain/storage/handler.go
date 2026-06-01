@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 		g.POST("/containers", h.CreateContainer)
 		g.DELETE("/containers/:name", h.DeleteContainer)
 		g.GET("/containers/:name/objects", h.ListObjects)
+		g.GET("/containers/:name/archive", h.ArchiveObjects)
 		g.POST("/containers/:name/objects/*key", h.UploadObject)
 		g.GET("/containers/:name/objects/*key", h.DownloadObject)
 		g.DELETE("/containers/:name/objects/*key", h.DeleteObject)
@@ -155,7 +157,7 @@ func (h *Handler) UploadObject(c *gin.Context) {
 	}
 	defer func() { _ = file.Close() }()
 
-	contentType := header.Header.Get(api.HeaderContentType)
+	contentType := resolveObjectContentType(file, header, objectName)
 
 	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType, header.Size); err != nil {
 		switch {
@@ -192,6 +194,33 @@ func (h *Handler) DownloadObject(c *gin.Context) {
 	}
 }
 
+func (h *Handler) ArchiveObjects(c *gin.Context) {
+	id, ok := api.OwnerID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	containerName := c.Param("name")
+	prefix := normalizeObjectPrefix(c.Query("prefix"))
+
+	c.Header(api.HeaderContentType, "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", archiveFilename(containerName, prefix)))
+	if err := h.Svc.ArchiveObjects(c.Request.Context(), id, containerName, prefix, c.Writer); err != nil {
+		if c.Writer.Written() {
+			_ = c.Error(err)
+			return
+		}
+		switch {
+		case errors.Is(err, ErrContainerNotFound), errors.Is(err, ErrObjectPrefixNotFound):
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		}
+		return
+	}
+}
+
 func (h *Handler) DeleteObject(c *gin.Context) {
 	id, ok := api.OwnerID(c)
 	if !ok {
@@ -212,4 +241,17 @@ func (h *Handler) DeleteObject(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func archiveFilename(containerName, prefix string) string {
+	base := strings.TrimSuffix(prefix, "/")
+	if base == "" {
+		base = containerName
+	} else if idx := strings.LastIndex(base, "/"); idx >= 0 {
+		base = base[idx+1:]
+	}
+	if base == "" {
+		base = "objects"
+	}
+	return base + ".zip"
 }
