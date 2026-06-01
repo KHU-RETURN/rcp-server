@@ -140,6 +140,10 @@ func copyDownloadHeaders(w io.Writer, headers http.Header, objectName string) {
 		}
 	}
 
+	if hw.Header().Get("Content-Type") == "" {
+		hw.Header().Set("Content-Type", defaultObjectContentType)
+	}
+	hw.Header().Set("X-Content-Type-Options", "nosniff")
 	if shouldForceAttachment(headers.Get("Content-Type"), objectName) {
 		hw.Header().Set("Content-Disposition", attachmentContentDisposition(objectName))
 	}
