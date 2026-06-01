@@ -936,7 +936,7 @@ func TestServiceGetInstances(t *testing.T) {
 				}
 				return instances, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) error { return nil },
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) { return true, nil },
 		}
 
 		var inFlight int32
@@ -987,9 +987,9 @@ func TestServiceGetInstances(t *testing.T) {
 			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
 				return []Instance{{OpenstackID: "server-racing"}}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedIDs = append(deletedIDs, id)
-				return nil
+				return true, nil
 			},
 		}
 		client := &fakeClient{
@@ -1016,9 +1016,9 @@ func TestServiceGetInstances(t *testing.T) {
 			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
 				return []Instance{{OpenstackID: "server-x"}}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedIDs = append(deletedIDs, id)
-				return nil
+				return true, nil
 			},
 		}
 		client := &fakeClient{
