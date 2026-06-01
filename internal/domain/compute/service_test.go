@@ -96,7 +96,7 @@ func (f *fakeClient) FetchDiagnostics(id string) (map[string]any, error) {
 
 type fakeRepo struct {
 	saveInstanceFn        func(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
-	deleteByOpenstackIDFn func(ctx context.Context, ownerID uuid.UUID, openstackID string) error
+	deleteByOpenstackIDFn func(ctx context.Context, ownerID uuid.UUID, openstackID string) (bool, error)
 	updateMetadataFn      func(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error
 	listByOwnerFn         func(ctx context.Context, ownerID uuid.UUID) ([]Instance, error)
 	findByOpenstackIDFn   func(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
@@ -109,11 +109,11 @@ func (r *fakeRepo) SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *In
 	return nil
 }
 
-func (r *fakeRepo) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error {
+func (r *fakeRepo) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (bool, error) {
 	if r.deleteByOpenstackIDFn != nil {
 		return r.deleteByOpenstackIDFn(ctx, ownerID, openstackID)
 	}
-	return nil
+	return true, nil
 }
 
 func (r *fakeRepo) UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error {
@@ -703,9 +703,9 @@ func TestServiceGetInstances(t *testing.T) {
 					{OpenstackID: "server-stale", Name: "old-vm", ImageID: "image-2", FlavorID: "flavor-2"},
 				}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedIDs = append(deletedIDs, id)
-				return nil
+				return true, nil
 			},
 		}
 		client := &fakeClient{
@@ -741,8 +741,8 @@ func TestServiceGetInstances(t *testing.T) {
 			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
 				return []Instance{{OpenstackID: "server-stale"}}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) error {
-				return errors.New("db delete failed")
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+				return false, errors.New("db delete failed")
 			},
 		}
 		client := &fakeClient{
@@ -806,9 +806,9 @@ func TestServiceDeleteInstance(t *testing.T) {
 			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (*Instance, error) {
 				return &Instance{OpenstackID: id}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedID = id
-				return nil
+				return true, nil
 			},
 		}
 		svc := NewService(&fakeClient{}, repo, "project-1", "")
@@ -817,6 +817,22 @@ func TestServiceDeleteInstance(t *testing.T) {
 		}
 		if deletedID != "server-1" {
 			t.Fatalf("expected deletedID=server-1, got %q", deletedID)
+		}
+	})
+
+	t.Run("returns ErrInstanceNotFound when DB row already gone (concurrent double-delete)", func(t *testing.T) {
+		repo := &fakeRepo{
+			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (*Instance, error) {
+				return &Instance{OpenstackID: id}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+				return false, nil // 0 rows — 다른 요청이 이미 삭제
+			},
+		}
+		svc := NewService(&fakeClient{}, repo, "project-1", "")
+		err := svc.DeleteInstance(ctx, testOwnerID, "server-1")
+		if !errors.Is(err, ErrInstanceNotFound) {
+			t.Fatalf("expected ErrInstanceNotFound, got %v", err)
 		}
 	})
 }

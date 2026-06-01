@@ -27,7 +27,7 @@ type computeClient interface {
 
 type instanceRepo interface {
 	SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
-	DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error
+	DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (bool, error)
 	UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error
 	ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Instance, error)
 	FindByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
@@ -192,7 +192,7 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 
 func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, staleIDs []string) error {
 	for _, id := range staleIDs {
-		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+		if _, err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
 			return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 		}
 	}
@@ -327,12 +327,18 @@ func (s *Service) DeleteInstance(ctx context.Context, ownerID uuid.UUID, id stri
 		return ErrInstanceNotFound
 	}
 
+	// OpenStack 삭제: 404(이미 삭제된 VM)는 client 레벨에서 성공으로 처리됨.
 	if err := s.client.DeleteServer(id); err != nil {
 		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 
-	if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+	// DB 삭제: 0 rows → 동시 요청이 이미 처리 → NotFound 반환 (할당량 이중 반납 방지).
+	deleted, err := s.repo.DeleteByOpenstackID(ctx, ownerID, id)
+	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	if !deleted {
+		return ErrInstanceNotFound
 	}
 	return nil
 }

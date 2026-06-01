@@ -1,6 +1,9 @@
 package compute
 
 import (
+	"errors"
+	"net/http"
+
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
@@ -187,7 +190,12 @@ func (c *Client) DeleteServer(id string) error {
 	if err != nil {
 		return err
 	}
-	return servers.Delete(sc, id).ExtractErr()
+	err = servers.Delete(sc, id).ExtractErr()
+	var e gophercloud.ErrUnexpectedResponseCode
+	if errors.As(err, &e) && e.Actual == http.StatusNotFound {
+		return nil
+	}
+	return err
 }
 
 // createServerWithServiceClient는 테스트에서 mock ServiceClient를 주입할 때도 사용합니다.

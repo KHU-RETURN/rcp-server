@@ -11,10 +11,11 @@ import (
 )
 
 var (
-	ErrContainerNotFound      = errors.New("container not found")
-	ErrContainerNotEmpty      = errors.New("container not empty, use force=true to delete all")
-	ErrContainerAlreadyExists = errors.New("container name already in use")
-	ErrStorageOperationFailed = errors.New("storage operation failed")
+	ErrContainerNotFound         = errors.New("container not found")
+	ErrContainerNotEmpty         = errors.New("container not empty, use force=true to delete all")
+	ErrContainerAlreadyExists    = errors.New("container name already in use")
+	ErrStorageOperationFailed    = errors.New("storage operation failed")
+	ErrUserStorageLimitExceeded  = errors.New("user storage limit exceeded")
 )
 
 type storageClient interface {
@@ -30,17 +31,23 @@ type storageClient interface {
 type containerRepo interface {
 	Save(ctx context.Context, ownerID uuid.UUID, c *Container) error
 	FindByName(ctx context.Context, ownerID uuid.UUID, name string) (*Container, error)
+	CountByOwner(ctx context.Context, ownerID uuid.UUID) (int, error)
 	ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Container, error)
-	Delete(ctx context.Context, ownerID uuid.UUID, name string) error
+	Delete(ctx context.Context, ownerID uuid.UUID, name string) (bool, error)
 }
 
 type Service struct {
-	client storageClient
-	repo   containerRepo
+	client     storageClient
+	repo       containerRepo
+	userLimits UserStorageLimits
 }
 
-func NewService(client storageClient, repo containerRepo) *Service {
-	return &Service{client: client, repo: repo}
+func NewService(client storageClient, repo containerRepo, limits ...UserStorageLimits) *Service {
+	var l UserStorageLimits
+	if len(limits) > 0 {
+		l = limits[0]
+	}
+	return &Service{client: client, repo: repo, userLimits: l}
 }
 
 func (s *Service) CreateContainer(ctx context.Context, ownerID uuid.UUID, name string) (*ContainerResponse, error) {
@@ -52,6 +59,10 @@ func (s *Service) CreateContainer(ctx context.Context, ownerID uuid.UUID, name s
 	}
 	if existing != nil {
 		return nil, ErrContainerAlreadyExists
+	}
+
+	if err := s.ensureUserStorageLimits(ctx, ownerID); err != nil {
+		return nil, err
 	}
 
 	openstackName := uuid.New()
@@ -106,11 +117,18 @@ func (s *Service) DeleteContainer(ctx context.Context, ownerID uuid.UUID, name s
 		}
 	}
 
-	if err := s.client.DeleteContainer(c.OpenstackName.String()); err != nil {
+	// DB를 먼저 atomic하게 삭제한다.
+	// 0 rows → 동시 요청이 이미 처리했음 → Swift는 건드리지 않고 NotFound 반환.
+	deleted, err := s.repo.Delete(ctx, ownerID, name)
+	if err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
+	if !deleted {
+		return ErrContainerNotFound
+	}
 
-	if err := s.repo.Delete(ctx, ownerID, name); err != nil {
+	// DB 삭제 성공 시에만 Swift에서 제거 (404는 client 레벨에서 성공으로 처리됨).
+	if err := s.client.DeleteContainer(c.OpenstackName.String()); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 	return nil
@@ -128,9 +146,12 @@ func (s *Service) ListObjects(ctx context.Context, ownerID uuid.UUID, containerN
 	return objs, nil
 }
 
-func (s *Service) UploadObject(ctx context.Context, ownerID uuid.UUID, containerName, objectName string, r io.Reader, contentType string) error {
+func (s *Service) UploadObject(ctx context.Context, ownerID uuid.UUID, containerName, objectName string, r io.Reader, contentType string, size int64) error {
 	c, err := s.resolveContainer(ctx, ownerID, containerName)
 	if err != nil {
+		return err
+	}
+	if err := s.ensureUserStorageSizeLimit(ctx, ownerID, size); err != nil {
 		return err
 	}
 	if err := s.client.UploadObject(c.OpenstackName.String(), objectName, r, contentType); err != nil {
@@ -157,6 +178,45 @@ func (s *Service) DeleteObject(ctx context.Context, ownerID uuid.UUID, container
 	}
 	if err := s.client.DeleteObject(c.OpenstackName.String(), objectName); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+	}
+	return nil
+}
+
+func (s *Service) ensureUserStorageSizeLimit(ctx context.Context, ownerID uuid.UUID, additionalBytes int64) error {
+	if s.userLimits.StorageGB <= 0 {
+		return nil
+	}
+	containers, err := s.repo.ListByOwner(ctx, ownerID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+	}
+	var totalBytes int64
+	for _, c := range containers {
+		objs, err := s.client.ListObjects(c.OpenstackName.String())
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+		}
+		for _, o := range objs {
+			totalBytes += o.SizeBytes
+		}
+	}
+	limitBytes := int64(s.userLimits.StorageGB) * 1024 * 1024 * 1024
+	if totalBytes+additionalBytes > limitBytes {
+		return ErrUserStorageLimitExceeded
+	}
+	return nil
+}
+
+func (s *Service) ensureUserStorageLimits(ctx context.Context, ownerID uuid.UUID) error {
+	if s.userLimits.Containers <= 0 {
+		return nil
+	}
+	count, err := s.repo.CountByOwner(ctx, ownerID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+	}
+	if count >= s.userLimits.Containers {
+		return ErrUserStorageLimitExceeded
 	}
 	return nil
 }

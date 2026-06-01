@@ -65,6 +65,8 @@ func (h *Handler) CreateContainer(c *gin.Context) {
 		switch {
 		case errors.Is(err, ErrContainerAlreadyExists):
 			c.JSON(http.StatusConflict, api.ErrorResponse{Error: err.Error()})
+		case errors.Is(err, ErrUserStorageLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, api.ErrorResponse{Error: err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		}
@@ -141,10 +143,12 @@ func (h *Handler) UploadObject(c *gin.Context) {
 
 	contentType := header.Header.Get(api.HeaderContentType)
 
-	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType); err != nil {
+	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType, header.Size); err != nil {
 		switch {
 		case errors.Is(err, ErrContainerNotFound):
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+		case errors.Is(err, ErrUserStorageLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, api.ErrorResponse{Error: err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		}

@@ -123,7 +123,7 @@ func TestHandlerDeleteContainer(t *testing.T) {
 			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
 				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
 			},
-			deleteFn: func(_ context.Context, _ uuid.UUID, _ string) error { return nil },
+			deleteFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) { return true, nil },
 		}
 
 		req := httptest.NewRequest(http.MethodDelete, api.BasePath+"/storage/containers/my-bucket", nil)

@@ -74,10 +74,11 @@ func (f *fakeStorageClient) BulkDeleteObjects(containerName string, names []stri
 }
 
 type fakeContainerRepo struct {
-	saveFn        func(ctx context.Context, ownerID uuid.UUID, c *Container) error
-	findByNameFn  func(ctx context.Context, ownerID uuid.UUID, name string) (*Container, error)
-	listByOwnerFn func(ctx context.Context, ownerID uuid.UUID) ([]Container, error)
-	deleteFn      func(ctx context.Context, ownerID uuid.UUID, name string) error
+	saveFn          func(ctx context.Context, ownerID uuid.UUID, c *Container) error
+	findByNameFn    func(ctx context.Context, ownerID uuid.UUID, name string) (*Container, error)
+	countByOwnerFn  func(ctx context.Context, ownerID uuid.UUID) (int, error)
+	listByOwnerFn   func(ctx context.Context, ownerID uuid.UUID) ([]Container, error)
+	deleteFn        func(ctx context.Context, ownerID uuid.UUID, name string) (bool, error)
 }
 
 func (r *fakeContainerRepo) Save(ctx context.Context, ownerID uuid.UUID, c *Container) error {
@@ -94,6 +95,13 @@ func (r *fakeContainerRepo) FindByName(ctx context.Context, ownerID uuid.UUID, n
 	return nil, nil
 }
 
+func (r *fakeContainerRepo) CountByOwner(ctx context.Context, ownerID uuid.UUID) (int, error) {
+	if r.countByOwnerFn != nil {
+		return r.countByOwnerFn(ctx, ownerID)
+	}
+	return 0, nil
+}
+
 func (r *fakeContainerRepo) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Container, error) {
 	if r.listByOwnerFn != nil {
 		return r.listByOwnerFn(ctx, ownerID)
@@ -101,11 +109,11 @@ func (r *fakeContainerRepo) ListByOwner(ctx context.Context, ownerID uuid.UUID) 
 	return nil, nil
 }
 
-func (r *fakeContainerRepo) Delete(ctx context.Context, ownerID uuid.UUID, name string) error {
+func (r *fakeContainerRepo) Delete(ctx context.Context, ownerID uuid.UUID, name string) (bool, error) {
 	if r.deleteFn != nil {
 		return r.deleteFn(ctx, ownerID, name)
 	}
-	return nil
+	return true, nil
 }
 
 func TestServiceCreateContainer(t *testing.T) {
@@ -159,6 +167,67 @@ func TestServiceCreateContainer(t *testing.T) {
 			t.Fatalf("expected ErrContainerAlreadyExists, got %v", err)
 		}
 	})
+
+	t.Run("allows creation when under container limit", func(t *testing.T) {
+		repo := &fakeContainerRepo{
+			countByOwnerFn: func(_ context.Context, _ uuid.UUID) (int, error) {
+				return 2, nil // 현재 2개, 한도 5개
+			},
+		}
+
+		svc := NewService(&fakeStorageClient{}, repo, UserStorageLimits{Containers: 5})
+		_, err := svc.CreateContainer(ctx, testOwnerID, "new-bucket")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects creation when at container limit", func(t *testing.T) {
+		repo := &fakeContainerRepo{
+			countByOwnerFn: func(_ context.Context, _ uuid.UUID) (int, error) {
+				return 5, nil // 이미 한도 도달
+			},
+		}
+
+		svc := NewService(&fakeStorageClient{}, repo, UserStorageLimits{Containers: 5})
+		_, err := svc.CreateContainer(ctx, testOwnerID, "one-more")
+		if !errors.Is(err, ErrUserStorageLimitExceeded) {
+			t.Fatalf("expected ErrUserStorageLimitExceeded, got %v", err)
+		}
+	})
+
+	t.Run("skips limit check when Containers is 0 (unlimited)", func(t *testing.T) {
+		var countCalled bool
+		repo := &fakeContainerRepo{
+			countByOwnerFn: func(_ context.Context, _ uuid.UUID) (int, error) {
+				countCalled = true
+				return 999, nil
+			},
+		}
+
+		svc := NewService(&fakeStorageClient{}, repo, UserStorageLimits{Containers: 0})
+		_, err := svc.CreateContainer(ctx, testOwnerID, "bucket")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if countCalled {
+			t.Fatal("CountByOwner should not be called when limit is disabled")
+		}
+	})
+
+	t.Run("propagates repo error from CountByOwner", func(t *testing.T) {
+		repo := &fakeContainerRepo{
+			countByOwnerFn: func(_ context.Context, _ uuid.UUID) (int, error) {
+				return 0, errors.New("db error")
+			},
+		}
+
+		svc := NewService(&fakeStorageClient{}, repo, UserStorageLimits{Containers: 5})
+		_, err := svc.CreateContainer(ctx, testOwnerID, "bucket")
+		if !errors.Is(err, ErrStorageOperationFailed) {
+			t.Fatalf("expected ErrStorageOperationFailed, got %v", err)
+		}
+	})
 }
 
 func TestServiceListContainers(t *testing.T) {
@@ -204,9 +273,9 @@ func TestServiceDeleteContainer(t *testing.T) {
 			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
 				return existingContainer, nil
 			},
-			deleteFn: func(_ context.Context, _ uuid.UUID, name string) error {
+			deleteFn: func(_ context.Context, _ uuid.UUID, name string) (bool, error) {
 				deletedFromDB = name
-				return nil
+				return true, nil
 			},
 		}
 
@@ -258,7 +327,7 @@ func TestServiceDeleteContainer(t *testing.T) {
 			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
 				return existingContainer, nil
 			},
-			deleteFn: func(_ context.Context, _ uuid.UUID, _ string) error { return nil },
+			deleteFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) { return true, nil },
 		}
 
 		svc := NewService(client, repo)
@@ -286,6 +355,56 @@ func TestServiceDeleteContainer(t *testing.T) {
 			t.Fatalf("expected ErrContainerNotFound, got %v", err)
 		}
 	})
+
+	t.Run("returns ErrContainerNotFound when DB row already gone (concurrent double-delete)", func(t *testing.T) {
+		var swiftDeleteCalled bool
+		client := &fakeStorageClient{
+			listObjectsFn:     func(_ string) ([]ObjectInfo, error) { return nil, nil },
+			deleteContainerFn: func(_ string) error { swiftDeleteCalled = true; return nil },
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return existingContainer, nil
+			},
+			deleteFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+				return false, nil // 0 rows — 다른 요청이 이미 삭제
+			},
+		}
+
+		svc := NewService(client, repo)
+		err := svc.DeleteContainer(ctx, testOwnerID, "my-bucket", false)
+		if !errors.Is(err, ErrContainerNotFound) {
+			t.Fatalf("expected ErrContainerNotFound, got %v", err)
+		}
+		if swiftDeleteCalled {
+			t.Fatal("Swift delete should not be called when DB row was already gone")
+		}
+	})
+
+	t.Run("DB is deleted before Swift (quota freed atomically before external call)", func(t *testing.T) {
+		var order []string
+		client := &fakeStorageClient{
+			listObjectsFn:     func(_ string) ([]ObjectInfo, error) { return nil, nil },
+			deleteContainerFn: func(_ string) error { order = append(order, "swift"); return nil },
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return existingContainer, nil
+			},
+			deleteFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+				order = append(order, "db")
+				return true, nil
+			},
+		}
+
+		svc := NewService(client, repo)
+		if err := svc.DeleteContainer(ctx, testOwnerID, "my-bucket", false); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(order) != 2 || order[0] != "db" || order[1] != "swift" {
+			t.Fatalf("expected [db swift], got %v", order)
+		}
+	})
 }
 
 func TestServiceUploadObject(t *testing.T) {
@@ -306,7 +425,7 @@ func TestServiceUploadObject(t *testing.T) {
 		}
 
 		svc := NewService(client, repo)
-		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "hello.txt", nil, "text/plain")
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "hello.txt", nil, "text/plain", 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -317,9 +436,78 @@ func TestServiceUploadObject(t *testing.T) {
 
 	t.Run("returns ErrContainerNotFound for unknown container", func(t *testing.T) {
 		svc := NewService(&fakeStorageClient{}, &fakeContainerRepo{})
-		err := svc.UploadObject(ctx, testOwnerID, "missing", "file.txt", nil, "")
+		err := svc.UploadObject(ctx, testOwnerID, "missing", "file.txt", nil, "", 0)
 		if !errors.Is(err, ErrContainerNotFound) {
 			t.Fatalf("expected ErrContainerNotFound, got %v", err)
+		}
+	})
+
+	t.Run("rejects upload when total storage would exceed GB limit", func(t *testing.T) {
+		const gb = int64(1024 * 1024 * 1024)
+		// 유저가 현재 49 GB 사용 중, 한도 50 GB, 새 파일 2 GB → 초과
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{{SizeBytes: 49 * gb}}, nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Container, error) {
+				return []Container{{Name: "my-bucket", OpenstackName: testContainerUUID}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "big.bin", nil, "", 2*gb)
+		if !errors.Is(err, ErrUserStorageLimitExceeded) {
+			t.Fatalf("expected ErrUserStorageLimitExceeded, got %v", err)
+		}
+	})
+
+	t.Run("allows upload when total storage is within GB limit", func(t *testing.T) {
+		const gb = int64(1024 * 1024 * 1024)
+		// 현재 40 GB, 한도 50 GB, 새 파일 9 GB → 허용
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{{SizeBytes: 40 * gb}}, nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Container, error) {
+				return []Container{{Name: "my-bucket", OpenstackName: testContainerUUID}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "ok.bin", nil, "", 9*gb)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("skips GB check when StorageGB is 0 (unlimited)", func(t *testing.T) {
+		var listObjectsCalled bool
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				listObjectsCalled = true
+				return nil, nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		svc := NewService(client, repo, UserStorageLimits{StorageGB: 0})
+		_ = svc.UploadObject(ctx, testOwnerID, "my-bucket", "file.bin", nil, "", 999*1024*1024*1024)
+		if listObjectsCalled {
+			t.Fatal("ListObjects should not be called when StorageGB limit is disabled")
 		}
 	})
 }

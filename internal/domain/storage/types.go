@@ -31,3 +31,8 @@ type ContainerResponse struct {
 type UploadObjectResponse struct {
 	Key string `json:"key"`
 }
+
+type UserStorageLimits struct {
+	Containers int
+	StorageGB  int
+}

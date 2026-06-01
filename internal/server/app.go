@@ -28,6 +28,7 @@ func NewApp(
 	jwtSecret string,
 	defaultNetworkID string,
 	usageLimits compute.UserUsageLimits,
+	storageLimits storage.UserStorageLimits,
 ) (*App, error) {
 	authHandler, err := auth.Init(client, oauthConfig, jwtSecret)
 	if err != nil {
@@ -38,6 +39,6 @@ func NewApp(
 		Compute: compute.Init(p, client, projectID, defaultNetworkID, usageLimits),
 		Access:  access.Init(p, client),
 		Auth:    authHandler,
-		Storage: storage.Init(p, client),
+		Storage: storage.Init(p, client, storageLimits),
 	}, nil
 }

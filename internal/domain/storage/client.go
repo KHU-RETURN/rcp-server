@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
@@ -11,6 +13,11 @@ import (
 
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 )
+
+func isNotFound(err error) bool {
+	var e gophercloud.ErrUnexpectedResponseCode
+	return errors.As(err, &e) && e.Actual == http.StatusNotFound
+}
 
 type Client struct {
 	provider *gophercloud.ProviderClient
@@ -39,7 +46,11 @@ func (c *Client) DeleteContainer(name string) error {
 	if err != nil {
 		return err
 	}
-	return containers.Delete(sc, name).Err
+	err = containers.Delete(sc, name).Err
+	if isNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 func (c *Client) ListObjects(containerName string) ([]ObjectInfo, error) {
@@ -99,7 +110,11 @@ func (c *Client) DeleteObject(containerName, objectName string) error {
 	if err != nil {
 		return err
 	}
-	return objects.Delete(sc, containerName, objectName, nil).Err
+	err = objects.Delete(sc, containerName, objectName, nil).Err
+	if isNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 func (c *Client) BulkDeleteObjects(containerName string, names []string) error {
