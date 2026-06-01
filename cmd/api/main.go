@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/database"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
@@ -83,6 +84,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	storageLimits, err := loadUserStorageLimits()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	myApp, err := server.NewApp(server.AppDeps{
 		Provider:         provider,
 		EntClient:        db,
@@ -96,6 +102,7 @@ func main() {
 		HTTPProxyAddress: httpProxyAddress,
 		FrontendBaseURL:  frontendBaseURL,
 		UsageLimits:      usageLimits,
+		StorageLimits:    storageLimits,
 	})
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
@@ -154,6 +161,18 @@ func resolveDBConfig(getenv func(string) string) (string, string) {
 		dsn = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 	}
 	return driver, dsn
+}
+
+func loadUserStorageLimits() (storage.UserStorageLimits, error) {
+	containers, err := parseNonNegativeEnv("RCP_MAX_CONTAINERS_PER_USER")
+	if err != nil {
+		return storage.UserStorageLimits{}, err
+	}
+	storageGB, err := parseNonNegativeEnv("RCP_MAX_STORAGE_GB_PER_USER")
+	if err != nil {
+		return storage.UserStorageLimits{}, err
+	}
+	return storage.UserStorageLimits{Containers: containers, StorageGB: storageGB}, nil
 }
 
 func loadUserUsageLimits() (compute.UserUsageLimits, error) {

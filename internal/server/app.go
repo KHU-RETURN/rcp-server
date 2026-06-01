@@ -37,6 +37,7 @@ type AppDeps struct {
 	HTTPProxyAddress string
 	FrontendBaseURL  string
 	UsageLimits      compute.UserUsageLimits
+	StorageLimits    storage.UserStorageLimits
 }
 
 func NewApp(deps AppDeps) (*App, error) {
@@ -59,6 +60,6 @@ func NewApp(deps AppDeps) (*App, error) {
 		),
 		Apps:    apps.Init(deps.EntClient),
 		Auth:    authHandler,
-		Storage: storage.Init(deps.Provider, deps.EntClient),
+		Storage: storage.Init(deps.Provider, deps.EntClient, deps.StorageLimits),
 	}, nil
 }
