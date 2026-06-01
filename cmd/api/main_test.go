@@ -35,7 +35,7 @@ func TestResolveDBDSNDefaultsToCanonicalSQLitePath(t *testing.T) {
 	if driver != "sqlite3" {
 		t.Fatalf("driver got %q", driver)
 	}
-	if dsn != "file:/var/lib/rcp/rcp.db?cache=shared&_pragma=foreign_keys(1)" {
+	if dsn != "file:rcp.db?cache=shared&_pragma=foreign_keys(1)" {
 		t.Fatalf("dsn got %q", dsn)
 	}
 }
