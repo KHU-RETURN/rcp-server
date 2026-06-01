@@ -5,12 +5,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -355,6 +358,89 @@ func TestHandlerUploadObject(t *testing.T) {
 		}
 		if gotContentType != "text/html; charset=utf-8" {
 			t.Fatalf("expected content type text/html; charset=utf-8, got %q", gotContentType)
+		}
+	})
+
+	t.Run("streams multipart file part before request body is fully read", func(t *testing.T) {
+		uploadStarted := make(chan struct{})
+		writeErr := make(chan error, 1)
+		bodyReader, bodyWriter := io.Pipe()
+		writer := multipart.NewWriter(bodyWriter)
+		content := "<!doctype html>" + strings.Repeat("a", 1024)
+
+		client := &fakeStorageClient{
+			uploadObjectFn: func(_, _ string, r io.Reader, contentType string) error {
+				buf := make([]byte, len("<!doctype html>"))
+				if _, err := io.ReadFull(r, buf); err != nil {
+					return err
+				}
+				if string(buf) != "<!doctype html>" {
+					return errors.New("upload stream did not start with file content")
+				}
+				if contentType != "text/html; charset=utf-8" {
+					return errors.New("upload stream had unexpected content type")
+				}
+				close(uploadStarted)
+				_, err := io.Copy(io.Discard, r)
+				return err
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		go func() {
+			header := make(textproto.MIMEHeader)
+			header.Set("Content-Disposition", multipart.FileContentDisposition("file", "index.html"))
+			header.Set(api.HeaderContentType, "application/octet-stream")
+			fw, err := writer.CreatePart(header)
+			if err != nil {
+				_ = bodyWriter.CloseWithError(err)
+				writeErr <- err
+				return
+			}
+			if _, err := io.WriteString(fw, content); err != nil {
+				_ = bodyWriter.CloseWithError(err)
+				writeErr <- err
+				return
+			}
+			select {
+			case <-uploadStarted:
+			case <-time.After(2 * time.Second):
+				err := errors.New("upload did not start before multipart body was closed")
+				_ = writer.Close()
+				_ = bodyWriter.CloseWithError(err)
+				writeErr <- err
+				return
+			}
+			if err := writer.Close(); err != nil {
+				_ = bodyWriter.CloseWithError(err)
+				writeErr <- err
+				return
+			}
+			if err := bodyWriter.Close(); err != nil {
+				writeErr <- err
+				return
+			}
+			writeErr <- nil
+		}()
+
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/storage/containers/my-bucket/objects/index.html", bodyReader)
+		req.Header.Set(api.HeaderContentType, writer.FormDataContentType())
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		withTestUser(v1)
+		newTestHandler(client, repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if err := <-writeErr; err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != http.StatusCreated {
+			t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 
