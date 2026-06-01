@@ -48,7 +48,7 @@ jobs:
           source: "app-gateway,deploy/systemd/app-gateway.service"
           target: "/tmp/rcp-app-gateway-deploy"
 
-      - name: Install binary and directories
+      - name: Install binary
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -56,8 +56,8 @@ jobs:
           key: ${{ secrets.SERVER_KEY }}
           script: |
             set -euo pipefail
-            sudo install -m 0755 /tmp/rcp-app-gateway-deploy/app-gateway /usr/local/bin/app-gateway
-            sudo install -d -m 0750 -o return -g return /etc/rcp /var/lib/rcp
+            mkdir -p ~/rcp-server
+            install -m 0755 /tmp/rcp-app-gateway-deploy/app-gateway ~/rcp-server/app-gateway
 
       - name: Write app-gateway env file
         uses: appleboy/ssh-action@v0.1.10
@@ -85,14 +85,14 @@ jobs:
           envs: ${{ env.ENV_LIST }}
           script: |
             set -euo pipefail
-            sudo install -d -m 0750 -o return -g return /etc/rcp
-            tmp="$(mktemp)"
+            mkdir -p ~/rcp-server
+            umask 077
+            : > ~/rcp-server/app-gateway.env
             IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"
             for _v in "${_VARS[@]}"; do
-              printf '%s=%s\n' "$_v" "${!_v}" >> "$tmp"
+              printf '%s=%s\n' "$_v" "${!_v}" >> ~/rcp-server/app-gateway.env
             done
-            sudo install -m 0640 -o root -g return "$tmp" /etc/rcp/app-gateway.env
-            rm -f "$tmp"
+            chmod 0600 ~/rcp-server/app-gateway.env
 
       - name: Install systemd unit
         uses: appleboy/ssh-action@v0.1.10

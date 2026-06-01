@@ -8,13 +8,12 @@ Type=simple
 User=return
 Group=return
 
-EnvironmentFile=/etc/rcp/app-gateway.env
+EnvironmentFile=/home/return/rcp-server/app-gateway.env
 WorkingDirectory=/home/return/rcp-server
-ExecStart=/usr/local/bin/app-gateway
+ExecStart=/home/return/rcp-server/app-gateway
 
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
+ProtectSystem=full
 PrivateTmp=true
 
 Restart=on-failure
