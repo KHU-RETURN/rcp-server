@@ -96,11 +96,13 @@ jobs:
           script: |
             set -euo pipefail
             mkdir -p ~/rcp-server
-            _KH="${RCP_VM_KNOWN_HOSTS_PATH:-${RCP_SSH_GW_KNOWN_HOSTS_PATH:-/etc/rcp/ssh-gateway/known_hosts}}"
-            sudo install -d -m 0750 -o return -g return /etc/rcp /etc/rcp/ssh-gateway /var/lib/rcp "$(dirname "$_KH")"
-            sudo touch "$_KH"
-            sudo chown return:return "$_KH"
-            sudo chmod 0640 "$_KH"
+            # known_hosts는 서비스 계정(return) 홈 하위에 둬서 sudo 없이 생성한다.
+            # 서버(rcp-server)는 RCP_VM_KNOWN_HOSTS_PATH로 같은 경로를 읽는다.
+            _KH="${RCP_VM_KNOWN_HOSTS_PATH:-${RCP_SSH_GW_KNOWN_HOSTS_PATH:-$HOME/rcp-server/known_hosts}}"
+            RCP_VM_KNOWN_HOSTS_PATH="$_KH"
+            mkdir -p "$(dirname "$_KH")"
+            touch "$_KH"
+            chmod 0640 "$_KH"
             umask 077
             : > ~/rcp-server/.env
             IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"

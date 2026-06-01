@@ -27,8 +27,11 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-# 기본 SQLite DB 위치는 읽기 전용으로 열며, API 프로세스가 schema와 write ownership을 가진다.
-ReadOnlyPaths=/var/lib/rcp
+# 공유 SQLite DB는 API(rcp-server) 홈에 있고 gateway는 읽기 전용으로만 연다.
+# ProtectHome=true 를 유지한 채 그 DB 파일 하나만 네임스페이스에 read-only로 노출한다.
+# (API가 schema/write ownership을 가지며, 파일이 아직 없으면 '-' 접두사로 부팅을 막지 않는다.
+#  DB 생성 후 gateway 재시작 필요.)
+BindReadOnlyPaths=-/home/return/rcp-server/rcp.db
 ReadWritePaths=/run/rcp /etc/rcp/ssh-gateway
 
 # Linux capability — 1024 미만 포트(예: 22)에 listen할 경우에만 필요.
