@@ -24,11 +24,11 @@ go run ./cmd/ssh-gateway  # 기본 127.0.0.1:2222 (cloudflared 뒤)
 
 API 기본 주소는 `http://localhost:8080`, SSH 게이트웨이는 `127.0.0.1:2222`(외부 직접 노출 X, cloudflared 터널 경유)입니다.
 
-## API Docs Generation
+## Generated Artifacts
 
 Swagger 문서는 Swaggo 주석 기반으로 생성합니다.
 
-문서를 갱신하려면:
+API 문서를 갱신하려면:
 
 ```bash
 go generate ./cmd/api
@@ -38,6 +38,14 @@ go generate ./cmd/api
 
 - `http://localhost:8080/docs`
 - `http://localhost:8080/openapi.yaml`
+
+ent schema 변경 후 ent client/migration 산출물을 갱신하려면:
+
+```bash
+go run entc.go
+```
+
+PR CI는 Swagger와 ent 산출물을 재생성한 뒤 `git diff --exit-code`로 커밋 누락을 검사합니다.
 
 ## SSH Access
 
@@ -66,15 +74,15 @@ ssh rcp-gw
 `main` 브랜치 머지 시 `compute-1` 호스트로 자동 배포됩니다.
 
 - `.github/workflows/deploy.yml` — rcp-server (매 머지마다)
-- `.github/workflows/deploy-ns-proxy.yml` — ns-proxy (`cmd/ns-proxy/**`나 `deploy/systemd/ns-proxy.service` 변경 시, 또는 `workflow_dispatch` 수동 trigger)
-- `.github/workflows/deploy-ssh-gateway.yml` — ssh-gateway (`cmd/ssh-gateway/**`나 SSH gateway systemd 변경 시)
+- `.github/workflows/deploy-ns-proxy.yml` — ns-proxy (`cmd/ns-proxy/**`, `internal/utils/**`, `deploy/systemd/ns-proxy.service`, workflow 변경 시, 또는 `workflow_dispatch` 수동 trigger)
+- `.github/workflows/deploy-ssh-gateway.yml` — ssh-gateway (`cmd/ssh-gateway/**`, SSH gateway 관련 access/database/openstack 코드, `internal/utils/**`, systemd example, workflow 변경 시, 또는 `workflow_dispatch` 수동 trigger)
 
 ### 기여할 때 알아둘 것
 
 - **새 환경변수 추가** — `cmd/api/main.go`의 `os.Getenv` + `deploy.yml`의 `envs:`/`printf` 블록 + GitHub Secrets, 세 군데를 같이 갱신해야 합니다
 - **systemd unit 변경** — `deploy/systemd/*.service`는 IaC로 관리됩니다. 머지하면 호스트의 `/etc/systemd/system/`에 자동 install + `daemon-reload` + `restart`가 일어나 즉시 운영에 반영됩니다
-- **ent schema 변경** — `NewEntClient`가 시작 시 `Schema.Create`를 자동 호출하므로 서버 재시작이 곧 마이그레이션입니다. prod DB와 호환되는 변경인지 확인 필요
-- **ns-proxy 의존 코드 변경** — `internal/` 등 공유 코드를 바꿨다면 ns-proxy 워크플로는 자동 trigger되지 않으니 GitHub Actions에서 `Run workflow`로 수동 실행
+- **ent schema 변경** — `go run entc.go`로 generated code를 갱신해야 합니다. 런타임에서는 `NewEntClient`가 시작 시 `Schema.Create`를 자동 호출하므로 서버 재시작이 곧 마이그레이션입니다. prod DB와 호환되는 변경인지 확인 필요
+- **ns-proxy 의존 코드 변경** — 자동 trigger path 밖의 공유 코드를 바꿨다면 ns-proxy 워크플로는 자동 trigger되지 않으니 GitHub Actions에서 `Run workflow`로 수동 실행
 - **OpenStack 라우터(qrouter) UUID 변경** — `RCP_NS_PROXY_ROUTER_ID` Secret 갱신 후 ns-proxy 워크플로 수동 재실행
 - **운영 로그 조회** — `ssh return@compute-1 journalctl -u rcp-server -f` (ns-proxy도 동일 패턴)
 - **로컬 개발** — 프로젝트 루트의 `.env`를 godotenv가 로드합니다. 운영에서는 systemd `EnvironmentFile`이 같은 역할을 하므로 동작이 일치합니다
