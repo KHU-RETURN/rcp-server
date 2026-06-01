@@ -8,6 +8,7 @@ import (
 
 	"github.com/KHU-RETURN/rcp-server/ent"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/apps"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
@@ -16,6 +17,7 @@ import (
 type App struct {
 	Compute *compute.Handler
 	Access  *access.Handler
+	Apps    *apps.Handler
 	Auth    *auth.Handler
 	Storage *storage.Handler
 }
@@ -45,6 +47,7 @@ func NewApp(deps AppDeps) (*App, error) {
 	return &App{
 		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
 		Access:  access.Init(deps.Provider, deps.EntClient),
+		Apps:    apps.Init(deps.EntClient),
 		Auth:    authHandler,
 		Storage: storage.Init(deps.Provider, deps.EntClient),
 	}, nil

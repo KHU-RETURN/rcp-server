@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// App is the predicate function for app builders.
+type App func(*sql.Selector)
+
 // Container is the predicate function for container builders.
 type Container func(*sql.Selector)
 

@@ -1,0 +1,24 @@
+[Unit]
+Description=RCP App Gateway
+After=network-online.target ns-proxy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=return
+Group=return
+
+EnvironmentFile=/etc/rcp/app-gateway.env
+WorkingDirectory=/home/return/rcp-server
+ExecStart=/usr/local/bin/app-gateway
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

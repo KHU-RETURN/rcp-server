@@ -39,6 +39,8 @@ const (
 	EdgeOwner = "owner"
 	// EdgeKeypair holds the string denoting the keypair edge name in mutations.
 	EdgeKeypair = "keypair"
+	// EdgeApp holds the string denoting the app edge name in mutations.
+	EdgeApp = "app"
 	// Table holds the table name of the instance in the database.
 	Table = "instances"
 	// OwnerTable is the table that holds the owner relation/edge.
@@ -55,6 +57,13 @@ const (
 	KeypairInverseTable = "key_pairs"
 	// KeypairColumn is the table column denoting the keypair relation/edge.
 	KeypairColumn = "key_pair_instances"
+	// AppTable is the table that holds the app relation/edge.
+	AppTable = "apps"
+	// AppInverseTable is the table name for the App entity.
+	// It exists in this package in order to avoid circular dependency with the "app" package.
+	AppInverseTable = "apps"
+	// AppColumn is the table column denoting the app relation/edge.
+	AppColumn = "instance_app"
 )
 
 // Columns holds all SQL columns for instance fields.
@@ -180,6 +189,13 @@ func ByKeypairField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newKeypairStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByAppField orders the results by app field.
+func ByAppField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAppStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newOwnerStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -192,5 +208,12 @@ func newKeypairStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(KeypairInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, KeypairTable, KeypairColumn),
+	)
+}
+func newAppStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AppInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2O, false, AppTable, AppColumn),
 	)
 }

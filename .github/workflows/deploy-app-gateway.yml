@@ -1,0 +1,130 @@
+name: App Gateway CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "cmd/app-gateway/**"
+      - "internal/infrastructure/database/**"
+      - "internal/infrastructure/openstack/**"
+      - "internal/utils/**"
+      - "ent/**"
+      - "go.mod"
+      - "go.sum"
+      - "deploy/systemd/app-gateway.env.example"
+      - "deploy/systemd/app-gateway.service"
+      - ".github/workflows/deploy-app-gateway.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Run Tests
+        run: go test ./cmd/app-gateway ./internal/infrastructure/database -v
+
+      - name: Build app-gateway
+        run: GOOS=linux GOARCH=amd64 go build -v -o app-gateway ./cmd/app-gateway
+
+      - name: Transfer artifacts
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          source: "app-gateway,deploy/systemd/app-gateway.service"
+          target: "/tmp/rcp-app-gateway-deploy"
+
+      - name: Install binary and directories
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -m 0755 /tmp/rcp-app-gateway-deploy/app-gateway /usr/local/bin/app-gateway
+            sudo install -d -m 0750 -o return -g return /etc/rcp /var/lib/rcp
+
+      - name: Write app-gateway env file
+        uses: appleboy/ssh-action@v0.1.10
+        env:
+          ENV_LIST: OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,DB_DRIVER,DB_DSN,APP_GATEWAY_PORT,RCP_NS_PROXY_SOCK,RCP_APP_GW_FIXED_NETWORK,RCP_APP_GW_READ_TIMEOUT,RCP_APP_GW_SHUTDOWN_TIMEOUT,RCP_APP_GW_LOG_LEVEL
+          OS_AUTH_URL: ${{ secrets.OS_AUTH_URL }}
+          OS_USERNAME: ${{ secrets.OS_USERNAME }}
+          OS_PASSWORD: ${{ secrets.OS_PASSWORD }}
+          OS_PROJECT_NAME: ${{ secrets.OS_PROJECT_NAME }}
+          OS_USER_DOMAIN_NAME: ${{ secrets.OS_USER_DOMAIN_NAME }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          DB_DRIVER: ${{ secrets.DB_DRIVER }}
+          DB_DSN: ${{ secrets.DB_DSN }}
+          APP_GATEWAY_PORT: ${{ secrets.APP_GATEWAY_PORT || '18080' }}
+          RCP_NS_PROXY_SOCK: ${{ secrets.RCP_NS_PROXY_SOCK || '/run/rcp/ns-proxy.sock' }}
+          RCP_APP_GW_FIXED_NETWORK: ${{ secrets.RCP_APP_GW_FIXED_NETWORK }}
+          RCP_APP_GW_READ_TIMEOUT: ${{ secrets.RCP_APP_GW_READ_TIMEOUT || '30s' }}
+          RCP_APP_GW_SHUTDOWN_TIMEOUT: ${{ secrets.RCP_APP_GW_SHUTDOWN_TIMEOUT || '30s' }}
+          RCP_APP_GW_LOG_LEVEL: ${{ secrets.RCP_APP_GW_LOG_LEVEL || 'info' }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          envs: ${{ env.ENV_LIST }}
+          script: |
+            set -euo pipefail
+            sudo install -d -m 0750 -o return -g return /etc/rcp
+            tmp="$(mktemp)"
+            IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"
+            for _v in "${_VARS[@]}"; do
+              printf '%s=%s\n' "$_v" "${!_v}" >> "$tmp"
+            done
+            sudo install -m 0640 -o root -g return "$tmp" /etc/rcp/app-gateway.env
+            rm -f "$tmp"
+
+      - name: Install systemd unit
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -m 0644 -o root -g root \
+              /tmp/rcp-app-gateway-deploy/deploy/systemd/app-gateway.service \
+              /etc/systemd/system/app-gateway.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable app-gateway
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo systemctl restart app-gateway
+
+      - name: Cleanup deploy artifacts
+        if: always()
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            rm -rf /tmp/rcp-app-gateway-deploy
