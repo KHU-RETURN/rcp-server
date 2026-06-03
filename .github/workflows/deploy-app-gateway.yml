@@ -85,14 +85,14 @@ jobs:
           envs: ${{ env.ENV_LIST }}
           script: |
             set -euo pipefail
-            mkdir -p ~/rcp-server
-            umask 077
-            : > ~/rcp-server/app-gateway.env
+            sudo install -d -m 0750 -o return -g return /etc/rcp
+            tmp="$(mktemp)"
             IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"
             for _v in "${_VARS[@]}"; do
-              printf '%s=%s\n' "$_v" "${!_v}" >> ~/rcp-server/app-gateway.env
+              printf '%s=%s\n' "$_v" "${!_v}" >> "$tmp"
             done
-            chmod 0600 ~/rcp-server/app-gateway.env
+            sudo install -m 0640 -o root -g return "$tmp" /etc/rcp/app-gateway.env
+            rm -f "$tmp"
 
       - name: Install systemd unit
         uses: appleboy/ssh-action@v0.1.10

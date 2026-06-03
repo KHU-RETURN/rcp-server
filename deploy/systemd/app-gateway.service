@@ -8,7 +8,7 @@ Type=simple
 User=return
 Group=return
 
-EnvironmentFile=/home/return/rcp-server/app-gateway.env
+EnvironmentFile=/etc/rcp/app-gateway.env
 WorkingDirectory=/home/return/rcp-server
 ExecStart=/home/return/rcp-server/app-gateway
 
