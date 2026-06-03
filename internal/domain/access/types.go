@@ -49,3 +49,9 @@ type CreateConsoleSessionResponse struct {
 	URL       string    `json:"url"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
+
+type EphemeralAuthorizedKeyRequest struct {
+	InstanceID    string `json:"instance_id"`
+	Username      string `json:"username"`
+	AuthorizedKey string `json:"authorized_key"`
+}

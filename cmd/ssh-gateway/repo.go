@@ -15,6 +15,12 @@ type VM struct {
 	OpenstackID string
 	Name        string
 	Status      string
+	FixedIPv4   string
+}
+
+type VMRuntime struct {
+	Status    string
+	FixedIPv4 string
 }
 
 type repo struct {

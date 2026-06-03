@@ -4,7 +4,6 @@
 
 - OpenSSH client
 - `cloudflared`
-- An SSH key loaded into `ssh-agent`
 
 ## SSH Config
 
@@ -14,7 +13,6 @@ Add this to `~/.ssh/config`:
 Host rcp-gw rcp-gw.return.dev
   HostName rcp-gw.return.dev
   User any
-  ForwardAgent yes
   ProxyCommand cloudflared access ssh --hostname %h
 ```
 
@@ -24,17 +22,26 @@ Host rcp-gw rcp-gw.return.dev
 ssh rcp-gw
 ```
 
-The terminal prints an auth URL and a six-digit code:
+The terminal prints a browser-auth prompt:
 
 ```text
-Open: https://rcp.return.dev/ssh-auth?s=<nonce>
-Code: 123456
+RCP SSH browser authentication required.
+
+1. Open this URL in your browser:
+   https://rcp.return.dev/ssh-auth?s=<nonce>
+
+2. Enter this 6-digit code on the auth page:
+123456
+
+If your terminal supports clipboard integration, the code was copied automatically.
+Waiting for browser authentication. Timeout: 5m0s
 ```
 
-Open the URL, enter the code shown in the same terminal, and finish Google OAuth. After auth, choose a VM from the terminal menu. If you have one VM, the gateway selects it automatically.
+Open the URL, enter the code shown in the same terminal, and finish Google OAuth. In terminals that support it, the URL is clickable and the code is copied to your clipboard automatically. After auth, choose a VM from the terminal menu. If you have one VM, the gateway selects it automatically.
 
 ## Notes
 
-- Use `ssh -A` or `ForwardAgent yes`; the gateway does not store private keys.
+- The gateway uses a short-lived SSH key for the selected VM; you do not need `ssh -A` or a local VM private key.
+- The temporary key is removed when the SSH session ends. If cleanup cannot run, it expires from the API-side authorized-key store.
 - Keep the six-digit code private. The URL alone is not enough to authorize a session.
 - If host key verification fails, ask an operator to register the VM host key for the gateway.

@@ -52,8 +52,8 @@ func TestLoadConfig_AllDefaultsExceptRequired(t *testing.T) {
 	if cfg.FixedNetworkName != "" {
 		t.Errorf("FixedNetworkName default: got %q", cfg.FixedNetworkName)
 	}
-	if cfg.VMUser != "root" {
-		t.Errorf("VMUser default: got %q", cfg.VMUser)
+	if strings.Join(cfg.VMUsers, ",") != "ubuntu,rocky" {
+		t.Errorf("VMUsers default: got %v", cfg.VMUsers)
 	}
 }
 
@@ -165,17 +165,17 @@ func TestLoadConfig_FixedNetworkName(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_VMUser(t *testing.T) {
+func TestLoadConfig_VMUsers(t *testing.T) {
 	cfg, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
 		"RCP_SSH_GW_AUTH_URL_BASE": "https://rcp.return.dev",
 		"RCP_SSH_GW_DB_PATH":       "/var/lib/rcp/rcp.db",
-		"RCP_SSH_GW_VM_USER":       " ubuntu ",
+		"RCP_SSH_GW_VM_USERS":      " ubuntu, rocky, ubuntu ",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if cfg.VMUser != "ubuntu" {
-		t.Fatalf("got %q", cfg.VMUser)
+	if strings.Join(cfg.VMUsers, ",") != "ubuntu,rocky" {
+		t.Fatalf("got %v", cfg.VMUsers)
 	}
 }

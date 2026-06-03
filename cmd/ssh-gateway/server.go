@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -23,8 +24,14 @@ type Server struct {
 	repo      *repo
 	dialer    *nsProxyDialer
 	resolver  vmAddressResolver
+	keyClient ephemeralKeyRegistrar
 	sshConfig *ssh.ServerConfig
 	hostKeyCB ssh.HostKeyCallback
+}
+
+type ephemeralKeyRegistrar interface {
+	Register(ctx context.Context, req access.EphemeralAuthorizedKeyRequest) error
+	Delete(ctx context.Context, req access.EphemeralAuthorizedKeyRequest) error
 }
 
 func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, resolver vmAddressResolver) (*Server, error) {
@@ -48,6 +55,7 @@ func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, reso
 		repo:      r,
 		dialer:    dialer,
 		resolver:  resolver,
+		keyClient: newEphemeralKeyClient(cfg.AuthURLBase, []byte(cfg.NotifySecret)),
 		sshConfig: sc,
 		hostKeyCB: hostKeyCB,
 	}, nil
@@ -110,7 +118,6 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 
 	var pty pendingPty
 	var execCmd string
-	var agentForwarded bool
 
 	// Channel-request pump: stops when we either get shell/exec or the channel closes.
 	requestQueue := make(chan *ssh.Request, 1)
@@ -131,7 +138,6 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 					_ = req.Reply(true, nil)
 				}
 			case "auth-agent-req@openssh.com":
-				agentForwarded = true
 				if req.WantReply {
 					_ = req.Reply(true, nil)
 				}
@@ -168,11 +174,6 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		return
 	}
 
-	if !agentForwarded {
-		_, _ = fmt.Fprintln(ch, "ssh-agent forwarding required. Use `ssh -A`.")
-		return
-	}
-
 	// Resolve the user's VM list.
 	vms, err := s.repo.ListInstancesByEmail(ctx, email)
 	if err != nil {
@@ -183,6 +184,12 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		_, _ = fmt.Fprintf(ch, "No instances. Create one at %s\r\n", s.cfg.AuthURLBase)
 		return
 	}
+
+	rctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	vms = applyRuntimeInfo(vms, func(vm VM) (VMRuntime, error) {
+		return s.resolver.ResolveVM(rctx, vm.OpenstackID)
+	})
 
 	// Pick a VM: explicit exec command > single auto-pick > menu.
 	var target VM
@@ -204,47 +211,89 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		target = v
 	}
 
-	// Resolve the VM's fixed IPv4 via OpenStack.
-	rctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	ip, err := s.resolver.ResolveFixedIPv4(rctx, target.OpenstackID)
-	if err != nil {
-		_, _ = fmt.Fprintf(ch, "VM unreachable: %v\r\n", err)
+	ip := strings.TrimSpace(target.FixedIPv4)
+	if ip == "" {
+		_, _ = fmt.Fprintf(ch, "VM unreachable: no fixed IPv4 address for %s\r\n", target.Name)
 		return
 	}
 
-	// Dial via ns-proxy.
-	dctx, dcancel := context.WithTimeout(ctx, 15*time.Second)
-	defer dcancel()
-	tcp, err := s.dialer.Dial(dctx, ip, 22)
-	if err != nil {
-		_, _ = fmt.Fprintf(ch, "VM unreachable (ns-proxy): %v\r\n", err)
-		return
-	}
-	defer func() { _ = tcp.Close() }()
-
-	// Borrow the user's agent.
-	ag, agentCloser, err := agentClientFromOuter(sshConn)
-	if err != nil {
-		_, _ = fmt.Fprintf(ch, "agent forwarding setup failed: %v\r\n", err)
-		return
-	}
-	defer func() { _ = agentCloser.Close() }()
-
-	// Inner SSH handshake. VM images vary by distro, so operators can override
-	// the login user while the legacy root default remains unchanged.
-	innerCtx, innerCancel := context.WithTimeout(ctx, 15*time.Second)
-	defer innerCancel()
-	inner, err := dialInnerSSH(innerCtx, tcp, net.JoinHostPort(ip, "22"), s.cfg.VMUser, ag, s.hostKeyCB)
+	inner, keyReq, err := s.dialVMWithEphemeralKey(ctx, target, ip)
 	if err != nil {
 		_, _ = fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
 		return
 	}
 	defer func() { _ = inner.Close() }()
+	defer s.deleteEphemeralKey(keyReq)
 
 	if err := pipeSession(s.log, ch, reqs, inner, pty, func() { _ = sshConn.Close() }); err != nil {
 		s.log.Info("pipe ended", "err", err)
 		return
+	}
+}
+
+func (s *Server) dialVMWithEphemeralKey(ctx context.Context, target VM, ip string) (*ssh.Client, access.EphemeralAuthorizedKeyRequest, error) {
+	if len(s.cfg.VMUsers) == 0 {
+		return nil, access.EphemeralAuthorizedKeyRequest{}, errors.New("no VM SSH users configured")
+	}
+	var lastErr error
+	for _, user := range s.cfg.VMUsers {
+		user = strings.TrimSpace(user)
+		if user == "" {
+			continue
+		}
+		inner, keyReq, err := s.tryDialVMUser(ctx, target, ip, user)
+		if err == nil {
+			return inner, keyReq, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = errors.New("no VM SSH users configured")
+	}
+	return nil, access.EphemeralAuthorizedKeyRequest{}, lastErr
+}
+
+func (s *Server) tryDialVMUser(ctx context.Context, target VM, ip, user string) (*ssh.Client, access.EphemeralAuthorizedKeyRequest, error) {
+	signer, authorizedKey, err := generateEphemeralSSHKey()
+	if err != nil {
+		return nil, access.EphemeralAuthorizedKeyRequest{}, fmt.Errorf("ephemeral key setup: %w", err)
+	}
+	keyReq := access.EphemeralAuthorizedKeyRequest{
+		InstanceID:    target.OpenstackID,
+		Username:      user,
+		AuthorizedKey: authorizedKey,
+	}
+	kctx, kcancel := context.WithTimeout(ctx, 5*time.Second)
+	if err := s.keyClient.Register(kctx, keyReq); err != nil {
+		kcancel()
+		return nil, access.EphemeralAuthorizedKeyRequest{}, fmt.Errorf("register ephemeral key for %s: %w", user, err)
+	}
+	kcancel()
+
+	dctx, dcancel := context.WithTimeout(ctx, 15*time.Second)
+	defer dcancel()
+	tcp, err := s.dialer.Dial(dctx, ip, 22)
+	if err != nil {
+		s.deleteEphemeralKey(keyReq)
+		return nil, access.EphemeralAuthorizedKeyRequest{}, fmt.Errorf("ns-proxy dial for %s: %w", user, err)
+	}
+
+	innerCtx, innerCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer innerCancel()
+	inner, err := dialInnerSSH(innerCtx, tcp, net.JoinHostPort(ip, "22"), user, signer, s.hostKeyCB)
+	if err != nil {
+		_ = tcp.Close()
+		s.deleteEphemeralKey(keyReq)
+		return nil, access.EphemeralAuthorizedKeyRequest{}, fmt.Errorf("%s: %w", user, err)
+	}
+	return inner, keyReq, nil
+}
+
+func (s *Server) deleteEphemeralKey(keyReq access.EphemeralAuthorizedKeyRequest) {
+	dctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.keyClient.Delete(dctx, keyReq); err != nil {
+		s.log.Warn("delete ephemeral authorized key", "instance_id", keyReq.InstanceID, "user", keyReq.Username, "err", err)
 	}
 }
 

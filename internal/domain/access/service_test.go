@@ -321,6 +321,29 @@ func TestServiceCreateConsoleSession(t *testing.T) {
 	})
 }
 
+func TestServiceEphemeralAuthorizedKey(t *testing.T) {
+	svc := NewService(&fakeClient{}, &fakeRepo{})
+
+	req := EphemeralAuthorizedKeyRequest{
+		InstanceID:    " server-1 ",
+		Username:      " ubuntu ",
+		AuthorizedKey: " " + testPublicKey + " ",
+	}
+	if err := svc.AddEphemeralAuthorizedKey(req); err != nil {
+		t.Fatalf("add ephemeral key: %v", err)
+	}
+
+	keys := svc.AuthorizedKeys("server-1", "ubuntu")
+	if keys != testPublicKey+"\n" {
+		t.Fatalf("authorized keys = %q", keys)
+	}
+
+	svc.DeleteEphemeralAuthorizedKey(req)
+	if keys := svc.AuthorizedKeys("server-1", "ubuntu"); keys != "" {
+		t.Fatalf("expected key deleted, got %q", keys)
+	}
+}
+
 func consoleTokenFromURL(t *testing.T, rawURL string) string {
 	t.Helper()
 
