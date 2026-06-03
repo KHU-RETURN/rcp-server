@@ -66,7 +66,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 	}
 	apiURL := strings.TrimRight(strings.TrimSpace(getenv("RCP_SSH_GW_API_URL_BASE")), "/")
 	if apiURL == "" {
-		apiURL = authURL
+		return nil, fmt.Errorf("RCP_SSH_GW_API_URL_BASE: required")
 	}
 
 	dbDriver := strings.TrimSpace(getenv("DB_DRIVER"))

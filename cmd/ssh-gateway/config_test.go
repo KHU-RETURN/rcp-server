@@ -14,6 +14,7 @@ func TestLoadConfig_AllDefaultsExceptRequired(t *testing.T) {
 	cfg, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
 		"RCP_SSH_GW_AUTH_URL_BASE": "https://rcp.return.dev",
+		"RCP_SSH_GW_API_URL_BASE":  "https://api.rcp.return.dev",
 		"RCP_SSH_GW_DB_PATH":       "/var/lib/rcp/rcp.db",
 	}))
 	if err != nil {
@@ -52,8 +53,8 @@ func TestLoadConfig_AllDefaultsExceptRequired(t *testing.T) {
 	if cfg.FixedNetworkName != "" {
 		t.Errorf("FixedNetworkName default: got %q", cfg.FixedNetworkName)
 	}
-	if cfg.APIURLBase != "https://rcp.return.dev" {
-		t.Errorf("APIURLBase default: got %q", cfg.APIURLBase)
+	if cfg.APIURLBase != "https://api.rcp.return.dev" {
+		t.Errorf("APIURLBase: got %q", cfg.APIURLBase)
 	}
 	if strings.Join(cfg.VMUsers, ",") != "ubuntu,rocky" {
 		t.Errorf("VMUsers default: got %v", cfg.VMUsers)
@@ -64,6 +65,7 @@ func TestLoadConfig_AllowsDBDSNWithoutLegacyDBPath(t *testing.T) {
 	cfg, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
 		"RCP_SSH_GW_AUTH_URL_BASE": "https://rcp.return.dev",
+		"RCP_SSH_GW_API_URL_BASE":  "https://api.rcp.return.dev",
 		"DB_DRIVER":                "postgres",
 		"DB_DSN":                   "host=db dbname=rcp",
 	}))
@@ -79,6 +81,7 @@ func TestLoadConfig_AllowsAbsoluteSQLiteDBDSN(t *testing.T) {
 	cfg, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
 		"RCP_SSH_GW_AUTH_URL_BASE": "https://rcp.return.dev",
+		"RCP_SSH_GW_API_URL_BASE":  "https://api.rcp.return.dev",
 		"DB_DSN":                   "file:/var/lib/rcp/custom.db?cache=shared",
 	}))
 	if err != nil {
@@ -95,6 +98,7 @@ func TestLoadConfig_RejectsRelativeSQLiteDBDSN(t *testing.T) {
 			_, err := LoadConfig(envFromMap(map[string]string{
 				"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
 				"RCP_SSH_GW_AUTH_URL_BASE": "https://rcp.return.dev",
+				"RCP_SSH_GW_API_URL_BASE":  "https://api.rcp.return.dev",
 				"DB_DSN":                   dsn,
 			}))
 			if err == nil || !strings.Contains(err.Error(), "DB_DSN") {
@@ -111,6 +115,7 @@ func TestLoadConfig_RequiredMissing(t *testing.T) {
 	}{
 		{"RCP_SSH_GW_NOTIFY_SECRET", "RCP_SSH_GW_NOTIFY_SECRET"},
 		{"RCP_SSH_GW_AUTH_URL_BASE", "RCP_SSH_GW_AUTH_URL_BASE"},
+		{"RCP_SSH_GW_API_URL_BASE", "RCP_SSH_GW_API_URL_BASE"},
 		{"RCP_SSH_GW_DB_PATH", "RCP_SSH_GW_DB_PATH or DB_DSN"},
 	}
 	for _, tc := range cases {
@@ -118,6 +123,7 @@ func TestLoadConfig_RequiredMissing(t *testing.T) {
 			env := map[string]string{
 				"RCP_SSH_GW_NOTIFY_SECRET": "abc",
 				"RCP_SSH_GW_AUTH_URL_BASE": "https://x",
+				"RCP_SSH_GW_API_URL_BASE":  "https://api.x",
 				"RCP_SSH_GW_DB_PATH":       "/x",
 			}
 			delete(env, tc.drop)
@@ -133,6 +139,7 @@ func TestLoadConfig_NonceTTLPositive(t *testing.T) {
 	_, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET": "x",
 		"RCP_SSH_GW_AUTH_URL_BASE": "x",
+		"RCP_SSH_GW_API_URL_BASE":  "api-x",
 		"RCP_SSH_GW_DB_PATH":       "x",
 		"RCP_SSH_GW_NONCE_TTL":     "0s",
 	}))
@@ -145,6 +152,7 @@ func TestLoadConfig_MaxPendingPositive(t *testing.T) {
 	_, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET":        "x",
 		"RCP_SSH_GW_AUTH_URL_BASE":        "x",
+		"RCP_SSH_GW_API_URL_BASE":         "api-x",
 		"RCP_SSH_GW_DB_PATH":              "/x",
 		"RCP_SSH_GW_MAX_PENDING_SESSIONS": "0",
 	}))
@@ -157,6 +165,7 @@ func TestLoadConfig_FixedNetworkName(t *testing.T) {
 	cfg, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
 		"RCP_SSH_GW_AUTH_URL_BASE": "https://rcp.return.dev",
+		"RCP_SSH_GW_API_URL_BASE":  "https://api.rcp.return.dev",
 		"RCP_SSH_GW_DB_PATH":       "/var/lib/rcp/rcp.db",
 		"RCP_SSH_GW_FIXED_NETWORK": " tenant-a ",
 	}))
@@ -172,6 +181,7 @@ func TestLoadConfig_VMUsers(t *testing.T) {
 	cfg, err := LoadConfig(envFromMap(map[string]string{
 		"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
 		"RCP_SSH_GW_AUTH_URL_BASE": "https://rcp.return.dev",
+		"RCP_SSH_GW_API_URL_BASE":  "https://api.rcp.return.dev",
 		"RCP_SSH_GW_DB_PATH":       "/var/lib/rcp/rcp.db",
 		"RCP_SSH_GW_VM_USERS":      " ubuntu, rocky, ubuntu ",
 	}))
