@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/app"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -179,6 +180,25 @@ func (_u *InstanceUpdate) SetKeypair(v *KeyPair) *InstanceUpdate {
 	return _u.SetKeypairID(v.ID)
 }
 
+// SetAppID sets the "app" edge to the App entity by ID.
+func (_u *InstanceUpdate) SetAppID(id uuid.UUID) *InstanceUpdate {
+	_u.mutation.SetAppID(id)
+	return _u
+}
+
+// SetNillableAppID sets the "app" edge to the App entity by ID if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableAppID(id *uuid.UUID) *InstanceUpdate {
+	if id != nil {
+		_u = _u.SetAppID(*id)
+	}
+	return _u
+}
+
+// SetApp sets the "app" edge to the App entity.
+func (_u *InstanceUpdate) SetApp(v *App) *InstanceUpdate {
+	return _u.SetAppID(v.ID)
+}
+
 // Mutation returns the InstanceMutation object of the builder.
 func (_u *InstanceUpdate) Mutation() *InstanceMutation {
 	return _u.mutation
@@ -193,6 +213,12 @@ func (_u *InstanceUpdate) ClearOwner() *InstanceUpdate {
 // ClearKeypair clears the "keypair" edge to the KeyPair entity.
 func (_u *InstanceUpdate) ClearKeypair() *InstanceUpdate {
 	_u.mutation.ClearKeypair()
+	return _u
+}
+
+// ClearApp clears the "app" edge to the App entity.
+func (_u *InstanceUpdate) ClearApp() *InstanceUpdate {
+	_u.mutation.ClearApp()
 	return _u
 }
 
@@ -330,6 +356,35 @@ func (_u *InstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AppCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   instance.AppTable,
+			Columns: []string{instance.AppColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(app.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AppIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   instance.AppTable,
+			Columns: []string{instance.AppColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(app.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -505,6 +560,25 @@ func (_u *InstanceUpdateOne) SetKeypair(v *KeyPair) *InstanceUpdateOne {
 	return _u.SetKeypairID(v.ID)
 }
 
+// SetAppID sets the "app" edge to the App entity by ID.
+func (_u *InstanceUpdateOne) SetAppID(id uuid.UUID) *InstanceUpdateOne {
+	_u.mutation.SetAppID(id)
+	return _u
+}
+
+// SetNillableAppID sets the "app" edge to the App entity by ID if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableAppID(id *uuid.UUID) *InstanceUpdateOne {
+	if id != nil {
+		_u = _u.SetAppID(*id)
+	}
+	return _u
+}
+
+// SetApp sets the "app" edge to the App entity.
+func (_u *InstanceUpdateOne) SetApp(v *App) *InstanceUpdateOne {
+	return _u.SetAppID(v.ID)
+}
+
 // Mutation returns the InstanceMutation object of the builder.
 func (_u *InstanceUpdateOne) Mutation() *InstanceMutation {
 	return _u.mutation
@@ -519,6 +593,12 @@ func (_u *InstanceUpdateOne) ClearOwner() *InstanceUpdateOne {
 // ClearKeypair clears the "keypair" edge to the KeyPair entity.
 func (_u *InstanceUpdateOne) ClearKeypair() *InstanceUpdateOne {
 	_u.mutation.ClearKeypair()
+	return _u
+}
+
+// ClearApp clears the "app" edge to the App entity.
+func (_u *InstanceUpdateOne) ClearApp() *InstanceUpdateOne {
+	_u.mutation.ClearApp()
 	return _u
 }
 
@@ -686,6 +766,35 @@ func (_u *InstanceUpdateOne) sqlSave(ctx context.Context) (_node *Instance, err 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(keypair.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AppCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   instance.AppTable,
+			Columns: []string{instance.AppColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(app.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AppIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   instance.AppTable,
+			Columns: []string{instance.AppColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(app.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

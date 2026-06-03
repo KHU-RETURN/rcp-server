@@ -2,6 +2,7 @@ package compute
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -61,6 +62,7 @@ func (r *Repository) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID,
 func (r *Repository) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Instance, error) {
 	rows, err := r.client.Instance.Query().
 		Where(entinstance.HasOwnerWith(entuser.ID(ownerID))).
+		WithApp().
 		All(ctx)
 	if err != nil {
 		return nil, err
@@ -79,6 +81,7 @@ func (r *Repository) FindByOpenstackID(ctx context.Context, ownerID uuid.UUID, o
 			entinstance.OpenstackID(openstackID),
 			entinstance.HasOwnerWith(entuser.ID(ownerID)),
 		).
+		WithApp().
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -92,7 +95,7 @@ func (r *Repository) FindByOpenstackID(ctx context.Context, ownerID uuid.UUID, o
 }
 
 func entToInstance(row *ent.Instance) Instance {
-	return Instance{
+	inst := Instance{
 		OpenstackID: row.OpenstackID,
 		Name:        row.Name,
 		Status:      row.Status,
@@ -102,4 +105,18 @@ func entToInstance(row *ent.Instance) Instance {
 		Note:        row.Note,
 		Created:     row.ProviderCreatedAt,
 	}
+	if row.Edges.App != nil {
+		inst.App = &AppSummary{
+			ID:        row.Edges.App.ID.String(),
+			Subdomain: firstLabel(row.Edges.App.Host),
+			Host:      row.Edges.App.Host,
+		}
+	}
+	return inst
+}
+
+func firstLabel(host string) string {
+	host = strings.TrimSpace(strings.ToLower(host))
+	label, _, _ := strings.Cut(host, ".")
+	return label
 }
