@@ -161,7 +161,7 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 
 | 항목 | 사용 기술 |
 |------|-----------|
-| Language | Go 1.26.1 |
+| Language | Go 1.26.4 |
 | Web Framework | `gin-gonic/gin` |
 | OpenStack SDK | `gophercloud/gophercloud` |
 | Env Loader | `joho/godotenv` |

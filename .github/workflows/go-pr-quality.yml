@@ -31,7 +31,10 @@ jobs:
       - name: Regenerate Swagger docs
         run: go generate ./cmd/api
 
-      - name: Verify generated docs are committed
+      - name: Regenerate ent code
+        run: go run entc.go
+
+      - name: Verify generated artifacts are committed
         run: git diff --exit-code
 
   format:
