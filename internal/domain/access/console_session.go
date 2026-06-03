@@ -105,6 +105,18 @@ func (s *consoleSessionStore) DeleteAuthorizedKey(instanceID, username, key stri
 	}
 }
 
+func (s *consoleSessionStore) AddAuthorizedKey(instanceID, username, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.deleteExpiredLocked(time.Now())
+	scope := authorizedKeyScope{InstanceID: instanceID, Username: username}
+	if s.authorizedKeys[scope] == nil {
+		s.authorizedKeys[scope] = make(map[string]time.Time)
+	}
+	s.authorizedKeys[scope][key] = time.Now().Add(s.ttl)
+}
+
 func (s *consoleSessionStore) deleteExpiredLocked(now time.Time) {
 	for token, session := range s.sessions {
 		if now.After(session.ExpiresAt) {

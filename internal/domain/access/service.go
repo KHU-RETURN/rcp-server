@@ -217,6 +217,34 @@ func (s *Service) DeleteAuthorizedKey(instanceID, username, key string) {
 	s.consoleStore.DeleteAuthorizedKey(strings.TrimSpace(instanceID), strings.TrimSpace(username), key)
 }
 
+func (s *Service) AddEphemeralAuthorizedKey(req EphemeralAuthorizedKeyRequest) error {
+	instanceID := strings.TrimSpace(req.InstanceID)
+	if instanceID == "" {
+		return ErrConsoleInstanceIDRequired
+	}
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		username = "ubuntu"
+	}
+	key := strings.TrimSpace(req.AuthorizedKey)
+	if key == "" {
+		return ErrPublicKeyRequired
+	}
+	if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key)); err != nil {
+		return ErrInvalidSSHKeyFormat
+	}
+	s.consoleStore.AddAuthorizedKey(instanceID, username, key)
+	return nil
+}
+
+func (s *Service) DeleteEphemeralAuthorizedKey(req EphemeralAuthorizedKeyRequest) {
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		username = "ubuntu"
+	}
+	s.consoleStore.DeleteAuthorizedKey(strings.TrimSpace(req.InstanceID), username, strings.TrimSpace(req.AuthorizedKey))
+}
+
 func isNotFoundError(err error) bool {
 	return hasStatusCode(err, http.StatusNotFound)
 }

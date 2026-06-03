@@ -1,6 +1,10 @@
 package access
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +33,7 @@ const (
 	pathConsoleWebSocket = "/console/ws"
 	pathConsoleSessions  = "/instances/:id/console-sessions"
 	pathAuthorizedKeys   = "/authorized-keys"
+	pathEphemeralKeys    = "/ephemeral-keys"
 
 	envWebConsoleBaseURL        = "RCP_WEB_CONSOLE_BASE_URL"
 	envWebConsoleAllowedOrigins = "RCP_WEB_CONSOLE_ALLOWED_ORIGINS"
@@ -44,6 +49,7 @@ type Handler struct {
 	Svc               *Service
 	NSProxySockPath   string
 	VMHostKeyCallback ssh.HostKeyCallback
+	InternalSecret    []byte
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -65,6 +71,8 @@ func (h *Handler) InitInternalRoutes(rg *gin.RouterGroup) {
 	internalGroup := rg.Group(routeInternalSSHPrefix)
 	{
 		internalGroup.GET(pathAuthorizedKeys, h.GetAuthorizedKeys)
+		internalGroup.POST(pathEphemeralKeys, h.AddEphemeralAuthorizedKey)
+		internalGroup.DELETE(pathEphemeralKeys, h.DeleteEphemeralAuthorizedKey)
 	}
 }
 
@@ -205,6 +213,62 @@ func (h *Handler) GetAuthorizedKeys(c *gin.Context) {
 	username := c.Query("user")
 	keys := h.Svc.AuthorizedKeys(instanceID, username)
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(keys))
+}
+
+func (h *Handler) AddEphemeralAuthorizedKey(c *gin.Context) {
+	var req EphemeralAuthorizedKeyRequest
+	if !h.readSignedJSON(c, &req) {
+		return
+	}
+	if err := h.Svc.AddEphemeralAuthorizedKey(req); err != nil {
+		switch {
+		case errors.Is(err, ErrConsoleInstanceIDRequired), errors.Is(err, ErrPublicKeyRequired), errors.Is(err, ErrInvalidSSHKeyFormat):
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to register ephemeral key"})
+		}
+		return
+	}
+	c.Status(http.StatusCreated)
+}
+
+func (h *Handler) DeleteEphemeralAuthorizedKey(c *gin.Context) {
+	var req EphemeralAuthorizedKeyRequest
+	if !h.readSignedJSON(c, &req) {
+		return
+	}
+	h.Svc.DeleteEphemeralAuthorizedKey(req)
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) readSignedJSON(c *gin.Context, out any) bool {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<16))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "failed to read request body"})
+		return false
+	}
+	if !verifyInternalHMAC(h.InternalSecret, body, c.GetHeader(InternalSigHeader)) {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "invalid signature"})
+		return false
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
+		return false
+	}
+	return true
+}
+
+func verifyInternalHMAC(secret, body []byte, gotHex string) bool {
+	if len(secret) == 0 {
+		return false
+	}
+	got, err := hex.DecodeString(gotHex)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(body)
+	return hmac.Equal(mac.Sum(nil), got)
 }
 
 func (h *Handler) WebConsole(c *gin.Context) {

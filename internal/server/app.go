@@ -44,7 +44,7 @@ func NewApp(deps AppDeps) (*App, error) {
 	}
 	return &App{
 		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
-		Access:  access.Init(deps.Provider, deps.EntClient),
+		Access:  access.Init(deps.Provider, deps.EntClient, deps.SSHGatewaySecret),
 		Auth:    authHandler,
 		Storage: storage.Init(deps.Provider, deps.EntClient),
 	}, nil
