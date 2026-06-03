@@ -24,14 +24,22 @@ Host rcp-gw rcp-gw.return.dev
 ssh rcp-gw
 ```
 
-The terminal prints an auth URL and a six-digit code:
+The terminal prints a browser-auth prompt:
 
 ```text
-Open: https://rcp.return.dev/ssh-auth?s=<nonce>
-Code: 123456
+RCP SSH browser authentication required.
+
+1. Open this URL in your browser:
+   https://rcp.return.dev/ssh-auth?s=<nonce>
+
+2. Enter this 6-digit code on the auth page:
+123456
+
+If your terminal supports clipboard integration, the code was copied automatically.
+Waiting for browser authentication. Timeout: 5m0s
 ```
 
-Open the URL, enter the code shown in the same terminal, and finish Google OAuth. After auth, choose a VM from the terminal menu. If you have one VM, the gateway selects it automatically.
+Open the URL, enter the code shown in the same terminal, and finish Google OAuth. In terminals that support it, the URL is clickable and the code is copied to your clipboard automatically. After auth, choose a VM from the terminal menu. If you have one VM, the gateway selects it automatically.
 
 ## Notes
 
