@@ -30,7 +30,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.26.4'
 
       - name: Run Tests
         run: go test ./cmd/ssh-gateway ./internal/domain/access ./internal/infrastructure/database -v
