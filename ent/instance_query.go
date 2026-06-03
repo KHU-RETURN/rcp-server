@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -11,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/app"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -27,6 +29,7 @@ type InstanceQuery struct {
 	predicates  []predicate.Instance
 	withOwner   *UserQuery
 	withKeypair *KeyPairQuery
+	withApp     *AppQuery
 	withFKs     bool
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -101,6 +104,28 @@ func (_q *InstanceQuery) QueryKeypair() *KeyPairQuery {
 			sqlgraph.From(instance.Table, instance.FieldID, selector),
 			sqlgraph.To(keypair.Table, keypair.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, instance.KeypairTable, instance.KeypairColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryApp chains the current query on the "app" edge.
+func (_q *InstanceQuery) QueryApp() *AppQuery {
+	query := (&AppClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(instance.Table, instance.FieldID, selector),
+			sqlgraph.To(app.Table, app.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, instance.AppTable, instance.AppColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -302,6 +327,7 @@ func (_q *InstanceQuery) Clone() *InstanceQuery {
 		predicates:  append([]predicate.Instance{}, _q.predicates...),
 		withOwner:   _q.withOwner.Clone(),
 		withKeypair: _q.withKeypair.Clone(),
+		withApp:     _q.withApp.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -327,6 +353,17 @@ func (_q *InstanceQuery) WithKeypair(opts ...func(*KeyPairQuery)) *InstanceQuery
 		opt(query)
 	}
 	_q.withKeypair = query
+	return _q
+}
+
+// WithApp tells the query-builder to eager-load the nodes that are connected to
+// the "app" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *InstanceQuery) WithApp(opts ...func(*AppQuery)) *InstanceQuery {
+	query := (&AppClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withApp = query
 	return _q
 }
 
@@ -409,9 +446,10 @@ func (_q *InstanceQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Ins
 		nodes       = []*Instance{}
 		withFKs     = _q.withFKs
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withOwner != nil,
 			_q.withKeypair != nil,
+			_q.withApp != nil,
 		}
 	)
 	if _q.withOwner != nil || _q.withKeypair != nil {
@@ -447,6 +485,12 @@ func (_q *InstanceQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Ins
 	if query := _q.withKeypair; query != nil {
 		if err := _q.loadKeypair(ctx, query, nodes, nil,
 			func(n *Instance, e *KeyPair) { n.Edges.Keypair = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withApp; query != nil {
+		if err := _q.loadApp(ctx, query, nodes, nil,
+			func(n *Instance, e *App) { n.Edges.App = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -514,6 +558,34 @@ func (_q *InstanceQuery) loadKeypair(ctx context.Context, query *KeyPairQuery, n
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *InstanceQuery) loadApp(ctx context.Context, query *AppQuery, nodes []*Instance, init func(*Instance), assign func(*Instance, *App)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Instance)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+	}
+	query.withFKs = true
+	query.Where(predicate.App(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(instance.AppColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.instance_app
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "instance_app" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "instance_app" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

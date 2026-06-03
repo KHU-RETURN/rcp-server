@@ -8,6 +8,28 @@ import (
 )
 
 var (
+	// AppsColumns holds the columns for the "apps" table.
+	AppsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "host", Type: field.TypeString, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "instance_app", Type: field.TypeUUID, Unique: true},
+	}
+	// AppsTable holds the schema information for the "apps" table.
+	AppsTable = &schema.Table{
+		Name:       "apps",
+		Columns:    AppsColumns,
+		PrimaryKey: []*schema.Column{AppsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "apps_instances_app",
+				Columns:    []*schema.Column{AppsColumns[4]},
+				RefColumns: []*schema.Column{InstancesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// ContainersColumns holds the columns for the "containers" table.
 	ContainersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -113,6 +135,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AppsTable,
 		ContainersTable,
 		InstancesTable,
 		KeyPairsTable,
@@ -121,6 +144,7 @@ var (
 )
 
 func init() {
+	AppsTable.ForeignKeys[0].RefTable = InstancesTable
 	ContainersTable.ForeignKeys[0].RefTable = UsersTable
 	InstancesTable.ForeignKeys[0].RefTable = KeyPairsTable
 	InstancesTable.ForeignKeys[1].RefTable = UsersTable

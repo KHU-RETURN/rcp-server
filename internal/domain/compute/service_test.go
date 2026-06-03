@@ -402,7 +402,6 @@ func TestServiceCreateInstance(t *testing.T) {
 		if saved.Status != "BUILD" {
 			t.Fatalf("expected saved status BUILD, got %q", saved.Status)
 		}
-
 		if res.FixedIP != "10.0.0.8" {
 			t.Fatalf("expected fixed_ip 10.0.0.8, got %q", res.FixedIP)
 		}
@@ -653,7 +652,15 @@ func TestServiceGetInstances(t *testing.T) {
 		}
 		client := &fakeClient{
 			fetchInstancesFn: func() ([]Server, error) {
-				return []Server{{ID: "server-1", Status: "ACTIVE"}}, nil
+				return []Server{{
+					ID:     "server-1",
+					Status: "ACTIVE",
+					Addresses: map[string]any{
+						"private": []any{
+							map[string]any{"addr": "10.0.0.8", "OS-EXT-IPS:type": "fixed"},
+						},
+					},
+				}}, nil
 			},
 			fetchFlavorsFn: func() ([]Flavor, error) {
 				return []Flavor{

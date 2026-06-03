@@ -727,6 +727,29 @@ func HasKeypairWith(preds ...predicate.KeyPair) predicate.Instance {
 	})
 }
 
+// HasApp applies the HasEdge predicate on the "app" edge.
+func HasApp() predicate.Instance {
+	return predicate.Instance(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, AppTable, AppColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAppWith applies the HasEdge predicate on the "app" edge with a given conditions (other predicates).
+func HasAppWith(preds ...predicate.App) predicate.Instance {
+	return predicate.Instance(func(s *sql.Selector) {
+		step := newAppStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Instance) predicate.Instance {
 	return predicate.Instance(sql.AndPredicates(predicates...))
