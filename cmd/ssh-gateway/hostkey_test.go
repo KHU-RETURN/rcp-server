@@ -22,7 +22,7 @@ func TestReloadingInnerHostKeyCallbackTrustsUnknownHostOnFirstUse(t *testing.T) 
 	if err := cb("10.0.0.7:22", &net.TCPAddr{IP: net.ParseIP("10.0.0.7"), Port: 22}, signer.PublicKey()); err != nil {
 		t.Fatalf("unknown host should be trusted on first use: %v", err)
 	}
-	raw, err := os.ReadFile(knownHostsPath)
+	raw, err := os.ReadFile(knownHostsPath) //nolint:gosec // test reads a file created under t.TempDir.
 	if err != nil {
 		t.Fatalf("read known_hosts: %v", err)
 	}
