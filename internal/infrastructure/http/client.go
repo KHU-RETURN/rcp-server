@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const defaultTimeout = 10 * time.Second
+const defaultTimeout = 5 * time.Minute
 
 type cloudflareTransport struct {
 	rt           http.RoundTripper
