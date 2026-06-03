@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -218,7 +219,14 @@ func (h *Handler) WebConsole(c *gin.Context) {
 		Handshake: validateWebSocketOrigin,
 		Handler: func(ws *websocket.Conn) {
 			defer func() { _ = ws.Close() }()
-			_ = h.bridgeWebConsole(ws, session)
+			if err := h.bridgeWebConsole(ws, session); err != nil {
+				slog.Default().Warn("web console bridge failed",
+					"instance_id", session.InstanceID,
+					"host", session.Host,
+					"username", session.Username,
+					"err", err,
+				)
+			}
 		},
 	}
 	server.ServeHTTP(c.Writer, c.Request)
