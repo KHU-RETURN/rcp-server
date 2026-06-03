@@ -39,6 +39,27 @@ func TestLoadVMHostKeyCallbackAcceptsKnownHost(t *testing.T) {
 	}
 }
 
+func TestVMHostKeyCallbackForAddressIgnoresProxyRemoteAddr(t *testing.T) {
+	pub, err := testHostPublicKey()
+	if err != nil {
+		t.Fatalf("public key: %v", err)
+	}
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	line := knownhosts.Line([]string{"10.0.0.7"}, pub)
+	if err := os.WriteFile(knownHostsPath, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatalf("write known_hosts: %v", err)
+	}
+
+	cb, err := loadVMHostKeyCallback(knownHostsPath)
+	if err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	wrapped := vmHostKeyCallbackForAddress("10.0.0.7:22", cb)
+	if err := wrapped("", &net.UnixAddr{Name: "/run/rcp/ns-proxy.sock", Net: "unix"}, pub); err != nil {
+		t.Fatalf("known host rejected through proxy remote addr: %v", err)
+	}
+}
+
 func TestReloadingVMHostKeyCallbackPicksUpCreatedFile(t *testing.T) {
 	pub, err := testHostPublicKey()
 	if err != nil {
