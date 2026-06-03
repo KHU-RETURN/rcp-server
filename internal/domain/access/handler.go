@@ -294,10 +294,37 @@ func reloadingVMHostKeyCallback(path string) ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		cb, err := loadVMHostKeyCallback(path)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return trustVMHostKeyOnFirstUse(path, hostname, key)
+			}
 			return fmt.Errorf("vm host key trust unavailable at %s: %w", path, err)
 		}
-		return cb(hostname, remote, key)
+		if err := cb(hostname, remote, key); err != nil {
+			var keyErr *knownhosts.KeyError
+			if errors.As(err, &keyErr) && len(keyErr.Want) == 0 {
+				return trustVMHostKeyOnFirstUse(path, hostname, key)
+			}
+			return err
+		}
+		return nil
 	}
+}
+
+func trustVMHostKeyOnFirstUse(path, hostname string, key ssh.PublicKey) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("prepare vm host key trust store %s: %w", path, err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640) //nolint:gosec // operator-controlled trust store path
+	if err != nil {
+		return fmt.Errorf("open vm host key trust store %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	line := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)
+	if _, err := fmt.Fprintln(f, line); err != nil {
+		return fmt.Errorf("append vm host key trust store %s: %w", path, err)
+	}
+	return nil
 }
 
 func vmHostKeyCallbackForAddress(address string, cb ssh.HostKeyCallback) ssh.HostKeyCallback {
