@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/KHU-RETURN/rcp-server/ent/app"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -160,6 +161,25 @@ func (_c *InstanceCreate) SetNillableKeypairID(id *uuid.UUID) *InstanceCreate {
 // SetKeypair sets the "keypair" edge to the KeyPair entity.
 func (_c *InstanceCreate) SetKeypair(v *KeyPair) *InstanceCreate {
 	return _c.SetKeypairID(v.ID)
+}
+
+// SetAppID sets the "app" edge to the App entity by ID.
+func (_c *InstanceCreate) SetAppID(id uuid.UUID) *InstanceCreate {
+	_c.mutation.SetAppID(id)
+	return _c
+}
+
+// SetNillableAppID sets the "app" edge to the App entity by ID if the given value is not nil.
+func (_c *InstanceCreate) SetNillableAppID(id *uuid.UUID) *InstanceCreate {
+	if id != nil {
+		_c = _c.SetAppID(*id)
+	}
+	return _c
+}
+
+// SetApp sets the "app" edge to the App entity.
+func (_c *InstanceCreate) SetApp(v *App) *InstanceCreate {
+	return _c.SetAppID(v.ID)
 }
 
 // Mutation returns the InstanceMutation object of the builder.
@@ -362,6 +382,22 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.key_pair_instances = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AppIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   instance.AppTable,
+			Columns: []string{instance.AppColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(app.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

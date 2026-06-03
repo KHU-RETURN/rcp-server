@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -23,10 +24,7 @@ func kbdInteractiveAuthenticator(cfg *Config, store *sessionStore) func(ssh.Conn
 			}
 			return nil, fmt.Errorf("alloc nonce: %w", err)
 		}
-		prompt := fmt.Sprintf(
-			"Open: %s/ssh-auth?s=%s\r\nCode: %s\r\n(waiting for browser auth, %s timeout)\r\n",
-			cfg.AuthURLBase, p.Nonce, p.Code, cfg.NonceTTL,
-		)
+		prompt := formatAuthPrompt(cfg.AuthURLBase, p.Nonce, p.Code, cfg.NonceTTL)
 		// Send the URL as an instruction with no answers requested. OpenSSH
 		// renders "instruction" before any prompts.
 		if _, err := challenge("", prompt, nil, nil); err != nil {
@@ -46,4 +44,17 @@ func kbdInteractiveAuthenticator(cfg *Config, store *sessionStore) func(ssh.Conn
 			},
 		}, nil
 	}
+}
+
+func formatAuthPrompt(authURLBase, nonce, code string, timeout time.Duration) string {
+	authURL := fmt.Sprintf("%s/ssh-auth?s=%s", authURLBase, nonce)
+	return fmt.Sprintf(
+		"RCP SSH browser authentication required.\r\n\r\n"+
+			"1. Open this URL in your browser:\r\n   %s\r\n\r\n"+
+			"2. Enter this 6-digit code on the auth page: %s\r\n\r\n"+
+			"Waiting for browser authentication. Timeout: %s\r\n",
+		authURL,
+		code,
+		timeout,
+	)
 }

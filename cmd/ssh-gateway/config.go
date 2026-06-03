@@ -17,10 +17,11 @@ type Config struct {
 	NotifySecret       string        // HMAC-SHA256 shared secret with the API
 	NsProxySock        string        // ns-proxy Unix socket
 	AuthURLBase        string        // base URL printed in keyboard-interactive ("https://rcp.return.dev")
+	APIURLBase         string        // API origin used for internal ephemeral-key registration
 	NonceTTL           time.Duration // pending-session lifetime
 	MaxPendingSessions int           // pending OAuth sessions cap
 	FixedNetworkName   string        // optional OpenStack network name for fixed IP selection
-	VMUser             string        // inner SSH login user
+	VMUsers            []string      // inner SSH login users tried in order
 	DBDriver           string        // ent DB driver
 	DBDSN              string        // ent DB DSN (opened without migration)
 	DBPath             string        // legacy sqlite path used when DB_DSN is unset
@@ -63,6 +64,10 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 	if authURL == "" {
 		return nil, fmt.Errorf("RCP_SSH_GW_AUTH_URL_BASE: required")
 	}
+	apiURL := strings.TrimRight(strings.TrimSpace(getenv("RCP_SSH_GW_API_URL_BASE")), "/")
+	if apiURL == "" {
+		return nil, fmt.Errorf("RCP_SSH_GW_API_URL_BASE: required")
+	}
 
 	dbDriver := strings.TrimSpace(getenv("DB_DRIVER"))
 	if dbDriver == "" {
@@ -97,10 +102,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		return nil, fmt.Errorf("RCP_SSH_GW_MAX_PENDING_SESSIONS: must be > 0, got %d", maxPending)
 	}
 	fixedNetwork := strings.TrimSpace(getenv("RCP_SSH_GW_FIXED_NETWORK"))
-	vmUser := strings.TrimSpace(getenv("RCP_SSH_GW_VM_USER"))
-	if vmUser == "" {
-		vmUser = "root"
-	}
+	vmUsers := parseVMUsers(getenv)
 
 	logLevel, err := utils.EnvLogLevel(getenv, "RCP_SSH_GW_LOG_LEVEL", "info")
 	if err != nil {
@@ -115,15 +117,37 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		NotifySecret:       notifySecret,
 		NsProxySock:        nsProxySock,
 		AuthURLBase:        authURL,
+		APIURLBase:         apiURL,
 		NonceTTL:           ttl,
 		MaxPendingSessions: maxPending,
 		FixedNetworkName:   fixedNetwork,
-		VMUser:             vmUser,
+		VMUsers:            vmUsers,
 		DBDriver:           dbDriver,
 		DBDSN:              dbDSN,
 		DBPath:             dbPath,
 		LogLevel:           logLevel,
 	}, nil
+}
+
+func parseVMUsers(getenv func(string) string) []string {
+	raw := strings.TrimSpace(getenv("RCP_SSH_GW_VM_USERS"))
+	if raw == "" {
+		raw = "ubuntu,rocky"
+	}
+	seen := make(map[string]bool)
+	var users []string
+	for _, part := range strings.Split(raw, ",") {
+		user := strings.TrimSpace(part)
+		if user == "" || seen[user] {
+			continue
+		}
+		seen[user] = true
+		users = append(users, user)
+	}
+	if len(users) == 0 {
+		return []string{"ubuntu", "rocky"}
+	}
+	return users
 }
 
 func validateGatewayDBDSN(driver, dsn string) error {

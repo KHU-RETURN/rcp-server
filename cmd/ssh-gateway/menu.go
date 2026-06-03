@@ -44,3 +44,22 @@ func FindByName(vms []VM, name string) (VM, bool) {
 	}
 	return VM{}, false
 }
+
+func applyRuntimeInfo(vms []VM, resolve func(VM) (VMRuntime, error)) []VM {
+	out := make([]VM, 0, len(vms))
+	for _, vm := range vms {
+		runtime, err := resolve(vm)
+		if err != nil {
+			vm.Status = "UNKNOWN"
+			vm.FixedIPv4 = ""
+			out = append(out, vm)
+			continue
+		}
+		if strings.TrimSpace(runtime.Status) != "" {
+			vm.Status = runtime.Status
+		}
+		vm.FixedIPv4 = runtime.FixedIPv4
+		out = append(out, vm)
+	}
+	return out
+}

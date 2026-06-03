@@ -3,6 +3,9 @@ package access
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -116,6 +119,12 @@ func newTestGinContext(target string) *gin.Context {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, target, nil)
 	return c
+}
+
+func signInternalKeyRequest(secret []byte, body []byte) string {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(body)
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func TestHandlerCreateKeyPair(t *testing.T) {
@@ -345,6 +354,68 @@ func TestHandlerCreateKeyPair(t *testing.T) {
 		}
 		if res.Error != "failed to create keypair" {
 			t.Fatalf("unexpected error response: %+v", res)
+		}
+	})
+}
+
+func TestHandlerEphemeralAuthorizedKeys(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	secret := []byte("shared-secret")
+	reqBody, _ := json.Marshal(EphemeralAuthorizedKeyRequest{
+		InstanceID:    "server-1",
+		Username:      "ubuntu",
+		AuthorizedKey: testPublicKey,
+	})
+
+	t.Run("registers and deletes key with valid hmac", func(t *testing.T) {
+		handler := NewHandler(NewService(&fakeClient{}, &fakeRepo{}))
+		handler.InternalSecret = secret
+
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		handler.InitInternalRoutes(v1)
+
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/internal/ssh/ephemeral-keys", bytes.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(InternalSigHeader, signInternalKeyRequest(secret, reqBody))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d body=%s", w.Code, w.Body.String())
+		}
+		if keys := handler.Svc.AuthorizedKeys("server-1", "ubuntu"); keys != testPublicKey+"\n" {
+			t.Fatalf("authorized keys = %q", keys)
+		}
+
+		req = httptest.NewRequest(http.MethodDelete, api.BasePath+"/internal/ssh/ephemeral-keys", bytes.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(InternalSigHeader, signInternalKeyRequest(secret, reqBody))
+		w = httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d body=%s", w.Code, w.Body.String())
+		}
+		if keys := handler.Svc.AuthorizedKeys("server-1", "ubuntu"); keys != "" {
+			t.Fatalf("expected key deleted, got %q", keys)
+		}
+	})
+
+	t.Run("rejects invalid hmac", func(t *testing.T) {
+		handler := NewHandler(NewService(&fakeClient{}, &fakeRepo{}))
+		handler.InternalSecret = secret
+
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		handler.InitInternalRoutes(v1)
+
+		req := httptest.NewRequest(http.MethodPost, api.BasePath+"/internal/ssh/ephemeral-keys", bytes.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(InternalSigHeader, signInternalKeyRequest([]byte("wrong"), reqBody))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status 401, got %d", w.Code)
 		}
 	})
 }

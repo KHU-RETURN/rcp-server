@@ -30,7 +30,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.26.4'
 
       - name: Run Tests
         run: go test ./cmd/ssh-gateway ./internal/domain/access ./internal/infrastructure/database -v
@@ -47,28 +47,41 @@ jobs:
           source: "ssh-gateway,deploy/systemd/ssh-gateway.service.example"
           target: "/tmp/rcp-ssh-gateway-deploy"
 
-      - name: Install binary and directories
+      - name: Prepare ssh-gateway directories
         uses: appleboy/ssh-action@v0.1.10
         env:
+          RCP_SSH_GW_HOST_KEY_PATH: ${{ secrets.RCP_SSH_GW_HOST_KEY_PATH || '/etc/rcp/ssh-gateway/host_ed25519' }}
           RCP_SSH_GW_KNOWN_HOSTS_PATH: ${{ secrets.RCP_SSH_GW_KNOWN_HOSTS_PATH || '/etc/rcp/ssh-gateway/known_hosts' }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
-          envs: RCP_SSH_GW_KNOWN_HOSTS_PATH
+          envs: RCP_SSH_GW_HOST_KEY_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH
           script: |
             set -euo pipefail
-            sudo install -m 0755 /tmp/rcp-ssh-gateway-deploy/ssh-gateway /usr/local/bin/ssh-gateway
+            _HK="${RCP_SSH_GW_HOST_KEY_PATH:-/etc/rcp/ssh-gateway/host_ed25519}"
             _KH="${RCP_SSH_GW_KNOWN_HOSTS_PATH:-/etc/rcp/ssh-gateway/known_hosts}"
-            sudo install -d -m 0750 -o return -g return /etc/rcp /etc/rcp/ssh-gateway /var/lib/rcp "$(dirname "$_KH")"
-            sudo touch "$_KH"
-            sudo chown return:return "$_KH"
-            sudo chmod 0640 "$_KH"
+            sudo install -d -m 0755 -o root -g root /etc/rcp
+            sudo install -d -m 0750 -o return -g return /etc/rcp/ssh-gateway "$(dirname "$_HK")" "$(dirname "$_KH")"
+            touch "$_KH"
+            chmod 0640 "$_KH"
+
+      - name: Install ssh-gateway binary
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -m 0755 -o root -g root \
+              /tmp/rcp-ssh-gateway-deploy/ssh-gateway \
+              /usr/local/bin/ssh-gateway
 
       - name: Write ssh-gateway env file
         uses: appleboy/ssh-action@v0.1.10
         env:
-          ENV_LIST: OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,RCP_SSH_GW_DB_PATH,RCP_SSH_GW_LISTEN,RCP_SSH_GW_HOST_KEY_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH,RCP_SSH_GW_NOTIFY_SOCK,RCP_SSH_GW_NOTIFY_SECRET,RCP_NS_PROXY_SOCK,RCP_SSH_GW_AUTH_URL_BASE,RCP_SSH_GW_NONCE_TTL,RCP_SSH_GW_MAX_PENDING_SESSIONS,RCP_SSH_GW_FIXED_NETWORK,RCP_SSH_GW_VM_USER,RCP_SSH_GW_LOG_LEVEL
+          ENV_LIST: OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,RCP_SSH_GW_DB_PATH,RCP_SSH_GW_LISTEN,RCP_SSH_GW_HOST_KEY_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH,RCP_SSH_GW_NOTIFY_SOCK,RCP_SSH_GW_NOTIFY_SECRET,RCP_NS_PROXY_SOCK,RCP_SSH_GW_AUTH_URL_BASE,RCP_SSH_GW_API_URL_BASE,RCP_SSH_GW_NONCE_TTL,RCP_SSH_GW_MAX_PENDING_SESSIONS,RCP_SSH_GW_FIXED_NETWORK,RCP_SSH_GW_VM_USERS,RCP_SSH_GW_LOG_LEVEL
           OS_AUTH_URL: ${{ secrets.OS_AUTH_URL }}
           OS_USERNAME: ${{ secrets.OS_USERNAME }}
           OS_PASSWORD: ${{ secrets.OS_PASSWORD }}
@@ -76,7 +89,7 @@ jobs:
           OS_USER_DOMAIN_NAME: ${{ secrets.OS_USER_DOMAIN_NAME }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-          RCP_SSH_GW_DB_PATH: ${{ secrets.RCP_SSH_GW_DB_PATH || '/var/lib/rcp/rcp.db' }}
+          RCP_SSH_GW_DB_PATH: ${{ secrets.RCP_SSH_GW_DB_PATH || '/home/return/rcp-server/rcp.db' }}
           RCP_SSH_GW_LISTEN: ${{ secrets.RCP_SSH_GW_LISTEN || '127.0.0.1:2222' }}
           RCP_SSH_GW_HOST_KEY_PATH: ${{ secrets.RCP_SSH_GW_HOST_KEY_PATH || '/etc/rcp/ssh-gateway/host_ed25519' }}
           RCP_SSH_GW_KNOWN_HOSTS_PATH: ${{ secrets.RCP_SSH_GW_KNOWN_HOSTS_PATH || '/etc/rcp/ssh-gateway/known_hosts' }}
@@ -84,10 +97,11 @@ jobs:
           RCP_SSH_GW_NOTIFY_SECRET: ${{ secrets.RCP_SSH_GW_NOTIFY_SECRET }}
           RCP_NS_PROXY_SOCK: ${{ secrets.RCP_NS_PROXY_SOCK || '/run/rcp/ns-proxy.sock' }}
           RCP_SSH_GW_AUTH_URL_BASE: ${{ secrets.RCP_SSH_GW_AUTH_URL_BASE || secrets.FRONTEND_URL || secrets.RCP_FRONTEND_BASE_URL }}
+          RCP_SSH_GW_API_URL_BASE: ${{ secrets.RCP_SSH_GW_API_URL_BASE }}
           RCP_SSH_GW_NONCE_TTL: ${{ secrets.RCP_SSH_GW_NONCE_TTL || '5m' }}
           RCP_SSH_GW_MAX_PENDING_SESSIONS: ${{ secrets.RCP_SSH_GW_MAX_PENDING_SESSIONS || '1024' }}
           RCP_SSH_GW_FIXED_NETWORK: ${{ secrets.RCP_SSH_GW_FIXED_NETWORK }}
-          RCP_SSH_GW_VM_USER: ${{ secrets.RCP_SSH_GW_VM_USER || 'root' }}
+          RCP_SSH_GW_VM_USERS: ${{ secrets.RCP_SSH_GW_VM_USERS || 'ubuntu,rocky' }}
           RCP_SSH_GW_LOG_LEVEL: ${{ secrets.RCP_SSH_GW_LOG_LEVEL || 'info' }}
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -96,7 +110,7 @@ jobs:
           envs: ${{ env.ENV_LIST }}
           script: |
             set -euo pipefail
-            sudo install -d -m 0750 -o return -g return /etc/rcp
+            sudo install -d -m 0755 -o root -g root /etc/rcp
             tmp="$(mktemp)"
             IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"
             for _v in "${_VARS[@]}"; do

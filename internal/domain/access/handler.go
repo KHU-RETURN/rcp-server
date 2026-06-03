@@ -1,14 +1,20 @@
 package access
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -27,6 +33,7 @@ const (
 	pathConsoleWebSocket = "/console/ws"
 	pathConsoleSessions  = "/instances/:id/console-sessions"
 	pathAuthorizedKeys   = "/authorized-keys"
+	pathEphemeralKeys    = "/ephemeral-keys"
 
 	envWebConsoleBaseURL        = "RCP_WEB_CONSOLE_BASE_URL"
 	envWebConsoleAllowedOrigins = "RCP_WEB_CONSOLE_ALLOWED_ORIGINS"
@@ -42,6 +49,7 @@ type Handler struct {
 	Svc               *Service
 	NSProxySockPath   string
 	VMHostKeyCallback ssh.HostKeyCallback
+	InternalSecret    []byte
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -63,6 +71,8 @@ func (h *Handler) InitInternalRoutes(rg *gin.RouterGroup) {
 	internalGroup := rg.Group(routeInternalSSHPrefix)
 	{
 		internalGroup.GET(pathAuthorizedKeys, h.GetAuthorizedKeys)
+		internalGroup.POST(pathEphemeralKeys, h.AddEphemeralAuthorizedKey)
+		internalGroup.DELETE(pathEphemeralKeys, h.DeleteEphemeralAuthorizedKey)
 	}
 }
 
@@ -205,6 +215,62 @@ func (h *Handler) GetAuthorizedKeys(c *gin.Context) {
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(keys))
 }
 
+func (h *Handler) AddEphemeralAuthorizedKey(c *gin.Context) {
+	var req EphemeralAuthorizedKeyRequest
+	if !h.readSignedJSON(c, &req) {
+		return
+	}
+	if err := h.Svc.AddEphemeralAuthorizedKey(req); err != nil {
+		switch {
+		case errors.Is(err, ErrConsoleInstanceIDRequired), errors.Is(err, ErrPublicKeyRequired), errors.Is(err, ErrInvalidSSHKeyFormat):
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to register ephemeral key"})
+		}
+		return
+	}
+	c.Status(http.StatusCreated)
+}
+
+func (h *Handler) DeleteEphemeralAuthorizedKey(c *gin.Context) {
+	var req EphemeralAuthorizedKeyRequest
+	if !h.readSignedJSON(c, &req) {
+		return
+	}
+	h.Svc.DeleteEphemeralAuthorizedKey(req)
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) readSignedJSON(c *gin.Context, out any) bool {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<16))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "failed to read request body"})
+		return false
+	}
+	if !verifyInternalHMAC(h.InternalSecret, body, c.GetHeader(InternalSigHeader)) {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "invalid signature"})
+		return false
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid request body"})
+		return false
+	}
+	return true
+}
+
+func verifyInternalHMAC(secret, body []byte, gotHex string) bool {
+	if len(secret) == 0 {
+		return false
+	}
+	got, err := hex.DecodeString(gotHex)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(body)
+	return hmac.Equal(mac.Sum(nil), got)
+}
+
 func (h *Handler) WebConsole(c *gin.Context) {
 	token := c.Query("token")
 	session, ok := h.Svc.TakeConsoleSession(token)
@@ -217,14 +283,22 @@ func (h *Handler) WebConsole(c *gin.Context) {
 		Handshake: validateWebSocketOrigin,
 		Handler: func(ws *websocket.Conn) {
 			defer func() { _ = ws.Close() }()
-			_ = h.bridgeWebConsole(ws, session)
+			if err := h.bridgeWebConsole(ws, session); err != nil {
+				slog.Default().Warn("web console bridge failed",
+					"instance_id", session.InstanceID,
+					"host", session.Host,
+					"username", session.Username,
+					"err", err,
+				)
+			}
 		},
 	}
 	server.ServeHTTP(c.Writer, c.Request)
 }
 
 func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) error {
-	tcpConn, err := dialViaNSProxy(h.NSProxySockPath, console.Host+":22")
+	sshAddress := net.JoinHostPort(console.Host, "22")
+	tcpConn, err := dialViaNSProxy(h.NSProxySockPath, sshAddress)
 	if err != nil {
 		return err
 	}
@@ -235,10 +309,10 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(console.Signer),
 		},
-		HostKeyCallback: h.VMHostKeyCallback,
+		HostKeyCallback: vmHostKeyCallbackForAddress(sshAddress, h.VMHostKeyCallback),
 	}
 
-	sshConn, chans, reqs, err := ssh.NewClientConn(tcpConn, console.Host+":22", sshCfg)
+	sshConn, chans, reqs, err := ssh.NewClientConn(tcpConn, sshAddress, sshCfg)
 	if err != nil {
 		return err
 	}
@@ -292,9 +366,50 @@ func reloadingVMHostKeyCallback(path string) ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		cb, err := loadVMHostKeyCallback(path)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return trustVMHostKeyOnFirstUse(path, hostname, key)
+			}
 			return fmt.Errorf("vm host key trust unavailable at %s: %w", path, err)
 		}
-		return cb(hostname, remote, key)
+		if err := cb(hostname, remote, key); err != nil {
+			var keyErr *knownhosts.KeyError
+			if errors.As(err, &keyErr) && len(keyErr.Want) == 0 {
+				return trustVMHostKeyOnFirstUse(path, hostname, key)
+			}
+			return err
+		}
+		return nil
+	}
+}
+
+func trustVMHostKeyOnFirstUse(path, hostname string, key ssh.PublicKey) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("prepare vm host key trust store %s: %w", path, err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640) //nolint:gosec // operator-controlled trust store path
+	if err != nil {
+		return fmt.Errorf("open vm host key trust store %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	line := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)
+	if _, err := fmt.Fprintln(f, line); err != nil {
+		return fmt.Errorf("append vm host key trust store %s: %w", path, err)
+	}
+	return nil
+}
+
+func vmHostKeyCallbackForAddress(address string, cb ssh.HostKeyCallback) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		portNumber, err := strconv.Atoi(port)
+		if err != nil {
+			return err
+		}
+		return cb(address, &net.TCPAddr{IP: net.ParseIP(host), Port: portNumber}, key)
 	}
 }
 

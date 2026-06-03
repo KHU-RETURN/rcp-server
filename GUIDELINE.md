@@ -161,7 +161,7 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 
 | 항목 | 사용 기술 |
 |------|-----------|
-| Language | Go 1.26.3 |
+| Language | Go 1.26.4 |
 | Web Framework | `gin-gonic/gin` |
 | OpenStack SDK | `gophercloud/gophercloud` |
 | Env Loader | `joho/godotenv` |
@@ -224,11 +224,12 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | `RCP_SSH_GW_NOTIFY_SOCK` | optional (기본 `/run/rcp/ssh-gateway-notify.sock`) | api ↔ gateway notify 소켓 |
 | `RCP_SSH_GW_NOTIFY_SECRET` | **필수** | api와 공유 HMAC 시크릿 |
 | `RCP_SSH_GW_AUTH_URL_BASE` | **필수** | 사용자 터미널에 출력할 프런트 origin (예: `https://rcp.return.dev`) |
+| `RCP_SSH_GW_API_URL_BASE` | required | 임시 SSH key 등록용 API origin. `/api/v1`은 붙이지 않음 |
 | `RCP_SSH_GW_DB_PATH` | **필수(DB_DSN 미사용 시)** | ent SQLite 경로. gateway는 migration 없이 read/query 용도로 open |
 | `DB_DRIVER` / `DB_DSN` | optional | 수동 설치에서 gateway 전용 DSN을 직접 지정할 때만 사용. 배포 워크플로는 공유 `DB_DSN` 대신 `RCP_SSH_GW_DB_PATH`를 전달 |
 | `RCP_SSH_GW_NONCE_TTL` | optional (기본 `5m`) | pending-session 만료 |
 | `RCP_SSH_GW_MAX_PENDING_SESSIONS` | optional (기본 `1024`) | pending OAuth 세션 전역 상한 |
 | `RCP_SSH_GW_FIXED_NETWORK` | optional | multi-network VM에서 fixed IPv4를 고를 OpenStack network 이름 |
-| `RCP_SSH_GW_VM_USER` | optional (기본 `root`) | inner VM SSH 로그인 사용자. Ubuntu cloud image 등 root 로그인이 막힌 이미지에서는 `ubuntu` 등으로 설정 |
+| `RCP_SSH_GW_VM_USERS` | optional (기본 `ubuntu,rocky`) | inner VM SSH 로그인 사용자 후보. 현재 Ubuntu, Rocky Linux를 지원하며 순서대로 임시 키 등록과 SSH handshake를 시도 |
 | `RCP_NS_PROXY_SOCK` | optional (기본 `/run/rcp/ns-proxy.sock`) | ns-proxy SOCKS5 소켓 |
 | `RCP_SSH_GW_LOG_LEVEL` | optional (기본 `info`) | |

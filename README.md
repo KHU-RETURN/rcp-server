@@ -56,7 +56,6 @@ PR CI는 Swagger와 ent 산출물을 재생성한 뒤 `git diff --exit-code`로 
 Host rcp-gw rcp-gw.return.dev
   HostName rcp-gw.return.dev
   User any
-  ForwardAgent yes
   ProxyCommand cloudflared access ssh --hostname %h
 ```
 
@@ -64,7 +63,7 @@ Host rcp-gw rcp-gw.return.dev
 ssh rcp-gw
 ```
 
-터미널에 표시된 6자리 코드를 브라우저 인증 화면에 입력한 뒤 OAuth 로그인하면 본인 VM 리스트가 표시됩니다. 선택하면 `cmd/ns-proxy`를 통해 tenant network의 VM에 셸 세션이 연결됩니다. RCP는 사용자 private key를 보관하지 않고 forwarding된 ssh-agent로만 인증합니다.
+터미널에 표시된 6자리 코드를 브라우저 인증 화면에 입력한 뒤 OAuth 로그인하면 본인 VM 리스트가 표시됩니다. 선택하면 게이트웨이가 VM 접속용 임시 SSH 키를 발급하고 `cmd/ns-proxy`를 통해 tenant network의 VM에 셸 세션을 연결합니다. 사용자는 로컬 private key나 ssh-agent forwarding 없이 접속할 수 있습니다.
 
 운영 가이드: [docs/ssh-gateway-operations.md](docs/ssh-gateway-operations.md)
 사용자 가이드: [docs/ssh-gateway-user-guide.md](docs/ssh-gateway-user-guide.md)

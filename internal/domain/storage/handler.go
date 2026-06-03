@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -145,7 +146,7 @@ func (h *Handler) UploadObject(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 	}
 
-	file, header, err := c.Request.FormFile("file")
+	reader, err := c.Request.MultipartReader()
 	if err != nil {
 		var limitErr *bodyLimitError
 		if errors.As(err, &limitErr) {
@@ -155,22 +156,55 @@ func (h *Handler) UploadObject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
 		return
 	}
-	defer func() { _ = file.Close() }()
 
-	contentType := resolveObjectContentType(file, header, objectName)
-
-	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType, header.Size); err != nil {
-		switch {
-		case errors.Is(err, ErrContainerNotFound):
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
-		case errors.Is(err, ErrUserStorageLimitExceeded):
-			c.JSON(http.StatusTooManyRequests, api.ErrorResponse{Error: err.Error()})
-		default:
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
 		}
+		if err != nil {
+			var limitErr *bodyLimitError
+			if errors.As(err, &limitErr) {
+				c.JSON(http.StatusRequestEntityTooLarge, api.ErrorResponse{Error: "file exceeds storage quota limit"})
+				return
+			}
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid multipart body"})
+			return
+		}
+		if part.FormName() != "file" {
+			_ = part.Close()
+			continue
+		}
+
+		fileStream, contentType := resolveObjectContentStream(
+			part,
+			part.Header.Get(api.HeaderContentType),
+			part.FileName(),
+			objectName,
+		)
+
+		size := c.Request.ContentLength
+		if size < 0 {
+			size = 0
+		}
+		if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, fileStream, contentType, size); err != nil {
+			_ = part.Close()
+			switch {
+			case errors.Is(err, ErrContainerNotFound):
+				c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			case errors.Is(err, ErrUserStorageLimitExceeded):
+				c.JSON(http.StatusTooManyRequests, api.ErrorResponse{Error: err.Error()})
+			default:
+				c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			}
+			return
+		}
+		_ = part.Close()
+		c.JSON(http.StatusCreated, UploadObjectResponse{Key: objectName})
 		return
 	}
-	c.JSON(http.StatusCreated, UploadObjectResponse{Key: objectName})
+
+	c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
 }
 
 func (h *Handler) DownloadObject(c *gin.Context) {

@@ -81,7 +81,7 @@ func main() {
 		"nonce_ttl", cfg.NonceTTL,
 		"max_pending_sessions", cfg.MaxPendingSessions,
 		"fixed_network", cfg.FixedNetworkName,
-		"vm_user", cfg.VMUser,
+		"vm_users", strings.Join(cfg.VMUsers, ","),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -162,12 +162,16 @@ func newGopherResolver(p *gophercloud.ProviderClient, fixedNetwork string) (*gop
 	return &gopherResolver{compute: c, fixedNetwork: strings.TrimSpace(fixedNetwork)}, nil
 }
 
-func (g *gopherResolver) ResolveFixedIPv4(_ context.Context, openstackID string) (string, error) {
+func (g *gopherResolver) ResolveVM(_ context.Context, openstackID string) (VMRuntime, error) {
 	srv, err := gccompute.Get(g.compute, openstackID).Extract()
 	if err != nil {
-		return "", err
+		return VMRuntime{}, err
 	}
-	return fixedIPv4FromAddresses(srv.Addresses, g.fixedNetwork)
+	fixedIP, err := fixedIPv4FromAddresses(srv.Addresses, g.fixedNetwork)
+	if err != nil {
+		return VMRuntime{Status: srv.Status}, nil
+	}
+	return VMRuntime{Status: srv.Status, FixedIPv4: fixedIP}, nil
 }
 
 func fixedIPv4FromAddresses(addresses map[string]any, fixedNetwork string) (string, error) {

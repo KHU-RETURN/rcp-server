@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/KHU-RETURN/rcp-server/ent/app"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -54,9 +55,11 @@ type InstanceEdges struct {
 	Owner *User `json:"owner,omitempty"`
 	// Keypair holds the value of the keypair edge.
 	Keypair *KeyPair `json:"keypair,omitempty"`
+	// App holds the value of the app edge.
+	App *App `json:"app,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // OwnerOrErr returns the Owner value or an error if the edge
@@ -79,6 +82,17 @@ func (e InstanceEdges) KeypairOrErr() (*KeyPair, error) {
 		return nil, &NotFoundError{label: keypair.Label}
 	}
 	return nil, &NotLoadedError{edge: "keypair"}
+}
+
+// AppOrErr returns the App value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e InstanceEdges) AppOrErr() (*App, error) {
+	if e.App != nil {
+		return e.App, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: app.Label}
+	}
+	return nil, &NotLoadedError{edge: "app"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -212,6 +226,11 @@ func (_m *Instance) QueryOwner() *UserQuery {
 // QueryKeypair queries the "keypair" edge of the Instance entity.
 func (_m *Instance) QueryKeypair() *KeyPairQuery {
 	return NewInstanceClient(_m.config).QueryKeypair(_m)
+}
+
+// QueryApp queries the "app" edge of the Instance entity.
+func (_m *Instance) QueryApp() *AppQuery {
+	return NewInstanceClient(_m.config).QueryApp(_m)
 }
 
 // Update returns a builder for updating this Instance.

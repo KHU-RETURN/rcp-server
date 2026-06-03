@@ -12,7 +12,14 @@ type Instance struct {
 	FlavorID    string
 	KeyName     string
 	Note        string
+	App         *AppSummary
 	Created     time.Time
+}
+
+type AppSummary struct {
+	ID        string `json:"id"`
+	Subdomain string `json:"subdomain"`
+	Host      string `json:"host"`
 }
 
 type Flavor struct {
@@ -129,6 +136,7 @@ type InstanceDetailResponse struct {
 	Note       string         `json:"note"`
 	FixedIP    string         `json:"fixed_ip,omitempty"`
 	FloatingIP string         `json:"floating_ip,omitempty"`
+	App        *AppSummary    `json:"app,omitempty"`
 	Usage      UsageStats     `json:"usage"`
 	Created    time.Time      `json:"created"`
 }
@@ -137,4 +145,9 @@ type InstanceDetailResponse struct {
 type UsageStats struct {
 	CPUUsage    float64 `json:"cpu_usage"`    // vCPU 시간 (누적)
 	MemoryUsage int     `json:"memory_usage"` // MB
+}
+
+func ExtractFixedIP(server *Server) string {
+	fixedIP, _ := extractServerIPs(server)
+	return fixedIP
 }

@@ -180,6 +180,7 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Note:       inst.Note,
 			FixedIP:    fixedIP,
 			FloatingIP: floatingIP,
+			App:        inst.App,
 			Created:    srv.Created,
 		})
 	}
@@ -255,6 +256,7 @@ func (s *Service) GetInstanceDetail(ctx context.Context, ownerID uuid.UUID, id s
 		Note:       inst.Note,
 		FixedIP:    fixedIP,
 		FloatingIP: floatingIP,
+		App:        inst.App,
 		Usage:      extractUsageStats(diag),
 		Created:    srv.Created,
 	}, nil

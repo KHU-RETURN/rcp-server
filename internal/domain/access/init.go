@@ -6,11 +6,13 @@ import (
 	"github.com/KHU-RETURN/rcp-server/ent"
 )
 
-func Init(provider *gophercloud.ProviderClient, entClient *ent.Client) *Handler {
+func Init(provider *gophercloud.ProviderClient, entClient *ent.Client, internalSecret []byte) *Handler {
 	osClient := NewClient(provider)
 	repo := NewRepository(entClient)
 	svc := NewService(osClient, repo)
-	return NewHandler(svc)
+	h := NewHandler(svc)
+	h.InternalSecret = internalSecret
+	return h
 }
 
 // InitSSH wires the ssh-gateway notify client and SSH callback service.
