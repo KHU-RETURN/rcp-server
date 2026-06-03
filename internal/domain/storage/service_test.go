@@ -76,11 +76,11 @@ func (f *fakeStorageClient) BulkDeleteObjects(containerName string, names []stri
 }
 
 type fakeContainerRepo struct {
-	saveFn          func(ctx context.Context, ownerID uuid.UUID, c *Container) error
-	findByNameFn    func(ctx context.Context, ownerID uuid.UUID, name string) (*Container, error)
-	countByOwnerFn  func(ctx context.Context, ownerID uuid.UUID) (int, error)
-	listByOwnerFn   func(ctx context.Context, ownerID uuid.UUID) ([]Container, error)
-	deleteFn        func(ctx context.Context, ownerID uuid.UUID, name string) (bool, error)
+	saveFn         func(ctx context.Context, ownerID uuid.UUID, c *Container) error
+	findByNameFn   func(ctx context.Context, ownerID uuid.UUID, name string) (*Container, error)
+	countByOwnerFn func(ctx context.Context, ownerID uuid.UUID) (int, error)
+	listByOwnerFn  func(ctx context.Context, ownerID uuid.UUID) ([]Container, error)
+	deleteFn       func(ctx context.Context, ownerID uuid.UUID, name string) (bool, error)
 }
 
 func (r *fakeContainerRepo) Save(ctx context.Context, ownerID uuid.UUID, c *Container) error {
