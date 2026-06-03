@@ -63,9 +63,8 @@ jobs:
             _KH="${RCP_SSH_GW_KNOWN_HOSTS_PATH:-/etc/rcp/ssh-gateway/known_hosts}"
             sudo install -d -m 0755 -o root -g root /etc/rcp
             sudo install -d -m 0750 -o return -g return /etc/rcp/ssh-gateway "$(dirname "$_HK")" "$(dirname "$_KH")"
-            sudo touch "$_KH"
-            sudo chown return:return "$_KH"
-            sudo chmod 0640 "$_KH"
+            touch "$_KH"
+            chmod 0640 "$_KH"
 
       - name: Install ssh-gateway binary
         uses: appleboy/ssh-action@v0.1.10
@@ -75,13 +74,9 @@ jobs:
           key: ${{ secrets.SERVER_KEY }}
           script: |
             set -euo pipefail
-            sudo install -d -m 0755 -o root -g root /usr/local/bin
-            _BIN_TMP="$(sudo mktemp /usr/local/bin/ssh-gateway.XXXXXX)"
-            cleanup() { sudo rm -f "$_BIN_TMP"; }
-            trap cleanup EXIT
-            sudo install -m 0755 -o root -g root /tmp/rcp-ssh-gateway-deploy/ssh-gateway "$_BIN_TMP"
-            sudo mv -f "$_BIN_TMP" /usr/local/bin/ssh-gateway
-            trap - EXIT
+            sudo install -m 0755 -o root -g root \
+              /tmp/rcp-ssh-gateway-deploy/ssh-gateway \
+              /usr/local/bin/ssh-gateway
 
       - name: Write ssh-gateway env file
         uses: appleboy/ssh-action@v0.1.10
