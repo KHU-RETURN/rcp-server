@@ -184,6 +184,12 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		return
 	}
 
+	rctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	vms = applyRuntimeInfo(vms, func(vm VM) (VMRuntime, error) {
+		return s.resolver.ResolveVM(rctx, vm.OpenstackID)
+	})
+
 	// Pick a VM: explicit exec command > single auto-pick > menu.
 	var target VM
 	switch {
@@ -204,12 +210,9 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		target = v
 	}
 
-	// Resolve the VM's fixed IPv4 via OpenStack.
-	rctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	ip, err := s.resolver.ResolveFixedIPv4(rctx, target.OpenstackID)
-	if err != nil {
-		_, _ = fmt.Fprintf(ch, "VM unreachable: %v\r\n", err)
+	ip := strings.TrimSpace(target.FixedIPv4)
+	if ip == "" {
+		_, _ = fmt.Fprintf(ch, "VM unreachable: no fixed IPv4 address for %s\r\n", target.Name)
 		return
 	}
 

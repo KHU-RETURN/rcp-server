@@ -22,7 +22,7 @@ const copyDrainTimeout = time.Second
 // vmAddressResolver returns the dial-target IPv4 for an openstack_id. The PoC
 // implementation lives in main.go and uses gophercloud; tests can stub this.
 type vmAddressResolver interface {
-	ResolveFixedIPv4(ctx context.Context, openstackID string) (string, error)
+	ResolveVM(ctx context.Context, openstackID string) (VMRuntime, error)
 }
 
 // nsProxyDialer wraps the SOCKS5 client over a Unix-socket transport.
