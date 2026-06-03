@@ -47,23 +47,41 @@ jobs:
           source: "ssh-gateway,deploy/systemd/ssh-gateway.service.example"
           target: "/tmp/rcp-ssh-gateway-deploy"
 
-      - name: Install binary and directories
+      - name: Prepare ssh-gateway directories
         uses: appleboy/ssh-action@v0.1.10
         env:
+          RCP_SSH_GW_HOST_KEY_PATH: ${{ secrets.RCP_SSH_GW_HOST_KEY_PATH || '/etc/rcp/ssh-gateway/host_ed25519' }}
           RCP_SSH_GW_KNOWN_HOSTS_PATH: ${{ secrets.RCP_SSH_GW_KNOWN_HOSTS_PATH || '/etc/rcp/ssh-gateway/known_hosts' }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
-          envs: RCP_SSH_GW_KNOWN_HOSTS_PATH
+          envs: RCP_SSH_GW_HOST_KEY_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH
           script: |
             set -euo pipefail
-            sudo install -m 0755 /tmp/rcp-ssh-gateway-deploy/ssh-gateway /usr/local/bin/ssh-gateway
+            _HK="${RCP_SSH_GW_HOST_KEY_PATH:-/etc/rcp/ssh-gateway/host_ed25519}"
             _KH="${RCP_SSH_GW_KNOWN_HOSTS_PATH:-/etc/rcp/ssh-gateway/known_hosts}"
-            sudo install -d -m 0750 -o return -g return /etc/rcp /etc/rcp/ssh-gateway "$(dirname "$_KH")"
+            sudo install -d -m 0755 -o root -g root /etc/rcp
+            sudo install -d -m 0750 -o return -g return /etc/rcp/ssh-gateway "$(dirname "$_HK")" "$(dirname "$_KH")"
             sudo touch "$_KH"
             sudo chown return:return "$_KH"
             sudo chmod 0640 "$_KH"
+
+      - name: Install ssh-gateway binary
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -d -m 0755 -o root -g root /usr/local/bin
+            _BIN_TMP="$(sudo mktemp /usr/local/bin/ssh-gateway.XXXXXX)"
+            cleanup() { sudo rm -f "$_BIN_TMP"; }
+            trap cleanup EXIT
+            sudo install -m 0755 -o root -g root /tmp/rcp-ssh-gateway-deploy/ssh-gateway "$_BIN_TMP"
+            sudo mv -f "$_BIN_TMP" /usr/local/bin/ssh-gateway
+            trap - EXIT
 
       - name: Write ssh-gateway env file
         uses: appleboy/ssh-action@v0.1.10
@@ -96,7 +114,7 @@ jobs:
           envs: ${{ env.ENV_LIST }}
           script: |
             set -euo pipefail
-            sudo install -d -m 0750 -o return -g return /etc/rcp
+            sudo install -d -m 0755 -o root -g root /etc/rcp
             tmp="$(mktemp)"
             IFS=',' read -ra _VARS <<< "${{ env.ENV_LIST }}"
             for _v in "${_VARS[@]}"; do
