@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -224,7 +225,8 @@ func (h *Handler) WebConsole(c *gin.Context) {
 }
 
 func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) error {
-	tcpConn, err := dialViaNSProxy(h.NSProxySockPath, console.Host+":22")
+	sshAddress := net.JoinHostPort(console.Host, "22")
+	tcpConn, err := dialViaNSProxy(h.NSProxySockPath, sshAddress)
 	if err != nil {
 		return err
 	}
@@ -235,10 +237,10 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(console.Signer),
 		},
-		HostKeyCallback: h.VMHostKeyCallback,
+		HostKeyCallback: vmHostKeyCallbackForAddress(sshAddress, h.VMHostKeyCallback),
 	}
 
-	sshConn, chans, reqs, err := ssh.NewClientConn(tcpConn, console.Host+":22", sshCfg)
+	sshConn, chans, reqs, err := ssh.NewClientConn(tcpConn, sshAddress, sshCfg)
 	if err != nil {
 		return err
 	}
@@ -295,6 +297,20 @@ func reloadingVMHostKeyCallback(path string) ssh.HostKeyCallback {
 			return fmt.Errorf("vm host key trust unavailable at %s: %w", path, err)
 		}
 		return cb(hostname, remote, key)
+	}
+}
+
+func vmHostKeyCallbackForAddress(address string, cb ssh.HostKeyCallback) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		portNumber, err := strconv.Atoi(port)
+		if err != nil {
+			return err
+		}
+		return cb(address, &net.TCPAddr{IP: net.ParseIP(host), Port: portNumber}, key)
 	}
 }
 

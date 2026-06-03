@@ -45,6 +45,28 @@ func TestLoadInnerHostKeyCallbackAcceptsKnownHost(t *testing.T) {
 	}
 }
 
+func TestInnerHostKeyCallbackForAddressIgnoresProxyRemoteAddr(t *testing.T) {
+	hostKeyPath := filepath.Join(t.TempDir(), "host_ed25519")
+	signer, err := LoadOrCreateHostKey(hostKeyPath)
+	if err != nil {
+		t.Fatalf("host key: %v", err)
+	}
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	line := knownhosts.Line([]string{"10.0.0.7"}, signer.PublicKey())
+	if err := os.WriteFile(knownHostsPath, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatalf("write known_hosts: %v", err)
+	}
+
+	cb, err := loadInnerHostKeyCallback(knownHostsPath)
+	if err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	wrapped := innerHostKeyCallbackForAddress("10.0.0.7:22", cb)
+	if err := wrapped("", &net.UnixAddr{Name: "/run/rcp/ns-proxy.sock", Net: "unix"}, signer.PublicKey()); err != nil {
+		t.Fatalf("known host rejected through proxy remote addr: %v", err)
+	}
+}
+
 func TestReloadingInnerHostKeyCallbackPicksUpCreatedFile(t *testing.T) {
 	hostKeyPath := filepath.Join(t.TempDir(), "host_ed25519")
 	signer, err := LoadOrCreateHostKey(hostKeyPath)

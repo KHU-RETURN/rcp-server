@@ -94,7 +94,7 @@ func dialInnerSSH(ctx context.Context, raw net.Conn, addr, user string, ag agent
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeysCallback(ag.Signers),
 		},
-		HostKeyCallback: hostKeyCallback,
+		HostKeyCallback: innerHostKeyCallbackForAddress(addr, hostKeyCallback),
 		Timeout:         15 * time.Second,
 	}
 	if dl, ok := ctx.Deadline(); ok {
@@ -106,6 +106,20 @@ func dialInnerSSH(ctx context.Context, raw net.Conn, addr, user string, ag agent
 		return nil, fmt.Errorf("inner ssh handshake: %w", err)
 	}
 	return ssh.NewClient(c, chans, reqs), nil
+}
+
+func innerHostKeyCallbackForAddress(address string, cb ssh.HostKeyCallback) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		portNumber, err := strconv.Atoi(port)
+		if err != nil {
+			return err
+		}
+		return cb(address, &net.TCPAddr{IP: net.ParseIP(host), Port: portNumber}, key)
+	}
 }
 
 // pipeSession shuttles bytes + window changes between the outer session
