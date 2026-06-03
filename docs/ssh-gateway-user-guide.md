@@ -4,7 +4,6 @@
 
 - OpenSSH client
 - `cloudflared`
-- An SSH key loaded into `ssh-agent`
 
 ## SSH Config
 
@@ -14,7 +13,6 @@ Add this to `~/.ssh/config`:
 Host rcp-gw rcp-gw.return.dev
   HostName rcp-gw.return.dev
   User any
-  ForwardAgent yes
   ProxyCommand cloudflared access ssh --hostname %h
 ```
 
@@ -43,6 +41,7 @@ Open the URL, enter the code shown in the same terminal, and finish Google OAuth
 
 ## Notes
 
-- Use `ssh -A` or `ForwardAgent yes`; the gateway does not store private keys.
+- The gateway uses a short-lived SSH key for the selected VM; you do not need `ssh -A` or a local VM private key.
+- The temporary key is removed when the SSH session ends. If cleanup cannot run, it expires from the API-side authorized-key store.
 - Keep the six-digit code private. The URL alone is not enough to authorize a session.
 - If host key verification fails, ask an operator to register the VM host key for the gateway.
