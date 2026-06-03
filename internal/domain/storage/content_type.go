@@ -1,14 +1,12 @@
 package storage
 
 import (
+	"bytes"
 	"io"
 	"mime"
-	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strings"
-
-	"github.com/KHU-RETURN/rcp-server/internal/api"
 )
 
 const defaultObjectContentType = "application/octet-stream"
@@ -20,34 +18,30 @@ var smartQuoteReplacer = strings.NewReplacer(
 	"\u201d", "",
 )
 
-func resolveObjectContentType(file multipart.File, header *multipart.FileHeader, objectName string) string {
-	var rawContentType, filename string
-	if header != nil {
-		rawContentType = header.Header.Get(api.HeaderContentType)
-		filename = header.Filename
-	}
-
+func resolveObjectContentStream(r io.Reader, rawContentType, filename, objectName string) (io.Reader, string) {
 	if contentType, ok := canonicalObjectContentType(rawContentType, false); ok {
-		return contentType
+		return r, contentType
 	}
 	if contentType, ok := contentTypeFromName(objectName); ok {
-		return contentType
+		return r, contentType
 	}
 	if contentType, ok := contentTypeFromName(filename); ok {
-		return contentType
+		return r, contentType
 	}
-	if contentType, ok := sniffObjectContentType(file); ok {
-		if canonical, ok := canonicalObjectContentType(contentType, false); ok {
-			return canonical
+
+	r, sniffedContentType, sniffed := sniffObjectContentType(r)
+	if sniffed {
+		if canonical, ok := canonicalObjectContentType(sniffedContentType, false); ok {
+			return r, canonical
 		}
-		if canonical, ok := canonicalObjectContentType(contentType, true); ok {
-			return canonical
+		if canonical, ok := canonicalObjectContentType(sniffedContentType, true); ok {
+			return r, canonical
 		}
 	}
 	if contentType, ok := canonicalObjectContentType(rawContentType, true); ok {
-		return contentType
+		return r, contentType
 	}
-	return defaultObjectContentType
+	return r, defaultObjectContentType
 }
 
 func canonicalObjectContentType(raw string, allowGeneric bool) (string, bool) {
@@ -107,26 +101,18 @@ func contentTypeFromName(name string) (string, bool) {
 	return canonicalObjectContentType(mime.TypeByExtension(ext), false)
 }
 
-func sniffObjectContentType(file multipart.File) (string, bool) {
-	if file == nil {
-		return "", false
-	}
-
-	position, err := file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return "", false
+func sniffObjectContentType(r io.Reader) (io.Reader, string, bool) {
+	if r == nil {
+		return r, "", false
 	}
 
 	buf := make([]byte, 512)
-	n, readErr := file.Read(buf)
-	if _, seekErr := file.Seek(position, io.SeekStart); seekErr != nil {
-		return "", false
-	}
-	if readErr != nil && readErr != io.EOF {
-		return "", false
+	n, err := r.Read(buf)
+	if err != nil && err != io.EOF {
+		return io.MultiReader(bytes.NewReader(buf[:n]), r), "", false
 	}
 	if n == 0 {
-		return "", false
+		return r, "", false
 	}
-	return http.DetectContentType(buf[:n]), true
+	return io.MultiReader(bytes.NewReader(buf[:n]), r), http.DetectContentType(buf[:n]), true
 }

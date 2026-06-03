@@ -3,7 +3,10 @@ package storage
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
@@ -93,7 +96,7 @@ func (c *Client) DownloadObject(containerName, objectName string, w io.Writer) e
 		return result.Err
 	}
 	defer func() { _ = result.Body.Close() }()
-	copyDownloadHeaders(w, result.Header)
+	copyDownloadHeaders(w, result.Header, objectName)
 	if _, err := io.Copy(w, result.Body); err != nil {
 		return fmt.Errorf("stream error: %w", err)
 	}
@@ -116,22 +119,71 @@ func (c *Client) BulkDeleteObjects(containerName string, names []string) error {
 	return objects.BulkDelete(sc, containerName, names).Err
 }
 
-func copyDownloadHeaders(w io.Writer, headers http.Header) {
+func copyDownloadHeaders(w io.Writer, headers http.Header, objectName string) {
 	hw, ok := w.(responseHeaderWriter)
-	if !ok || headers == nil {
+	if !ok {
 		return
 	}
 
-	for _, name := range []string{
-		"Content-Type",
-		"Content-Length",
-		"Content-Disposition",
-		"Content-Encoding",
-		"ETag",
-		"Last-Modified",
-	} {
-		if value := headers.Get(name); value != "" {
-			hw.Header().Set(name, value)
+	if headers != nil {
+		for _, name := range []string{
+			"Content-Type",
+			"Content-Length",
+			"Content-Disposition",
+			"Content-Encoding",
+			"ETag",
+			"Last-Modified",
+		} {
+			if value := headers.Get(name); value != "" {
+				hw.Header().Set(name, value)
+			}
 		}
 	}
+
+	if hw.Header().Get("Content-Type") == "" {
+		hw.Header().Set("Content-Type", defaultObjectContentType)
+	}
+	hw.Header().Set("X-Content-Type-Options", "nosniff")
+	if shouldForceAttachment(headers.Get("Content-Type"), objectName) {
+		hw.Header().Set("Content-Disposition", attachmentContentDisposition(objectName))
+	}
+}
+
+func shouldForceAttachment(contentType, objectName string) bool {
+	if isActiveContentType(contentType) {
+		return true
+	}
+
+	switch strings.ToLower(path.Ext(objectName)) {
+	case ".html", ".htm", ".svg":
+		return true
+	default:
+		return false
+	}
+}
+
+func isActiveContentType(contentType string) bool {
+	contentType = strings.TrimSpace(smartQuoteReplacer.Replace(contentType))
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType, _, _ = strings.Cut(contentType, ";")
+	}
+
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "text/html", "application/xhtml+xml", "image/svg+xml":
+		return true
+	default:
+		return false
+	}
+}
+
+func attachmentContentDisposition(objectName string) string {
+	filename := path.Base(strings.TrimSpace(objectName))
+	if filename == "" || filename == "." || filename == "/" {
+		filename = "download"
+	}
+	if value := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); value != "" {
+		return value
+	}
+	return "attachment"
 }

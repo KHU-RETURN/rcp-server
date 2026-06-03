@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -134,25 +135,49 @@ func (h *Handler) UploadObject(c *gin.Context) {
 		return
 	}
 
-	file, header, err := c.Request.FormFile("file")
+	reader, err := c.Request.MultipartReader()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
 		return
 	}
-	defer func() { _ = file.Close() }()
 
-	contentType := resolveObjectContentType(file, header, objectName)
-
-	if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, file, contentType); err != nil {
-		switch {
-		case errors.Is(err, ErrContainerNotFound):
-			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
-		default:
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
 		}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid multipart body"})
+			return
+		}
+		if part.FormName() != "file" {
+			_ = part.Close()
+			continue
+		}
+
+		fileStream, contentType := resolveObjectContentStream(
+			part,
+			part.Header.Get(api.HeaderContentType),
+			part.FileName(),
+			objectName,
+		)
+
+		if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, fileStream, contentType); err != nil {
+			_ = part.Close()
+			switch {
+			case errors.Is(err, ErrContainerNotFound):
+				c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			default:
+				c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			}
+			return
+		}
+		_ = part.Close()
+		c.JSON(http.StatusCreated, UploadObjectResponse{Key: objectName})
 		return
 	}
-	c.JSON(http.StatusCreated, UploadObjectResponse{Key: objectName})
+
+	c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
 }
 
 func (h *Handler) DownloadObject(c *gin.Context) {
