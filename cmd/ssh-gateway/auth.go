@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -50,22 +49,12 @@ func kbdInteractiveAuthenticator(cfg *Config, store *sessionStore) func(ssh.Conn
 func formatAuthPrompt(authURLBase, nonce, code string, timeout time.Duration) string {
 	authURL := fmt.Sprintf("%s/ssh-auth?s=%s", authURLBase, nonce)
 	return fmt.Sprintf(
-		"%sRCP SSH browser authentication required.\r\n\r\n"+
+		"RCP SSH browser authentication required.\r\n\r\n"+
 			"1. Open this URL in your browser:\r\n   %s\r\n\r\n"+
-			"2. Enter this 6-digit code on the auth page:\r\n%s\r\n\r\n"+
-			"If your terminal supports clipboard integration, the code was copied automatically.\r\n"+
+			"2. Enter this 6-digit code on the auth page: %s\r\n\r\n"+
 			"Waiting for browser authentication. Timeout: %s\r\n",
-		terminalClipboardCopy(code),
-		terminalHyperlink(authURL, authURL),
+		authURL,
 		code,
 		timeout,
 	)
-}
-
-func terminalHyperlink(url, label string) string {
-	return fmt.Sprintf("\x1b]8;;%s\a%s\x1b]8;;\a", url, label)
-}
-
-func terminalClipboardCopy(text string) string {
-	return fmt.Sprintf("\x1b]52;c;%s\a", base64.StdEncoding.EncodeToString([]byte(text)))
 }
