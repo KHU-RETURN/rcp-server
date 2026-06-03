@@ -224,6 +224,7 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | `RCP_SSH_GW_NOTIFY_SOCK` | optional (기본 `/run/rcp/ssh-gateway-notify.sock`) | api ↔ gateway notify 소켓 |
 | `RCP_SSH_GW_NOTIFY_SECRET` | **필수** | api와 공유 HMAC 시크릿 |
 | `RCP_SSH_GW_AUTH_URL_BASE` | **필수** | 사용자 터미널에 출력할 프런트 origin (예: `https://rcp.return.dev`) |
+| `RCP_SSH_GW_API_URL_BASE` | required | 임시 SSH key 등록용 API origin. `/api/v1`은 붙이지 않음 |
 | `RCP_SSH_GW_DB_PATH` | **필수(DB_DSN 미사용 시)** | ent SQLite 경로. gateway는 migration 없이 read/query 용도로 open |
 | `DB_DRIVER` / `DB_DSN` | optional | 수동 설치에서 gateway 전용 DSN을 직접 지정할 때만 사용. 배포 워크플로는 공유 `DB_DSN` 대신 `RCP_SSH_GW_DB_PATH`를 전달 |
 | `RCP_SSH_GW_NONCE_TTL` | optional (기본 `5m`) | pending-session 만료 |

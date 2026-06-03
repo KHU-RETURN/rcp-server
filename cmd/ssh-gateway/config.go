@@ -17,6 +17,7 @@ type Config struct {
 	NotifySecret       string        // HMAC-SHA256 shared secret with the API
 	NsProxySock        string        // ns-proxy Unix socket
 	AuthURLBase        string        // base URL printed in keyboard-interactive ("https://rcp.return.dev")
+	APIURLBase         string        // API origin used for internal ephemeral-key registration
 	NonceTTL           time.Duration // pending-session lifetime
 	MaxPendingSessions int           // pending OAuth sessions cap
 	FixedNetworkName   string        // optional OpenStack network name for fixed IP selection
@@ -62,6 +63,10 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 	authURL := strings.TrimRight(strings.TrimSpace(getenv("RCP_SSH_GW_AUTH_URL_BASE")), "/")
 	if authURL == "" {
 		return nil, fmt.Errorf("RCP_SSH_GW_AUTH_URL_BASE: required")
+	}
+	apiURL := strings.TrimRight(strings.TrimSpace(getenv("RCP_SSH_GW_API_URL_BASE")), "/")
+	if apiURL == "" {
+		return nil, fmt.Errorf("RCP_SSH_GW_API_URL_BASE: required")
 	}
 
 	dbDriver := strings.TrimSpace(getenv("DB_DRIVER"))
@@ -112,6 +117,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		NotifySecret:       notifySecret,
 		NsProxySock:        nsProxySock,
 		AuthURLBase:        authURL,
+		APIURLBase:         apiURL,
 		NonceTTL:           ttl,
 		MaxPendingSessions: maxPending,
 		FixedNetworkName:   fixedNetwork,
