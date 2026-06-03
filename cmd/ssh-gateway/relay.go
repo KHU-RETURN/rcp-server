@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/net/proxy"
 )
 
@@ -73,26 +72,13 @@ func (u *unixDialer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 	return d.DialContext(dctx, "unix", u.path)
 }
 
-// agentClientFromOuter opens an auth-agent@openssh.com channel back to the
-// outer SSH client. Caller MUST have accepted the auth-agent-req on the
-// outer session channel before calling this. Returns the agent client and a
-// closer that tears the channel down.
-func agentClientFromOuter(outer ssh.Conn) (agent.ExtendedAgent, io.Closer, error) {
-	ch, reqs, err := outer.OpenChannel("auth-agent@openssh.com", nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("open agent channel: %w", err)
-	}
-	go ssh.DiscardRequests(reqs)
-	return agent.NewClient(ch), ch, nil
-}
-
-// dialInnerSSH performs the inner SSH handshake to the VM using the user's
-// forwarded agent for publickey auth and the gateway-managed host key store.
-func dialInnerSSH(ctx context.Context, raw net.Conn, addr, user string, ag agent.ExtendedAgent, hostKeyCallback ssh.HostKeyCallback) (*ssh.Client, error) {
+// dialInnerSSH performs the inner SSH handshake to the VM using an ephemeral
+// gateway-managed key and the gateway-managed host key store.
+func dialInnerSSH(ctx context.Context, raw net.Conn, addr, user string, signer ssh.Signer, hostKeyCallback ssh.HostKeyCallback) (*ssh.Client, error) {
 	cfg := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
-			ssh.PublicKeysCallback(ag.Signers),
+			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: innerHostKeyCallbackForAddress(addr, hostKeyCallback),
 		Timeout:         15 * time.Second,

@@ -81,7 +81,7 @@ func main() {
 		"nonce_ttl", cfg.NonceTTL,
 		"max_pending_sessions", cfg.MaxPendingSessions,
 		"fixed_network", cfg.FixedNetworkName,
-		"vm_user", cfg.VMUser,
+		"vm_users", strings.Join(cfg.VMUsers, ","),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
