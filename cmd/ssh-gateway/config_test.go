@@ -52,6 +52,9 @@ func TestLoadConfig_AllDefaultsExceptRequired(t *testing.T) {
 	if cfg.FixedNetworkName != "" {
 		t.Errorf("FixedNetworkName default: got %q", cfg.FixedNetworkName)
 	}
+	if cfg.APIURLBase != "https://rcp.return.dev" {
+		t.Errorf("APIURLBase default: got %q", cfg.APIURLBase)
+	}
 	if strings.Join(cfg.VMUsers, ",") != "ubuntu,rocky" {
 		t.Errorf("VMUsers default: got %v", cfg.VMUsers)
 	}
@@ -177,5 +180,20 @@ func TestLoadConfig_VMUsers(t *testing.T) {
 	}
 	if strings.Join(cfg.VMUsers, ",") != "ubuntu,rocky" {
 		t.Fatalf("got %v", cfg.VMUsers)
+	}
+}
+
+func TestLoadConfig_APIURLBase(t *testing.T) {
+	cfg, err := LoadConfig(envFromMap(map[string]string{
+		"RCP_SSH_GW_NOTIFY_SECRET": "abc123",
+		"RCP_SSH_GW_AUTH_URL_BASE": "https://khu-return.com",
+		"RCP_SSH_GW_API_URL_BASE":  "https://api.khu-return.com/",
+		"RCP_SSH_GW_DB_PATH":       "/var/lib/rcp/rcp.db",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if cfg.APIURLBase != "https://api.khu-return.com" {
+		t.Fatalf("got %q", cfg.APIURLBase)
 	}
 }

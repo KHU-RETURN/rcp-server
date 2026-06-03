@@ -26,6 +26,7 @@ If the notify envs are absent, normal web auth still works but SSH OAuth callbac
 
 - `RCP_SSH_GW_NOTIFY_SECRET`
 - `RCP_SSH_GW_AUTH_URL_BASE`
+- `RCP_SSH_GW_API_URL_BASE` when the API is not reachable at the same origin as `RCP_SSH_GW_AUTH_URL_BASE`
 - `RCP_SSH_GW_DB_PATH` for the API-owned SQLite database. Use `DB_DSN` only for a manual gateway-specific database override.
 - OpenStack auth envs used by the existing provider client
 - `RCP_SSH_GW_FIXED_NETWORK` when VMs can have fixed IPs on more than one OpenStack network

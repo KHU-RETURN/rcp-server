@@ -55,7 +55,7 @@ func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, reso
 		repo:      r,
 		dialer:    dialer,
 		resolver:  resolver,
-		keyClient: newEphemeralKeyClient(cfg.AuthURLBase, []byte(cfg.NotifySecret)),
+		keyClient: newEphemeralKeyClient(cfg.APIURLBase, []byte(cfg.NotifySecret)),
 		sshConfig: sc,
 		hostKeyCB: hostKeyCB,
 	}, nil
