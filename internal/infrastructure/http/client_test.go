@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -64,7 +65,7 @@ func TestNewCloudflareClientSetsDefaultTimeout(t *testing.T) {
 	t.Parallel()
 
 	client := NewCloudflareClient("client-id", "client-secret")
-	if client.Timeout != defaultTimeout {
-		t.Fatalf("unexpected timeout: got %s want %s", client.Timeout, defaultTimeout)
+	if client.Timeout < 2*time.Minute {
+		t.Fatalf("timeout is too short for object uploads: got %s want at least 2m", client.Timeout)
 	}
 }
