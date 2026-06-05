@@ -16,6 +16,7 @@ type Config struct {
 	DBDSN            string
 	ReadTimeout      time.Duration
 	ShutdownTimeout  time.Duration
+	FixedIPCacheTTL  time.Duration
 	LogLevel         string
 }
 
@@ -54,6 +55,10 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	fixedIPCacheTTL, err := utils.EnvPositiveDuration(getenv, "RCP_APP_GW_FIXED_IP_CACHE_TTL", 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
 	logLevel, err := utils.EnvLogLevel(getenv, "RCP_APP_GW_LOG_LEVEL", "info")
 	if err != nil {
 		return nil, err
@@ -67,6 +72,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		DBDSN:            dbDSN,
 		ReadTimeout:      readTimeout,
 		ShutdownTimeout:  shutdownTimeout,
+		FixedIPCacheTTL:  fixedIPCacheTTL,
 		LogLevel:         logLevel,
 	}, nil
 }
