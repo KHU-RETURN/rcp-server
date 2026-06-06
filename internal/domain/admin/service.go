@@ -13,11 +13,12 @@ const (
 )
 
 type Service struct {
-	repo *Repository
+	repo   *Repository
+	health healthChecker
 }
 
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *Repository, health healthChecker) *Service {
+	return &Service{repo: repo, health: health}
 }
 
 func (s *Service) Summary(ctx context.Context) (SummaryResponse, error) {
@@ -48,14 +49,23 @@ func (s *Service) UserResources(ctx context.Context, id string) (UserResourcesRe
 	return s.repo.UserResources(ctx, id)
 }
 
-func (s *Service) System() SystemResponse {
+func (s *Service) System(ctx context.Context) SystemResponse {
+	openstackStatus := "unconfigured"
+	storageStatus := "unconfigured"
+	sshGatewayStatus := "unconfigured"
+	if s.health != nil {
+		openstackStatus = healthStatus(s.health.CheckOpenStack(ctx))
+		storageStatus = healthStatus(s.health.CheckStorage(ctx))
+		sshGatewayStatus = healthStatus(s.health.CheckSSHGateway(ctx))
+	}
+
 	return SystemResponse{
 		APIStatus:        "healthy",
-		OpenStackStatus:  "unknown",
-		SSHGatewayStatus: "unknown",
-		StorageStatus:    "unknown",
+		OpenStackStatus:  openstackStatus,
+		SSHGatewayStatus: sshGatewayStatus,
+		StorageStatus:    storageStatus,
 		LastUpdatedAt:    time.Now().UTC(),
-		Message:          "System status is limited to API health until provider health checks are wired.",
+		Message:          "System status is checked from the API server against configured providers.",
 	}
 }
 

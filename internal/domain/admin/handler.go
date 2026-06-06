@@ -126,5 +126,5 @@ func (h *Handler) UserResources(c *gin.Context) {
 }
 
 func (h *Handler) System(c *gin.Context) {
-	c.JSON(http.StatusOK, h.Svc.System())
+	c.JSON(http.StatusOK, h.Svc.System(c.Request.Context()))
 }

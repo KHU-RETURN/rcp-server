@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,6 +20,16 @@ import (
 	"github.com/KHU-RETURN/rcp-server/ent/migrate"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 )
+
+type fakeHealthChecker struct {
+	openstackErr error
+	storageErr   error
+	sshErr       error
+}
+
+func (f fakeHealthChecker) CheckOpenStack(context.Context) error  { return f.openstackErr }
+func (f fakeHealthChecker) CheckStorage(context.Context) error    { return f.storageErr }
+func (f fakeHealthChecker) CheckSSHGateway(context.Context) error { return f.sshErr }
 
 func newAdminTestClient(t *testing.T, name string) *ent.Client {
 	t.Helper()
@@ -301,4 +312,35 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 			t.Fatalf("unexpected keypair resources: %+v", body.Keypairs)
 		}
 	})
+}
+
+func TestAdminSystemReturnsRealHealthStatuses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	client := newAdminTestClient(t, "admin-system")
+	router := gin.New()
+	Init(client, WithHealthChecker(fakeHealthChecker{
+		openstackErr: nil,
+		storageErr:   errors.New("storage down"),
+		sshErr:       ErrHealthCheckUnconfigured,
+	})).InitRoutes(router.Group("/api/v1"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/system", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var body SystemResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode system: %v", err)
+	}
+	if body.APIStatus != "healthy" || body.OpenStackStatus != "healthy" || body.StorageStatus != "unhealthy" || body.SSHGatewayStatus != "unconfigured" {
+		t.Fatalf("unexpected system statuses: %+v", body)
+	}
+	if body.Message == "" {
+		t.Fatal("expected non-empty system message")
+	}
 }
