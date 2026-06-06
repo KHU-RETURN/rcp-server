@@ -32,8 +32,16 @@ func (s *Service) Instances(ctx context.Context, rawPage, rawLimit string) (Pagi
 	return s.repo.Instances(ctx, parsePageParams(rawPage, rawLimit))
 }
 
+func (s *Service) Instance(ctx context.Context, id string) (InstanceResponse, error) {
+	return s.repo.Instance(ctx, id)
+}
+
 func (s *Service) Containers(ctx context.Context, rawPage, rawLimit string) (PaginatedContainersResponse, error) {
 	return s.repo.Containers(ctx, parsePageParams(rawPage, rawLimit))
+}
+
+func (s *Service) Container(ctx context.Context, id string) (ContainerResponse, error) {
+	return s.repo.Container(ctx, id)
 }
 
 func (s *Service) UserResources(ctx context.Context, id string) (UserResourcesResponse, error) {

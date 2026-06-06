@@ -6,7 +6,6 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/KHU-RETURN/rcp-server/ent"
-	"github.com/KHU-RETURN/rcp-server/ent/app"
 	"github.com/KHU-RETURN/rcp-server/ent/container"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
@@ -36,10 +35,6 @@ func (r *Repository) Summary(ctx context.Context) (SummaryResponse, error) {
 	if err != nil {
 		return SummaryResponse{}, err
 	}
-	apps, err := r.client.App.Query().Count(ctx)
-	if err != nil {
-		return SummaryResponse{}, err
-	}
 	keypairs, err := r.client.KeyPair.Query().Count(ctx)
 	if err != nil {
 		return SummaryResponse{}, err
@@ -62,7 +57,6 @@ func (r *Repository) Summary(ctx context.Context) (SummaryResponse, error) {
 		Users:        users,
 		Instances:    instances,
 		Containers:   containers,
-		Apps:         apps,
 		Keypairs:     keypairs,
 		StatusCounts: statusCounts,
 	}, nil
@@ -74,9 +68,7 @@ func (r *Repository) Users(ctx context.Context, params PageParams) (PaginatedUse
 		return PaginatedUsersResponse{}, err
 	}
 	rows, err := r.client.User.Query().
-		WithInstances(func(q *ent.InstanceQuery) {
-			q.WithApp()
-		}).
+		WithInstances().
 		WithContainers().
 		WithKeypairs().
 		Order(user.ByCreatedAt(sql.OrderDesc()), user.ByEmail()).
@@ -104,7 +96,6 @@ func (r *Repository) Instances(ctx context.Context, params PageParams) (Paginate
 	}
 	rows, err := r.client.Instance.Query().
 		WithOwner().
-		WithApp().
 		Order(instance.ByCreatedAt(sql.OrderDesc()), instance.ByOpenstackID()).
 		Offset(pageOffset(params)).
 		Limit(params.Limit).
@@ -121,6 +112,17 @@ func (r *Repository) Instances(ctx context.Context, params PageParams) (Paginate
 		Items:      result,
 		Pagination: paginationResponse(params, total),
 	}, nil
+}
+
+func (r *Repository) Instance(ctx context.Context, id string) (InstanceResponse, error) {
+	row, err := r.client.Instance.Query().
+		Where(instance.OpenstackID(id)).
+		WithOwner().
+		Only(ctx)
+	if err != nil {
+		return InstanceResponse{}, err
+	}
+	return instanceResponse(row), nil
 }
 
 func (r *Repository) Containers(ctx context.Context, params PageParams) (PaginatedContainersResponse, error) {
@@ -148,6 +150,21 @@ func (r *Repository) Containers(ctx context.Context, params PageParams) (Paginat
 	}, nil
 }
 
+func (r *Repository) Container(ctx context.Context, rawID string) (ContainerResponse, error) {
+	containerID, err := uuid.Parse(rawID)
+	if err != nil {
+		return ContainerResponse{}, err
+	}
+	row, err := r.client.Container.Query().
+		Where(container.ID(containerID)).
+		WithOwner().
+		Only(ctx)
+	if err != nil {
+		return ContainerResponse{}, err
+	}
+	return containerResponse(row), nil
+}
+
 func (r *Repository) UserResources(ctx context.Context, rawID string) (UserResourcesResponse, error) {
 	userID, err := uuid.Parse(rawID)
 	if err != nil {
@@ -156,9 +173,7 @@ func (r *Repository) UserResources(ctx context.Context, rawID string) (UserResou
 
 	row, err := r.client.User.Query().
 		Where(user.ID(userID)).
-		WithInstances(func(q *ent.InstanceQuery) {
-			q.WithApp()
-		}).
+		WithInstances().
 		WithContainers().
 		WithKeypairs().
 		Only(ctx)
@@ -169,7 +184,6 @@ func (r *Repository) UserResources(ctx context.Context, rawID string) (UserResou
 	instanceRows, err := r.client.Instance.Query().
 		Where(instance.HasOwnerWith(user.ID(userID))).
 		WithOwner().
-		WithApp().
 		Order(instance.ByCreatedAt(sql.OrderDesc()), instance.ByOpenstackID()).
 		All(ctx)
 	if err != nil {
@@ -191,21 +205,12 @@ func (r *Repository) UserResources(ctx context.Context, rawID string) (UserResou
 	if err != nil {
 		return UserResourcesResponse{}, err
 	}
-	appRows, err := r.client.App.Query().
-		Where(app.HasInstanceWith(instance.HasOwnerWith(user.ID(userID)))).
-		WithInstance().
-		Order(app.ByCreatedAt(sql.OrderDesc()), app.ByHost()).
-		All(ctx)
-	if err != nil {
-		return UserResourcesResponse{}, err
-	}
 
 	res := UserResourcesResponse{
 		User:       userResponse(row),
 		Instances:  make([]InstanceResponse, 0, len(instanceRows)),
 		Containers: make([]ContainerResponse, 0, len(containerRows)),
 		Keypairs:   make([]KeypairResponse, 0, len(keypairRows)),
-		Apps:       make([]AppResponse, 0, len(appRows)),
 	}
 	for _, item := range instanceRows {
 		res.Instances = append(res.Instances, instanceResponse(item))
@@ -216,19 +221,10 @@ func (r *Repository) UserResources(ctx context.Context, rawID string) (UserResou
 	for _, item := range keypairRows {
 		res.Keypairs = append(res.Keypairs, keypairResponse(item))
 	}
-	for _, item := range appRows {
-		res.Apps = append(res.Apps, appResponse(item))
-	}
 	return res, nil
 }
 
 func userResponse(row *ent.User) UserResponse {
-	appCount := 0
-	for _, inst := range row.Edges.Instances {
-		if inst.Edges.App != nil {
-			appCount++
-		}
-	}
 	return UserResponse{
 		ID:             row.ID.String(),
 		Email:          row.Email,
@@ -238,14 +234,12 @@ func userResponse(row *ent.User) UserResponse {
 		UpdatedAt:      row.UpdatedAt,
 		InstanceCount:  len(row.Edges.Instances),
 		ContainerCount: len(row.Edges.Containers),
-		AppCount:       appCount,
 		KeypairCount:   len(row.Edges.Keypairs),
 	}
 }
 
 func instanceResponse(row *ent.Instance) InstanceResponse {
 	owner := row.Edges.Owner
-	app := row.Edges.App
 	item := InstanceResponse{
 		ID:        row.OpenstackID,
 		Name:      row.Name,
@@ -259,9 +253,6 @@ func instanceResponse(row *ent.Instance) InstanceResponse {
 		item.OwnerID = owner.ID.String()
 		item.OwnerEmail = owner.Email
 		item.OwnerName = owner.Name
-	}
-	if app != nil {
-		item.AppHost = app.Host
 	}
 	return item
 }
@@ -295,22 +286,6 @@ func keypairResponse(row *ent.KeyPair) KeypairResponse {
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,
 	}
-}
-
-func appResponse(row *ent.App) AppResponse {
-	instanceRow := row.Edges.Instance
-	res := AppResponse{
-		ID:        row.ID.String(),
-		Host:      row.Host,
-		Status:    "active",
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
-	}
-	if instanceRow != nil {
-		res.InstanceID = instanceRow.OpenstackID
-		res.InstanceName = instanceRow.Name
-	}
-	return res
 }
 
 func pageOffset(params PageParams) int {

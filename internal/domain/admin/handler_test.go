@@ -129,7 +129,7 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 	group.Use(auth.AdminRequired())
 	Init(client).InitRoutes(group)
 
-	t.Run("summary counts users and resources", func(t *testing.T) {
+	t.Run("summary counts users and visible resources", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/summary", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -142,7 +142,7 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 			t.Fatalf("decode summary: %v", err)
 		}
-		if body.Users != 2 || body.Instances != 1 || body.Containers != 1 || body.Apps != 1 || body.Keypairs != 1 {
+		if body.Users != 2 || body.Instances != 1 || body.Containers != 1 || body.Keypairs != 1 {
 			t.Fatalf("unexpected summary: %+v", body)
 		}
 		if body.StatusCounts["ACTIVE"] != 1 {
@@ -178,12 +178,12 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 		if foundStudent == nil {
 			t.Fatal("student user missing")
 		}
-		if foundStudent.InstanceCount != 1 || foundStudent.ContainerCount != 1 || foundStudent.AppCount != 1 || foundStudent.KeypairCount != 1 {
+		if foundStudent.InstanceCount != 1 || foundStudent.ContainerCount != 1 || foundStudent.KeypairCount != 1 {
 			t.Fatalf("unexpected resource counts: %+v", *foundStudent)
 		}
 	})
 
-	t.Run("instances include owner and app details", func(t *testing.T) {
+	t.Run("instances include owner details", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/instances?page=1&limit=10", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -199,8 +199,26 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 		if len(body.Items) != 1 || body.Pagination.Total != 1 {
 			t.Fatalf("unexpected instances response: %+v", body)
 		}
-		if body.Items[0].OwnerEmail != "student@return.dev" || body.Items[0].AppHost != "student.rcp.dev" {
+		if body.Items[0].OwnerEmail != "student@return.dev" {
 			t.Fatalf("unexpected instance response: %+v", body.Items[0])
+		}
+	})
+
+	t.Run("instance detail includes owner and status", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/instances/vm-001", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var body InstanceResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode instance detail: %v", err)
+		}
+		if body.ID != "vm-001" || body.Status != "ACTIVE" || body.OwnerEmail != "student@return.dev" {
+			t.Fatalf("unexpected instance detail: %+v", body)
 		}
 	})
 
@@ -225,7 +243,39 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 		}
 	})
 
-	t.Run("user resources include owned resource status", func(t *testing.T) {
+	t.Run("container detail includes owner and status", func(t *testing.T) {
+		var containerID string
+		rows, err := client.Container.Query().All(ctx)
+		if err != nil {
+			t.Fatalf("query containers: %v", err)
+		}
+		for _, row := range rows {
+			if row.Name == "student-bucket" {
+				containerID = row.ID.String()
+			}
+		}
+		if containerID == "" {
+			t.Fatal("student container missing")
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/containers/"+containerID, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var body ContainerResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode container detail: %v", err)
+		}
+		if body.ID != containerID || body.Status != "ready" || body.OwnerEmail != "student@return.dev" {
+			t.Fatalf("unexpected container detail: %+v", body)
+		}
+	})
+
+	t.Run("user resources include owned visible resource status", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/"+student.ID.String()+"/resources", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -246,9 +296,6 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 		}
 		if len(body.Containers) != 1 || body.Containers[0].Status != "ready" {
 			t.Fatalf("unexpected container resources: %+v", body.Containers)
-		}
-		if len(body.Apps) != 1 || body.Apps[0].Status != "active" {
-			t.Fatalf("unexpected app resources: %+v", body.Apps)
 		}
 		if len(body.Keypairs) != 1 || body.Keypairs[0].Status != "registered" {
 			t.Fatalf("unexpected keypair resources: %+v", body.Keypairs)

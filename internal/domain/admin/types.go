@@ -6,7 +6,6 @@ type SummaryResponse struct {
 	Users        int            `json:"users"`
 	Instances    int            `json:"instances"`
 	Containers   int            `json:"containers"`
-	Apps         int            `json:"apps"`
 	Keypairs     int            `json:"keypairs"`
 	StatusCounts map[string]int `json:"status_counts"`
 }
@@ -20,7 +19,6 @@ type UserResponse struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 	InstanceCount  int       `json:"instance_count"`
 	ContainerCount int       `json:"container_count"`
-	AppCount       int       `json:"app_count"`
 	KeypairCount   int       `json:"keypair_count"`
 }
 
@@ -52,7 +50,6 @@ type InstanceResponse struct {
 	FlavorName string    `json:"flavor_name"`
 	ImageID    string    `json:"image_id"`
 	FixedIP    string    `json:"fixed_ip"`
-	AppHost    string    `json:"app_host"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -90,22 +87,11 @@ type KeypairResponse struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-type AppResponse struct {
-	ID           string    `json:"id"`
-	Host         string    `json:"host"`
-	Status       string    `json:"status"`
-	InstanceID   string    `json:"instance_id"`
-	InstanceName string    `json:"instance_name"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-}
-
 type UserResourcesResponse struct {
 	User       UserResponse        `json:"user"`
 	Instances  []InstanceResponse  `json:"instances"`
 	Containers []ContainerResponse `json:"containers"`
 	Keypairs   []KeypairResponse   `json:"keypairs"`
-	Apps       []AppResponse       `json:"apps"`
 }
 
 type SystemResponse struct {
