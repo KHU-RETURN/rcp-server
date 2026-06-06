@@ -24,6 +24,23 @@ type UserResponse struct {
 	KeypairCount   int       `json:"keypair_count"`
 }
 
+type PaginationResponse struct {
+	Page       int `json:"page"`
+	PerPage    int `json:"per_page"`
+	Total      int `json:"total"`
+	TotalPages int `json:"total_pages"`
+}
+
+type PageParams struct {
+	Page  int
+	Limit int
+}
+
+type PaginatedUsersResponse struct {
+	Items      []UserResponse     `json:"items"`
+	Pagination PaginationResponse `json:"pagination"`
+}
+
 type InstanceResponse struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
@@ -38,6 +55,57 @@ type InstanceResponse struct {
 	AppHost    string    `json:"app_host"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+type PaginatedInstancesResponse struct {
+	Items      []InstanceResponse `json:"items"`
+	Pagination PaginationResponse `json:"pagination"`
+}
+
+type ContainerResponse struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Status        string    `json:"status"`
+	OpenstackName string    `json:"openstack_name"`
+	OwnerID       string    `json:"owner_id"`
+	OwnerEmail    string    `json:"owner_email"`
+	OwnerName     string    `json:"owner_name"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type PaginatedContainersResponse struct {
+	Items      []ContainerResponse `json:"items"`
+	Pagination PaginationResponse  `json:"pagination"`
+}
+
+type KeypairResponse struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Status        string    `json:"status"`
+	Fingerprint   string    `json:"fingerprint"`
+	SourceType    string    `json:"source_type"`
+	InstanceCount int       `json:"instance_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type AppResponse struct {
+	ID           string    `json:"id"`
+	Host         string    `json:"host"`
+	Status       string    `json:"status"`
+	InstanceID   string    `json:"instance_id"`
+	InstanceName string    `json:"instance_name"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type UserResourcesResponse struct {
+	User       UserResponse        `json:"user"`
+	Instances  []InstanceResponse  `json:"instances"`
+	Containers []ContainerResponse `json:"containers"`
+	Keypairs   []KeypairResponse   `json:"keypairs"`
+	Apps       []AppResponse       `json:"apps"`
 }
 
 type SystemResponse struct {

@@ -151,7 +151,7 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 	})
 
 	t.Run("users include resource counts", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users?page=1&limit=10", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
@@ -159,17 +159,20 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var body []UserResponse
+		var body PaginatedUsersResponse
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 			t.Fatalf("decode users: %v", err)
 		}
-		if len(body) != 2 {
-			t.Fatalf("expected 2 users, got %d", len(body))
+		if body.Pagination.Page != 1 || body.Pagination.PerPage != 10 || body.Pagination.Total != 2 {
+			t.Fatalf("unexpected pagination: %+v", body.Pagination)
+		}
+		if len(body.Items) != 2 {
+			t.Fatalf("expected 2 users, got %d", len(body.Items))
 		}
 		var foundStudent *UserResponse
-		for i := range body {
-			if body[i].Email == "student@return.dev" {
-				foundStudent = &body[i]
+		for i := range body.Items {
+			if body.Items[i].Email == "student@return.dev" {
+				foundStudent = &body.Items[i]
 			}
 		}
 		if foundStudent == nil {
@@ -181,7 +184,7 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 	})
 
 	t.Run("instances include owner and app details", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/instances", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/instances?page=1&limit=10", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
@@ -189,15 +192,66 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var body []InstanceResponse
+		var body PaginatedInstancesResponse
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 			t.Fatalf("decode instances: %v", err)
 		}
-		if len(body) != 1 {
-			t.Fatalf("expected 1 instance, got %d", len(body))
+		if len(body.Items) != 1 || body.Pagination.Total != 1 {
+			t.Fatalf("unexpected instances response: %+v", body)
 		}
-		if body[0].OwnerEmail != "student@return.dev" || body[0].AppHost != "student.rcp.dev" {
-			t.Fatalf("unexpected instance response: %+v", body[0])
+		if body.Items[0].OwnerEmail != "student@return.dev" || body.Items[0].AppHost != "student.rcp.dev" {
+			t.Fatalf("unexpected instance response: %+v", body.Items[0])
+		}
+	})
+
+	t.Run("containers include owner details", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/containers?page=1&limit=10", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var body PaginatedContainersResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode containers: %v", err)
+		}
+		if len(body.Items) != 1 || body.Pagination.Total != 1 {
+			t.Fatalf("unexpected containers response: %+v", body)
+		}
+		if body.Items[0].OwnerEmail != "student@return.dev" || body.Items[0].Status != "ready" {
+			t.Fatalf("unexpected container response: %+v", body.Items[0])
+		}
+	})
+
+	t.Run("user resources include owned resource status", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/"+student.ID.String()+"/resources", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var body UserResourcesResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode resources: %v", err)
+		}
+		if body.User.Email != "student@return.dev" {
+			t.Fatalf("unexpected user: %+v", body.User)
+		}
+		if len(body.Instances) != 1 || body.Instances[0].Status != "ACTIVE" {
+			t.Fatalf("unexpected instance resources: %+v", body.Instances)
+		}
+		if len(body.Containers) != 1 || body.Containers[0].Status != "ready" {
+			t.Fatalf("unexpected container resources: %+v", body.Containers)
+		}
+		if len(body.Apps) != 1 || body.Apps[0].Status != "active" {
+			t.Fatalf("unexpected app resources: %+v", body.Apps)
+		}
+		if len(body.Keypairs) != 1 || body.Keypairs[0].Status != "registered" {
+			t.Fatalf("unexpected keypair resources: %+v", body.Keypairs)
 		}
 	})
 }

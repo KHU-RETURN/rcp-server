@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	defaultLimit = 100
+	defaultPage  = 1
+	defaultLimit = 10
 	maxLimit     = 500
 )
 
@@ -23,12 +24,20 @@ func (s *Service) Summary(ctx context.Context) (SummaryResponse, error) {
 	return s.repo.Summary(ctx)
 }
 
-func (s *Service) Users(ctx context.Context, rawLimit string) ([]UserResponse, error) {
-	return s.repo.Users(ctx, parseLimit(rawLimit))
+func (s *Service) Users(ctx context.Context, rawPage, rawLimit string) (PaginatedUsersResponse, error) {
+	return s.repo.Users(ctx, parsePageParams(rawPage, rawLimit))
 }
 
-func (s *Service) Instances(ctx context.Context, rawLimit string) ([]InstanceResponse, error) {
-	return s.repo.Instances(ctx, parseLimit(rawLimit))
+func (s *Service) Instances(ctx context.Context, rawPage, rawLimit string) (PaginatedInstancesResponse, error) {
+	return s.repo.Instances(ctx, parsePageParams(rawPage, rawLimit))
+}
+
+func (s *Service) Containers(ctx context.Context, rawPage, rawLimit string) (PaginatedContainersResponse, error) {
+	return s.repo.Containers(ctx, parsePageParams(rawPage, rawLimit))
+}
+
+func (s *Service) UserResources(ctx context.Context, id string) (UserResourcesResponse, error) {
+	return s.repo.UserResources(ctx, id)
 }
 
 func (s *Service) System() SystemResponse {
@@ -42,13 +51,19 @@ func (s *Service) System() SystemResponse {
 	}
 }
 
-func parseLimit(raw string) int {
-	limit, err := strconv.Atoi(raw)
-	if err != nil || limit <= 0 {
-		return defaultLimit
-	}
+func parsePageParams(rawPage, rawLimit string) PageParams {
+	page := parsePositiveInt(rawPage, defaultPage)
+	limit := parsePositiveInt(rawLimit, defaultLimit)
 	if limit > maxLimit {
-		return maxLimit
+		limit = maxLimit
 	}
-	return limit
+	return PageParams{Page: page, Limit: limit}
+}
+
+func parsePositiveInt(raw string, fallback int) int {
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }

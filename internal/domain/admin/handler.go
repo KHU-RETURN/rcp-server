@@ -3,7 +3,9 @@ package admin
 import (
 	"net/http"
 
+	"github.com/KHU-RETURN/rcp-server/ent"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 )
@@ -21,7 +23,9 @@ func (h *Handler) InitRoutes(rg *gin.RouterGroup) {
 	{
 		adminGroup.GET("/summary", h.Summary)
 		adminGroup.GET("/users", h.Users)
+		adminGroup.GET("/users/:id/resources", h.UserResources)
 		adminGroup.GET("/instances", h.Instances)
+		adminGroup.GET("/containers", h.Containers)
 		adminGroup.GET("/system", h.System)
 	}
 }
@@ -36,7 +40,7 @@ func (h *Handler) Summary(c *gin.Context) {
 }
 
 func (h *Handler) Users(c *gin.Context) {
-	res, err := h.Svc.Users(c.Request.Context(), c.Query("limit"))
+	res, err := h.Svc.Users(c.Request.Context(), c.Query("page"), c.Query("limit"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
@@ -45,8 +49,36 @@ func (h *Handler) Users(c *gin.Context) {
 }
 
 func (h *Handler) Instances(c *gin.Context) {
-	res, err := h.Svc.Instances(c.Request.Context(), c.Query("limit"))
+	res, err := h.Svc.Instances(c.Request.Context(), c.Query("page"), c.Query("limit"))
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) Containers(c *gin.Context) {
+	res, err := h.Svc.Containers(c.Request.Context(), c.Query("page"), c.Query("limit"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) UserResources(c *gin.Context) {
+	id := c.Param("id")
+	if _, err := uuid.Parse(id); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid user id"})
+		return
+	}
+
+	res, err := h.Svc.UserResources(c.Request.Context(), id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: "user not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		return
 	}
