@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 )
 
 func NewRouter(app *App) *gin.Engine {
@@ -30,6 +31,12 @@ func NewRouter(app *App) *gin.Engine {
 		app.Apps.InitRoutes(protected)
 		app.Compute.InitRoutes(protected)
 		app.Storage.InitRoutes(protected)
+
+		if app.Auth != nil && app.Admin != nil {
+			adminGroup := v1.Group("/")
+			adminGroup.Use(app.Auth.AuthRequired(), auth.AdminRequired())
+			app.Admin.InitRoutes(adminGroup)
+		}
 	}
 
 	return r

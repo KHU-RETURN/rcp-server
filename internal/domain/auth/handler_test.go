@@ -174,6 +174,38 @@ func TestHandlerRefresh(t *testing.T) {
 	})
 }
 
+func TestHandlerMeReturnsAdminRoleForConfiguredEmail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("RCP_ADMIN_EMAILS", "admin@return.dev")
+
+	email := "admin@return.dev"
+	repo := &fakeRepo{users: map[string]*User{
+		email: {Email: email, Name: "Admin", Role: "user"},
+	}}
+	router, tokenSvc := newAuthRouter(repo)
+	pair, err := tokenSvc.GenerateAuthTokens(email)
+	if err != nil {
+		t.Fatalf("GenerateAuthTokens: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var body MeResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Role != "admin" {
+		t.Fatalf("expected role admin, got %q", body.Role)
+	}
+}
+
 func TestHandlerLogout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

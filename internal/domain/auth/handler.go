@@ -206,6 +206,7 @@ func (h *Handler) Me(c *gin.Context) {
 		ID:          user.ID,
 		Name:        user.Name,
 		Email:       user.Email,
+		Role:        RoleForEmail(user.Email),
 		AccessToken: token,
 	})
 }

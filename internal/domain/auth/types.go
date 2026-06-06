@@ -11,6 +11,7 @@ type User struct {
 	ID           uuid.UUID `json:"id"`
 	Email        string    `json:"email"`
 	Name         string    `json:"name"`
+	Role         string    `json:"role"`
 	GoogleID     string    `json:"-"`
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
@@ -26,6 +27,7 @@ type MeResponse struct {
 	ID          uuid.UUID `json:"id"`
 	Email       string    `json:"email"`
 	Name        string    `json:"name"`
+	Role        string    `json:"role"`
 	AccessToken string    `json:"access_token"`
 }
 
