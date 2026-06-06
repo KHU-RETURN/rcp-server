@@ -18,8 +18,8 @@ func WithHealthChecker(health healthChecker) Option {
 	}
 }
 
-func WithLiveHealthChecker(provider *gophercloud.ProviderClient, sshGatewaySock string) Option {
-	return WithHealthChecker(NewLiveHealthChecker(provider, sshGatewaySock))
+func WithLiveHealthChecker(provider *gophercloud.ProviderClient, sshGatewaySock, nsProxySock, httpProxyAddress string) Option {
+	return WithHealthChecker(NewLiveHealthChecker(provider, sshGatewaySock, nsProxySock, httpProxyAddress))
 }
 
 func Init(entClient *ent.Client, opts ...Option) *Handler {

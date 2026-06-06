@@ -98,6 +98,8 @@ type SystemResponse struct {
 	APIStatus        string    `json:"api_status"`
 	OpenStackStatus  string    `json:"openstack_status"`
 	SSHGatewayStatus string    `json:"ssh_gateway_status"`
+	NSProxyStatus    string    `json:"ns_proxy_status"`
+	HTTPProxyStatus  string    `json:"http_proxy_status"`
 	StorageStatus    string    `json:"storage_status"`
 	LastUpdatedAt    time.Time `json:"last_updated_at"`
 	Message          string    `json:"message"`

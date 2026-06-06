@@ -53,16 +53,22 @@ func (s *Service) System(ctx context.Context) SystemResponse {
 	openstackStatus := "unconfigured"
 	storageStatus := "unconfigured"
 	sshGatewayStatus := "unconfigured"
+	nsProxyStatus := "unconfigured"
+	httpProxyStatus := "unconfigured"
 	if s.health != nil {
 		openstackStatus = healthStatus(s.health.CheckOpenStack(ctx))
 		storageStatus = healthStatus(s.health.CheckStorage(ctx))
 		sshGatewayStatus = healthStatus(s.health.CheckSSHGateway(ctx))
+		nsProxyStatus = healthStatus(s.health.CheckNSProxy(ctx))
+		httpProxyStatus = healthStatus(s.health.CheckHTTPProxy(ctx))
 	}
 
 	return SystemResponse{
 		APIStatus:        "healthy",
 		OpenStackStatus:  openstackStatus,
 		SSHGatewayStatus: sshGatewayStatus,
+		NSProxyStatus:    nsProxyStatus,
+		HTTPProxyStatus:  httpProxyStatus,
 		StorageStatus:    storageStatus,
 		LastUpdatedAt:    time.Now().UTC(),
 		Message:          "System status is checked from the API server against configured providers.",

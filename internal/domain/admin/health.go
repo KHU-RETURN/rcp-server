@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/gophercloud/gophercloud"
@@ -18,19 +19,25 @@ type healthChecker interface {
 	CheckOpenStack(ctx context.Context) error
 	CheckStorage(ctx context.Context) error
 	CheckSSHGateway(ctx context.Context) error
+	CheckNSProxy(ctx context.Context) error
+	CheckHTTPProxy(ctx context.Context) error
 }
 
 type liveHealthChecker struct {
-	provider       *gophercloud.ProviderClient
-	sshGatewaySock string
-	timeout        time.Duration
+	provider         *gophercloud.ProviderClient
+	sshGatewaySock   string
+	nsProxySock      string
+	httpProxyAddress string
+	timeout          time.Duration
 }
 
-func NewLiveHealthChecker(provider *gophercloud.ProviderClient, sshGatewaySock string) healthChecker {
+func NewLiveHealthChecker(provider *gophercloud.ProviderClient, sshGatewaySock, nsProxySock, httpProxyAddress string) healthChecker {
 	return &liveHealthChecker{
-		provider:       provider,
-		sshGatewaySock: sshGatewaySock,
-		timeout:        2 * time.Second,
+		provider:         provider,
+		sshGatewaySock:   sshGatewaySock,
+		nsProxySock:      nsProxySock,
+		httpProxyAddress: httpProxyAddress,
+		timeout:          2 * time.Second,
 	}
 }
 
@@ -75,11 +82,31 @@ func (c *liveHealthChecker) CheckStorage(ctx context.Context) error {
 }
 
 func (c *liveHealthChecker) CheckSSHGateway(ctx context.Context) error {
-	if c == nil || c.sshGatewaySock == "" {
+	return c.checkUnixSocket(ctx, c.sshGatewaySock)
+}
+
+func (c *liveHealthChecker) CheckNSProxy(ctx context.Context) error {
+	return c.checkUnixSocket(ctx, c.nsProxySock)
+}
+
+func (c *liveHealthChecker) CheckHTTPProxy(ctx context.Context) error {
+	if c == nil || strings.TrimSpace(c.httpProxyAddress) == "" {
 		return ErrHealthCheckUnconfigured
 	}
 	dialer := net.Dialer{Timeout: c.timeout}
-	conn, err := dialer.DialContext(ctx, "unix", c.sshGatewaySock)
+	conn, err := dialer.DialContext(ctx, "tcp", c.httpProxyAddress)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
+
+func (c *liveHealthChecker) checkUnixSocket(ctx context.Context, path string) error {
+	if c == nil || strings.TrimSpace(path) == "" {
+		return ErrHealthCheckUnconfigured
+	}
+	dialer := net.Dialer{Timeout: c.timeout}
+	conn, err := dialer.DialContext(ctx, "unix", path)
 	if err != nil {
 		return err
 	}

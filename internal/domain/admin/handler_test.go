@@ -25,11 +25,15 @@ type fakeHealthChecker struct {
 	openstackErr error
 	storageErr   error
 	sshErr       error
+	nsErr        error
+	httpErr      error
 }
 
 func (f fakeHealthChecker) CheckOpenStack(context.Context) error  { return f.openstackErr }
 func (f fakeHealthChecker) CheckStorage(context.Context) error    { return f.storageErr }
 func (f fakeHealthChecker) CheckSSHGateway(context.Context) error { return f.sshErr }
+func (f fakeHealthChecker) CheckNSProxy(context.Context) error    { return f.nsErr }
+func (f fakeHealthChecker) CheckHTTPProxy(context.Context) error  { return f.httpErr }
 
 func newAdminTestClient(t *testing.T, name string) *ent.Client {
 	t.Helper()
@@ -323,6 +327,8 @@ func TestAdminSystemReturnsRealHealthStatuses(t *testing.T) {
 		openstackErr: nil,
 		storageErr:   errors.New("storage down"),
 		sshErr:       ErrHealthCheckUnconfigured,
+		nsErr:        nil,
+		httpErr:      errors.New("http proxy down"),
 	})).InitRoutes(router.Group("/api/v1"))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/system", nil)
@@ -337,7 +343,12 @@ func TestAdminSystemReturnsRealHealthStatuses(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode system: %v", err)
 	}
-	if body.APIStatus != "healthy" || body.OpenStackStatus != "healthy" || body.StorageStatus != "unhealthy" || body.SSHGatewayStatus != "unconfigured" {
+	if body.APIStatus != "healthy" ||
+		body.OpenStackStatus != "healthy" ||
+		body.StorageStatus != "unhealthy" ||
+		body.SSHGatewayStatus != "unconfigured" ||
+		body.NSProxyStatus != "healthy" ||
+		body.HTTPProxyStatus != "unhealthy" {
 		t.Fatalf("unexpected system statuses: %+v", body)
 	}
 	if body.Message == "" {
