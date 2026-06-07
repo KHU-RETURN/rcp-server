@@ -334,66 +334,43 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 	})
 }
 
-func TestAdminInstancesOverlayLiveOpenStackStatus(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	t.Setenv("RCP_ADMIN_EMAILS", "admin@return.dev")
+func createTestUser(t *testing.T, client *ent.Client, email, name string) *ent.User {
+	t.Helper()
+	return client.User.Create().
+		SetEmail(email).
+		SetName(name).
+		SetGoogleID("google-" + name).
+		SetGoogleAccessToken("access").
+		SetGoogleRefreshToken("refresh").
+		SetGoogleTokenExpiry(time.Now()).
+		SaveX(context.Background())
+}
 
+func createTestInstance(t *testing.T, client *ent.Client, owner *ent.User, openstackID, status string) {
+	t.Helper()
+	client.Instance.Create().
+		SetOwner(owner).
+		SetOpenstackID(openstackID).
+		SetName(openstackID).
+		SetStatus(status).
+		SetImageID("ubuntu").
+		SetFlavorID("m1.small").
+		SetProviderCreatedAt(time.Now()).
+		SaveX(context.Background())
+}
+
+func TestServiceOverlaysLiveInstanceStatus(t *testing.T) {
 	ctx := context.Background()
 	client := newAdminTestClient(t, "admin-live-status")
+	student := createTestUser(t, client, "student@return.dev", "student")
 
-	adminUser := client.User.Create().
-		SetEmail("admin@return.dev").
-		SetName("Admin").
-		SetGoogleID("google-admin").
-		SetGoogleAccessToken("access").
-		SetGoogleRefreshToken("refresh").
-		SetGoogleTokenExpiry(time.Now()).
-		SaveX(ctx)
-	student := client.User.Create().
-		SetEmail("student@return.dev").
-		SetName("Student").
-		SetGoogleID("google-student").
-		SetGoogleAccessToken("access").
-		SetGoogleRefreshToken("refresh").
-		SetGoogleTokenExpiry(time.Now()).
-		SaveX(ctx)
+	// DB status is stale ("BUILD"); vm-gone is absent from live data.
+	createTestInstance(t, client, student, "vm-live", "BUILD")
+	createTestInstance(t, client, student, "vm-gone", "BUILD")
 
-	// DB rows persist the status captured at creation time (stale).
-	client.Instance.Create().
-		SetOwner(student).
-		SetOpenstackID("vm-live").
-		SetName("khu-vm3").
-		SetStatus("BUILD").
-		SetImageID("ubuntu").
-		SetFlavorID("m1.small").
-		SetProviderCreatedAt(time.Now()).
-		SaveX(ctx)
-	client.Instance.Create().
-		SetOwner(student).
-		SetOpenstackID("vm-gone").
-		SetName("orphan").
-		SetStatus("BUILD").
-		SetImageID("ubuntu").
-		SetFlavorID("m1.small").
-		SetProviderCreatedAt(time.Now()).
-		SaveX(ctx)
-
-	statusSource := fakeInstanceStatusSource{statuses: map[string]string{
-		"vm-live": "ACTIVE",
-		// vm-gone is intentionally absent from live data.
-	}}
-
-	router := gin.New()
-	group := router.Group("/api/v1")
-	group.Use(func(c *gin.Context) {
-		c.Set(auth.ContextKeyUser, &auth.User{
-			ID:    adminUser.ID,
-			Email: adminUser.Email,
-			Name:  adminUser.Name,
-		})
+	svc := NewService(NewRepository(client), nil, fakeInstanceStatusSource{
+		statuses: map[string]string{"vm-live": "ACTIVE"},
 	})
-	group.Use(auth.AdminRequired())
-	Init(client, WithInstanceStatusSource(statusSource)).InitRoutes(group)
 
 	statusOf := func(items []InstanceResponse, id string) string {
 		for _, item := range items {
@@ -405,122 +382,50 @@ func TestAdminInstancesOverlayLiveOpenStackStatus(t *testing.T) {
 		return ""
 	}
 
-	t.Run("instances list reflects live status", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/instances?page=1&limit=10", nil)
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+	list, err := svc.Instances(ctx, "1", "10")
+	if err != nil {
+		t.Fatalf("Instances: %v", err)
+	}
+	if got := statusOf(list.Items, "vm-live"); got != "ACTIVE" {
+		t.Fatalf("list: expected ACTIVE, got %q", got)
+	}
+	if got := statusOf(list.Items, "vm-gone"); got != "BUILD" {
+		t.Fatalf("list: expected fallback BUILD, got %q", got)
+	}
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-		var body PaginatedInstancesResponse
-		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-			t.Fatalf("decode instances: %v", err)
-		}
-		if got := statusOf(body.Items, "vm-live"); got != "ACTIVE" {
-			t.Fatalf("expected live status ACTIVE, got %q", got)
-		}
-		// Not present in live data: keep the DB value rather than inventing one.
-		if got := statusOf(body.Items, "vm-gone"); got != "BUILD" {
-			t.Fatalf("expected fallback BUILD, got %q", got)
-		}
-	})
+	detail, err := svc.Instance(ctx, "vm-live")
+	if err != nil {
+		t.Fatalf("Instance: %v", err)
+	}
+	if detail.Status != "ACTIVE" {
+		t.Fatalf("detail: expected ACTIVE, got %q", detail.Status)
+	}
 
-	t.Run("instance detail reflects live status", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/instances/vm-live", nil)
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-		var body InstanceResponse
-		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-			t.Fatalf("decode instance detail: %v", err)
-		}
-		if body.Status != "ACTIVE" {
-			t.Fatalf("expected live status ACTIVE, got %q", body.Status)
-		}
-	})
-
-	t.Run("user resources reflect live status", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/"+student.ID.String()+"/resources", nil)
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-		var body UserResourcesResponse
-		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-			t.Fatalf("decode resources: %v", err)
-		}
-		if got := statusOf(body.Instances, "vm-live"); got != "ACTIVE" {
-			t.Fatalf("expected live status ACTIVE, got %q", got)
-		}
-	})
+	res, err := svc.UserResources(ctx, student.ID.String())
+	if err != nil {
+		t.Fatalf("UserResources: %v", err)
+	}
+	if got := statusOf(res.Instances, "vm-live"); got != "ACTIVE" {
+		t.Fatalf("user resources: expected ACTIVE, got %q", got)
+	}
 }
 
-func TestAdminInstancesFallBackToDBStatusWhenLiveFetchFails(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	t.Setenv("RCP_ADMIN_EMAILS", "admin@return.dev")
-
+func TestServiceFallsBackToDBStatusWhenLiveFetchFails(t *testing.T) {
 	ctx := context.Background()
 	client := newAdminTestClient(t, "admin-live-status-error")
+	student := createTestUser(t, client, "student@return.dev", "student")
+	createTestInstance(t, client, student, "vm-live", "ACTIVE")
 
-	adminUser := client.User.Create().
-		SetEmail("admin@return.dev").
-		SetName("Admin").
-		SetGoogleID("google-admin").
-		SetGoogleAccessToken("access").
-		SetGoogleRefreshToken("refresh").
-		SetGoogleTokenExpiry(time.Now()).
-		SaveX(ctx)
-	student := client.User.Create().
-		SetEmail("student@return.dev").
-		SetName("Student").
-		SetGoogleID("google-student").
-		SetGoogleAccessToken("access").
-		SetGoogleRefreshToken("refresh").
-		SetGoogleTokenExpiry(time.Now()).
-		SaveX(ctx)
-	client.Instance.Create().
-		SetOwner(student).
-		SetOpenstackID("vm-live").
-		SetName("khu-vm3").
-		SetStatus("ACTIVE").
-		SetImageID("ubuntu").
-		SetFlavorID("m1.small").
-		SetProviderCreatedAt(time.Now()).
-		SaveX(ctx)
-
-	statusSource := fakeInstanceStatusSource{err: errors.New("openstack unreachable")}
-
-	router := gin.New()
-	group := router.Group("/api/v1")
-	group.Use(func(c *gin.Context) {
-		c.Set(auth.ContextKeyUser, &auth.User{
-			ID:    adminUser.ID,
-			Email: adminUser.Email,
-			Name:  adminUser.Name,
-		})
+	svc := NewService(NewRepository(client), nil, fakeInstanceStatusSource{
+		err: errors.New("openstack unreachable"),
 	})
-	group.Use(auth.AdminRequired())
-	Init(client, WithInstanceStatusSource(statusSource)).InitRoutes(group)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/instances?page=1&limit=10", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 despite live fetch failure, got %d: %s", w.Code, w.Body.String())
+	list, err := svc.Instances(ctx, "1", "10")
+	if err != nil {
+		t.Fatalf("Instances: %v", err)
 	}
-	var body PaginatedInstancesResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode instances: %v", err)
-	}
-	if len(body.Items) != 1 || body.Items[0].Status != "ACTIVE" {
-		t.Fatalf("expected DB status fallback, got %+v", body.Items)
+	if len(list.Items) != 1 || list.Items[0].Status != "ACTIVE" {
+		t.Fatalf("expected DB status fallback, got %+v", list.Items)
 	}
 }
 
