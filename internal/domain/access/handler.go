@@ -527,6 +527,9 @@ func (w *webSocketConsole) Write(p []byte) (int, error) {
 		w.mu.Unlock()
 		return 0, io.ErrClosedPipe
 	}
+	if w.buf == nil {
+		w.buf = getWebConsoleBuf()
+	}
 	w.buf = append(w.buf, p...)
 	large := len(w.buf) >= webConsoleFlushMaxBytes
 	w.mu.Unlock()
@@ -587,6 +590,7 @@ func (w *webSocketConsole) flush() error {
 	ctx, cancel := context.WithTimeout(context.Background(), webConsoleWriteTimeout)
 	err := w.conn.Write(ctx, websocket.MessageBinary, out)
 	cancel()
+	putWebConsoleBuf(out) // conn.Write is done with out; reuse its backing array
 	if err != nil {
 		// Slow or dead client: drop further output and force teardown.
 		w.mu.Lock()
@@ -603,6 +607,26 @@ func notify(ch chan struct{}) {
 	case ch <- struct{}{}:
 	default:
 	}
+}
+
+// webConsoleBufPool reuses output buffers across flush cycles to avoid
+// reallocating one per ~8ms window under heavy output.
+var webConsoleBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, webConsoleFlushMaxBytes)
+		return &b
+	},
+}
+
+func getWebConsoleBuf() []byte {
+	return (*webConsoleBufPool.Get().(*[]byte))[:0]
+}
+
+func putWebConsoleBuf(b []byte) {
+	if cap(b) > webConsoleBufferLimit {
+		return // don't retain oversized buffers grown past the cap
+	}
+	webConsoleBufPool.Put(&b)
 }
 
 func websocketBaseURL(c *gin.Context) string {
