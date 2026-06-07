@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	webConsoleDialTimeout  = 15 * time.Second
 	webConsoleWriteTimeout = 10 * time.Second
 	webConsoleReadLimit    = 1 << 20
 )
@@ -305,7 +306,7 @@ func (h *Handler) WebConsole(c *gin.Context) {
 	conn.SetReadLimit(webConsoleReadLimit)
 	defer func() { _ = conn.CloseNow() }()
 
-	if err := h.bridgeWebConsole(conn, session); err != nil {
+	if err := h.relayConsole(newWebSocketConsole(conn), session); err != nil {
 		slog.Default().Warn("web console bridge failed",
 			"instance_id", session.InstanceID,
 			"host", session.Host,
@@ -313,12 +314,18 @@ func (h *Handler) WebConsole(c *gin.Context) {
 			"err", err,
 		)
 	}
-	_ = conn.Close(websocket.StatusNormalClosure, "")
 }
 
-func (h *Handler) bridgeWebConsole(conn *websocket.Conn, console *consoleSession) error {
+// relayConsole runs an SSH shell over a console session against any client transport.
+func (h *Handler) relayConsole(client io.ReadWriteCloser, console *consoleSession) error {
 	sshAddress := net.JoinHostPort(console.Host, "22")
-	tcpConn, err := dialViaNSProxy(h.NSProxySockPath, sshAddress)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dialCtx, dialCancel := context.WithTimeout(ctx, webConsoleDialTimeout)
+	tcpConn, err := dialViaNSProxy(dialCtx, h.NSProxySockPath, sshAddress)
+	dialCancel()
 	if err != nil {
 		return err
 	}
@@ -330,6 +337,7 @@ func (h *Handler) bridgeWebConsole(conn *websocket.Conn, console *consoleSession
 			ssh.PublicKeys(console.Signer),
 		},
 		HostKeyCallback: vmHostKeyCallbackForAddress(sshAddress, h.VMHostKeyCallback),
+		Timeout:         webConsoleDialTimeout,
 	}
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(tcpConn, sshAddress, sshCfg)
@@ -337,10 +345,10 @@ func (h *Handler) bridgeWebConsole(conn *websocket.Conn, console *consoleSession
 		return err
 	}
 	h.Svc.DeleteAuthorizedKey(console.InstanceID, console.Username, console.AuthorizedKey)
-	client := ssh.NewClient(sshConn, chans, reqs)
-	defer func() { _ = client.Close() }()
+	sshClient := ssh.NewClient(sshConn, chans, reqs)
+	defer func() { _ = sshClient.Close() }()
 
-	sess, err := client.NewSession()
+	sess, err := sshClient.NewSession()
 	if err != nil {
 		return err
 	}
@@ -366,14 +374,9 @@ func (h *Handler) bridgeWebConsole(conn *websocket.Conn, console *consoleSession
 		return err
 	}
 
-	// Background-derived: the request context is canceled once the socket is hijacked.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var writeMu sync.Mutex
-	go func() { defer cancel(); copySSHToWebSocket(ctx, conn, stdout, &writeMu) }()
-	go func() { defer cancel(); copySSHToWebSocket(ctx, conn, stderr, &writeMu) }()
-	go func() { defer cancel(); copyWebSocketToSSH(ctx, conn, stdin) }()
+	go func() { defer cancel(); _, _ = io.Copy(client, stdout) }()
+	go func() { defer cancel(); _, _ = io.Copy(client, stderr) }()
+	go func() { defer cancel(); _, _ = io.Copy(stdin, client); _ = stdin.Close() }()
 
 	waitErr := make(chan error, 1)
 	go func() { waitErr <- sess.Wait() }()
@@ -384,6 +387,8 @@ func (h *Handler) bridgeWebConsole(conn *websocket.Conn, console *consoleSession
 		_ = sess.Close()
 		err = <-waitErr
 	}
+	// Closing the transport unblocks the input pump still reading from the client.
+	_ = client.Close()
 	h.Svc.DeleteAuthorizedKey(console.InstanceID, console.Username, console.AuthorizedKey)
 	return err
 }
@@ -464,41 +469,43 @@ func loadVMHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
 	return knownhosts.New(clean)
 }
 
-func copySSHToWebSocket(ctx context.Context, conn *websocket.Conn, r io.Reader, mu *sync.Mutex) {
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			// conn.Write consumes buf[:n] synchronously; no copy needed.
-			mu.Lock()
-			writeCtx, writeCancel := context.WithTimeout(ctx, webConsoleWriteTimeout)
-			writeErr := conn.Write(writeCtx, websocket.MessageBinary, buf[:n])
-			writeCancel()
-			mu.Unlock()
-			if writeErr != nil {
-				return
-			}
-		}
-		if err != nil {
-			return
-		}
-	}
+// webSocketConsole adapts a WebSocket to the io.ReadWriteCloser the relay drives.
+type webSocketConsole struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+	rest []byte
 }
 
-func copyWebSocketToSSH(ctx context.Context, conn *websocket.Conn, w io.WriteCloser) {
-	defer func() { _ = w.Close() }()
+func newWebSocketConsole(conn *websocket.Conn) *webSocketConsole {
+	return &webSocketConsole{conn: conn}
+}
 
-	for {
-		_, payload, err := conn.Read(ctx)
+func (w *webSocketConsole) Read(p []byte) (int, error) {
+	if len(w.rest) == 0 {
+		_, data, err := w.conn.Read(context.Background())
 		if err != nil {
-			return
+			return 0, err
 		}
-		if len(payload) > 0 {
-			if _, err := w.Write(payload); err != nil {
-				return
-			}
-		}
+		w.rest = data
 	}
+	n := copy(p, w.rest)
+	w.rest = w.rest[n:]
+	return n, nil
+}
+
+func (w *webSocketConsole) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), webConsoleWriteTimeout)
+	defer cancel()
+	if err := w.conn.Write(ctx, websocket.MessageBinary, p); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func (w *webSocketConsole) Close() error {
+	return w.conn.Close(websocket.StatusNormalClosure, "")
 }
 
 func websocketBaseURL(c *gin.Context) string {
