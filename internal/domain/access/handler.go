@@ -29,9 +29,11 @@ import (
 )
 
 const (
-	webConsoleDialTimeout  = 15 * time.Second
-	webConsoleWriteTimeout = 10 * time.Second
-	webConsoleReadLimit    = 1 << 20
+	webConsoleDialTimeout   = 15 * time.Second
+	webConsoleWriteTimeout  = 10 * time.Second
+	webConsoleReadLimit     = 1 << 20
+	webConsoleFlushInterval = 8 * time.Millisecond
+	webConsoleFlushMaxBytes = 64 * 1024
 )
 
 const (
@@ -470,14 +472,32 @@ func loadVMHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
 }
 
 // webSocketConsole adapts a WebSocket to the io.ReadWriteCloser the relay drives.
+// Output is batched: writes accumulate in a buffer that a flush loop drains as one
+// binary frame per interval, cutting frame count on bursty output.
 type webSocketConsole struct {
 	conn *websocket.Conn
-	mu   sync.Mutex
-	rest []byte
+	rest []byte // input leftover; Read is single-threaded
+
+	mu        sync.Mutex
+	buf       []byte
+	closed    bool
+	wake      chan struct{}
+	flushNow  chan struct{}
+	done      chan struct{}
+	stopped   chan struct{}
+	closeOnce sync.Once
 }
 
 func newWebSocketConsole(conn *websocket.Conn) *webSocketConsole {
-	return &webSocketConsole{conn: conn}
+	w := &webSocketConsole{
+		conn:     conn,
+		wake:     make(chan struct{}, 1),
+		flushNow: make(chan struct{}, 1),
+		done:     make(chan struct{}),
+		stopped:  make(chan struct{}),
+	}
+	go w.flushLoop()
+	return w
 }
 
 func (w *webSocketConsole) Read(p []byte) (int, error) {
@@ -495,17 +515,83 @@ func (w *webSocketConsole) Read(p []byte) (int, error) {
 
 func (w *webSocketConsole) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), webConsoleWriteTimeout)
-	defer cancel()
-	if err := w.conn.Write(ctx, websocket.MessageBinary, p); err != nil {
-		return 0, err
+	if w.closed {
+		w.mu.Unlock()
+		return 0, io.ErrClosedPipe
+	}
+	w.buf = append(w.buf, p...)
+	large := len(w.buf) >= webConsoleFlushMaxBytes
+	w.mu.Unlock()
+
+	notify(w.wake)
+	if large {
+		notify(w.flushNow)
 	}
 	return len(p), nil
 }
 
 func (w *webSocketConsole) Close() error {
+	w.closeOnce.Do(func() {
+		w.mu.Lock()
+		w.closed = true
+		w.mu.Unlock()
+		close(w.done)
+	})
+	<-w.stopped
 	return w.conn.Close(websocket.StatusNormalClosure, "")
+}
+
+func (w *webSocketConsole) flushLoop() {
+	defer close(w.stopped)
+	for {
+		select {
+		case <-w.done:
+			_ = w.flush()
+			return
+		case <-w.wake:
+			// Accumulate briefly so bursty output coalesces into one frame.
+			select {
+			case <-w.done:
+				_ = w.flush()
+				return
+			case <-w.flushNow:
+			case <-time.After(webConsoleFlushInterval):
+			}
+			if w.flush() != nil {
+				return
+			}
+		}
+	}
+}
+
+func (w *webSocketConsole) flush() error {
+	w.mu.Lock()
+	if len(w.buf) == 0 {
+		w.mu.Unlock()
+		return nil
+	}
+	out := w.buf
+	w.buf = nil
+	w.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), webConsoleWriteTimeout)
+	err := w.conn.Write(ctx, websocket.MessageBinary, out)
+	cancel()
+	if err != nil {
+		// Slow or dead client: drop further output and force teardown.
+		w.mu.Lock()
+		w.closed = true
+		w.mu.Unlock()
+		_ = w.conn.CloseNow()
+	}
+	return err
+}
+
+func notify(ch chan struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
 }
 
 func websocketBaseURL(c *gin.Context) string {
