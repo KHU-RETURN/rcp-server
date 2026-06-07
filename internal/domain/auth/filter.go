@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ const (
 
 	headerAuthorization = "Authorization"
 	schemeBearer        = "Bearer"
+	envAdminEmails      = "RCP_ADMIN_EMAILS"
 )
 
 var errInvalidAuthorizationHeader = errors.New("invalid authorization header")
@@ -48,6 +50,45 @@ func (h *Handler) AuthRequired() gin.HandlerFunc {
 		c.Set(ContextKeyUser, user)
 		c.Next()
 	}
+}
+
+func AdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		val, exists := c.Get(ContextKeyUser)
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: ErrUserNotFound.Error()})
+			return
+		}
+
+		user, ok := val.(*User)
+		if !ok || !IsAdminEmail(user.Email) {
+			c.AbortWithStatusJSON(http.StatusForbidden, ErrorResponse{Error: "admin access required"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+func IsAdminEmail(email string) bool {
+	target := strings.ToLower(strings.TrimSpace(email))
+	if target == "" {
+		return false
+	}
+
+	for _, item := range strings.Split(os.Getenv(envAdminEmails), ",") {
+		if strings.ToLower(strings.TrimSpace(item)) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func RoleForEmail(email string) string {
+	if IsAdminEmail(email) {
+		return "admin"
+	}
+	return "user"
 }
 
 func accessTokenFromRequest(c *gin.Context) (string, error) {

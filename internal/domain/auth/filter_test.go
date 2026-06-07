@@ -182,3 +182,46 @@ func TestAuthRequired(t *testing.T) {
 		}
 	})
 }
+
+func TestAdminRequiredUsesConfiguredAdminEmails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newAdminRouter := func(user *User) *gin.Engine {
+		r := gin.New()
+		protected := r.Group("/protected")
+		protected.Use(func(c *gin.Context) {
+			c.Set(ContextKeyUser, user)
+		})
+		protected.Use(AdminRequired())
+		protected.GET("", func(c *gin.Context) {
+			c.Status(http.StatusOK)
+		})
+		return r
+	}
+
+	t.Run("allows configured admin email regardless of stored role", func(t *testing.T) {
+		t.Setenv("RCP_ADMIN_EMAILS", "admin@return.dev, operator@return.dev")
+		router := newAdminRouter(&User{Email: "operator@return.dev", Role: "user"})
+
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+	})
+
+	t.Run("rejects unconfigured email even when stored role is admin", func(t *testing.T) {
+		t.Setenv("RCP_ADMIN_EMAILS", "admin@return.dev")
+		router := newAdminRouter(&User{Email: "student@return.dev", Role: "admin"})
+
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("expected status 403, got %d", w.Code)
+		}
+	})
+}

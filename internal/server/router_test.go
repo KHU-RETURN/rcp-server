@@ -9,6 +9,7 @@ import (
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/admin"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
@@ -19,6 +20,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 
 	router := NewRouter(&App{
 		Access:  &access.Handler{},
+		Admin:   &admin.Handler{},
 		Auth:    &auth.Handler{},
 		Compute: &compute.Handler{},
 		Storage: &storage.Handler{},
@@ -34,6 +36,7 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	var foundStorageContainers bool
 	var foundStorageUploadObject bool
 	var foundStorageArchiveObjects bool
+	var foundAdminSummary bool
 
 	for _, route := range routes {
 		if route.Method == http.MethodGet && route.Path == api.BasePath+"/auth/me" {
@@ -63,6 +66,9 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 		if route.Method == http.MethodGet && route.Path == api.BasePath+"/storage/containers/:name/archive" {
 			foundStorageArchiveObjects = true
 		}
+		if route.Method == http.MethodGet && route.Path == api.BasePath+"/admin/summary" {
+			foundAdminSummary = true
+		}
 	}
 
 	if !foundFlavors {
@@ -91,6 +97,26 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	}
 	if !foundStorageArchiveObjects {
 		t.Fatalf("%s %s/storage/containers/:name/archive route was not registered", http.MethodGet, api.BasePath)
+	}
+	if !foundAdminSummary {
+		t.Fatalf("%s %s/admin/summary route was not registered", http.MethodGet, api.BasePath)
+	}
+}
+
+func TestNewRouterDoesNotRegisterAdminRoutesWithoutAuth(t *testing.T) {
+	setGinMode(t, gin.TestMode)
+
+	router := NewRouter(&App{
+		Access:  &access.Handler{},
+		Admin:   &admin.Handler{},
+		Compute: &compute.Handler{},
+		Storage: &storage.Handler{},
+	})
+
+	for _, route := range router.Routes() {
+		if route.Path == api.BasePath+"/admin/summary" {
+			t.Fatal("admin route must not be registered without auth middleware")
+		}
 	}
 }
 

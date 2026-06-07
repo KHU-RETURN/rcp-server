@@ -58,7 +58,15 @@ func main() {
 	}
 
 	notifySock := strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SOCK"))
+	if notifySock == "" {
+		notifySock = "/run/rcp/ssh-gateway-notify.sock"
+	}
 	notifySecret := []byte(strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SECRET")))
+	nsProxySock := strings.TrimSpace(os.Getenv("RCP_NS_PROXY_SOCK"))
+	if nsProxySock == "" {
+		nsProxySock = "/run/rcp/ns-proxy.sock"
+	}
+	httpProxyAddress := resolveAppGatewayAddress(os.Getenv)
 
 	frontendBaseURL := resolveFrontendBaseURL(os.Getenv)
 	if frontendBaseURL == "" {
@@ -74,6 +82,8 @@ func main() {
 		JWTSecret:        jwtSecret,
 		SSHGatewaySock:   notifySock,
 		SSHGatewaySecret: notifySecret,
+		NSProxySock:      nsProxySock,
+		HTTPProxyAddress: httpProxyAddress,
 		FrontendBaseURL:  frontendBaseURL,
 	})
 	if err != nil {
@@ -99,6 +109,20 @@ func resolveFrontendBaseURL(getenv func(string) string) string {
 		return strings.TrimRight(url, "/")
 	}
 	return ""
+}
+
+func resolveAppGatewayAddress(getenv func(string) string) string {
+	port := strings.TrimSpace(getenv("APP_GATEWAY_PORT"))
+	if port == "" {
+		port = "18080"
+	}
+	if strings.HasPrefix(port, ":") {
+		return "127.0.0.1" + port
+	}
+	if strings.Contains(port, ":") {
+		return port
+	}
+	return "127.0.0.1:" + port
 }
 
 func resolveDBConfig(getenv func(string) string) (string, string) {
