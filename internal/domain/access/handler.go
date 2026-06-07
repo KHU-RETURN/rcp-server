@@ -1,6 +1,7 @@
 package access
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,13 +18,19 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
-	"golang.org/x/net/websocket"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+)
+
+const (
+	webConsoleWriteTimeout = 10 * time.Second
+	webConsoleReadLimit    = 1 << 20
 )
 
 const (
@@ -279,24 +286,37 @@ func (h *Handler) WebConsole(c *gin.Context) {
 		return
 	}
 
-	server := websocket.Server{
-		Handshake: validateWebSocketOrigin,
-		Handler: func(ws *websocket.Conn) {
-			defer func() { _ = ws.Close() }()
-			if err := h.bridgeWebConsole(ws, session); err != nil {
-				slog.Default().Warn("web console bridge failed",
-					"instance_id", session.InstanceID,
-					"host", session.Host,
-					"username", session.Username,
-					"err", err,
-				)
-			}
-		},
+	if !isWebSocketOriginAllowed(c.Request) {
+		c.JSON(http.StatusForbidden, api.ErrorResponse{Error: "websocket origin is not allowed"})
+		return
 	}
-	server.ServeHTTP(c.Writer, c.Request)
+
+	// Origin is validated above; skip the library's built-in check.
+	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		slog.Default().Warn("web console websocket accept failed",
+			"instance_id", session.InstanceID,
+			"err", err,
+		)
+		return
+	}
+	conn.SetReadLimit(webConsoleReadLimit)
+	defer func() { _ = conn.CloseNow() }()
+
+	if err := h.bridgeWebConsole(conn, session); err != nil {
+		slog.Default().Warn("web console bridge failed",
+			"instance_id", session.InstanceID,
+			"host", session.Host,
+			"username", session.Username,
+			"err", err,
+		)
+	}
+	_ = conn.Close(websocket.StatusNormalClosure, "")
 }
 
-func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) error {
+func (h *Handler) bridgeWebConsole(conn *websocket.Conn, console *consoleSession) error {
 	sshAddress := net.JoinHostPort(console.Host, "22")
 	tcpConn, err := dialViaNSProxy(h.NSProxySockPath, sshAddress)
 	if err != nil {
@@ -346,15 +366,25 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 		return err
 	}
 
-	var writeMu sync.Mutex
-	done := make(chan struct{})
-	go copySSHToWebSocket(ws, stdout, &writeMu, done)
-	go copySSHToWebSocket(ws, stderr, &writeMu, done)
-	go copyWebSocketToSSH(ws, stdin, done)
+	// Background-derived: the request context is canceled once the socket is hijacked.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	err = sess.Wait()
+	var writeMu sync.Mutex
+	go func() { defer cancel(); copySSHToWebSocket(ctx, conn, stdout, &writeMu) }()
+	go func() { defer cancel(); copySSHToWebSocket(ctx, conn, stderr, &writeMu) }()
+	go func() { defer cancel(); copyWebSocketToSSH(ctx, conn, stdin) }()
+
+	waitErr := make(chan error, 1)
+	go func() { waitErr <- sess.Wait() }()
+
+	select {
+	case err = <-waitErr:
+	case <-ctx.Done():
+		_ = sess.Close()
+		err = <-waitErr
+	}
 	h.Svc.DeleteAuthorizedKey(console.InstanceID, console.Username, console.AuthorizedKey)
-	close(done)
 	return err
 }
 
@@ -434,42 +464,39 @@ func loadVMHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
 	return knownhosts.New(clean)
 }
 
-func copySSHToWebSocket(ws *websocket.Conn, r io.Reader, mu *sync.Mutex, done <-chan struct{}) {
+func copySSHToWebSocket(ctx context.Context, conn *websocket.Conn, r io.Reader, mu *sync.Mutex) {
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
-			payload := append([]byte(nil), buf[:n]...)
+			// conn.Write consumes buf[:n] synchronously; no copy needed.
 			mu.Lock()
-			_ = websocket.Message.Send(ws, payload)
+			writeCtx, writeCancel := context.WithTimeout(ctx, webConsoleWriteTimeout)
+			writeErr := conn.Write(writeCtx, websocket.MessageBinary, buf[:n])
+			writeCancel()
 			mu.Unlock()
+			if writeErr != nil {
+				return
+			}
 		}
 		if err != nil {
 			return
 		}
-		select {
-		case <-done:
-			return
-		default:
-		}
 	}
 }
 
-func copyWebSocketToSSH(ws *websocket.Conn, w io.WriteCloser, done <-chan struct{}) {
+func copyWebSocketToSSH(ctx context.Context, conn *websocket.Conn, w io.WriteCloser) {
 	defer func() { _ = w.Close() }()
 
 	for {
-		var payload []byte
-		if err := websocket.Message.Receive(ws, &payload); err != nil {
+		_, payload, err := conn.Read(ctx)
+		if err != nil {
 			return
 		}
 		if len(payload) > 0 {
-			_, _ = w.Write(payload)
-		}
-		select {
-		case <-done:
-			return
-		default:
+			if _, err := w.Write(payload); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -505,15 +532,8 @@ func configuredWebConsoleBaseURL() string {
 	return strings.TrimRight(parsed.String(), "/")
 }
 
-func validateWebSocketOrigin(config *websocket.Config, req *http.Request) error {
-	if isWebSocketOriginAllowed(config, req) {
-		return nil
-	}
-	return errors.New("websocket origin is not allowed")
-}
-
-func isWebSocketOriginAllowed(config *websocket.Config, req *http.Request) bool {
-	origin, ok := websocketOrigin(config, req)
+func isWebSocketOriginAllowed(req *http.Request) bool {
+	origin, ok := websocketOrigin(req)
 	if !ok {
 		return true
 	}
@@ -533,11 +553,7 @@ func isWebSocketOriginAllowed(config *websocket.Config, req *http.Request) bool 
 	return sameHost(origin.Host, req.Host)
 }
 
-func websocketOrigin(config *websocket.Config, req *http.Request) (*url.URL, bool) {
-	if config != nil && config.Origin != nil {
-		return normalizeOrigin(config.Origin), true
-	}
-
+func websocketOrigin(req *http.Request) (*url.URL, bool) {
 	rawOrigin := strings.TrimSpace(req.Header.Get("Origin"))
 	if rawOrigin == "" {
 		return nil, false

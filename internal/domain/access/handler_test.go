@@ -10,13 +10,11 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"golang.org/x/net/websocket"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
@@ -95,19 +93,12 @@ func TestValidateWebSocketOrigin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv(envWebConsoleAllowedOrigins, tt.allowedOrigins)
 
-			origin, err := url.Parse(tt.origin)
-			if err != nil {
-				t.Fatalf("parse origin: %v", err)
-			}
 			req := httptest.NewRequest(http.MethodGet, "http://"+tt.host+"/console", nil)
-			cfg := &websocket.Config{Origin: origin}
+			req.Header.Set("Origin", tt.origin)
 
-			err = validateWebSocketOrigin(cfg, req)
-			if tt.wantAllowed && err != nil {
-				t.Fatalf("expected origin to be allowed, got %v", err)
-			}
-			if !tt.wantAllowed && err == nil {
-				t.Fatal("expected origin to be rejected")
+			got := isWebSocketOriginAllowed(req)
+			if got != tt.wantAllowed {
+				t.Fatalf("isWebSocketOriginAllowed() = %v, want %v", got, tt.wantAllowed)
 			}
 		})
 	}
