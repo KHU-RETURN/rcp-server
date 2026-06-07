@@ -34,6 +34,7 @@ const (
 	webConsoleReadLimit     = 1 << 20
 	webConsoleFlushInterval = 8 * time.Millisecond
 	webConsoleFlushMaxBytes = 64 * 1024
+	webConsoleBufferLimit   = 1 << 20
 )
 
 const (
@@ -479,6 +480,7 @@ type webSocketConsole struct {
 	rest []byte // input leftover; Read is single-threaded
 
 	mu        sync.Mutex
+	cond      *sync.Cond // signaled when buf drains or the console closes
 	buf       []byte
 	closed    bool
 	wake      chan struct{}
@@ -496,6 +498,7 @@ func newWebSocketConsole(conn *websocket.Conn) *webSocketConsole {
 		done:     make(chan struct{}),
 		stopped:  make(chan struct{}),
 	}
+	w.cond = sync.NewCond(&w.mu)
 	go w.flushLoop()
 	return w
 }
@@ -515,6 +518,11 @@ func (w *webSocketConsole) Read(p []byte) (int, error) {
 
 func (w *webSocketConsole) Write(p []byte) (int, error) {
 	w.mu.Lock()
+	// Backpressure: block the producer until the flusher drains below the limit,
+	// throttling the SSH read loop instead of buffering output unbounded.
+	for len(w.buf) >= webConsoleBufferLimit && !w.closed {
+		w.cond.Wait()
+	}
 	if w.closed {
 		w.mu.Unlock()
 		return 0, io.ErrClosedPipe
@@ -534,6 +542,7 @@ func (w *webSocketConsole) Close() error {
 	w.closeOnce.Do(func() {
 		w.mu.Lock()
 		w.closed = true
+		w.cond.Broadcast()
 		w.mu.Unlock()
 		close(w.done)
 	})
@@ -572,6 +581,7 @@ func (w *webSocketConsole) flush() error {
 	}
 	out := w.buf
 	w.buf = nil
+	w.cond.Broadcast()
 	w.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), webConsoleWriteTimeout)
@@ -581,6 +591,7 @@ func (w *webSocketConsole) flush() error {
 		// Slow or dead client: drop further output and force teardown.
 		w.mu.Lock()
 		w.closed = true
+		w.cond.Broadcast()
 		w.mu.Unlock()
 		_ = w.conn.CloseNow()
 	}
