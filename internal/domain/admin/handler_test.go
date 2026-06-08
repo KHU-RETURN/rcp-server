@@ -35,6 +35,22 @@ func (f fakeHealthChecker) CheckSSHGateway(context.Context) error { return f.ssh
 func (f fakeHealthChecker) CheckNSProxy(context.Context) error    { return f.nsErr }
 func (f fakeHealthChecker) CheckHTTPProxy(context.Context) error  { return f.httpErr }
 
+type fakeInstanceStatusSource struct {
+	statuses map[string]string
+	err      error
+}
+
+func (f fakeInstanceStatusSource) InstanceStatuses(context.Context) (map[string]string, error) {
+	return f.statuses, f.err
+}
+
+func (f fakeInstanceStatusSource) InstanceStatus(_ context.Context, id string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.statuses[id], nil
+}
+
 func newAdminTestClient(t *testing.T, name string) *ent.Client {
 	t.Helper()
 
@@ -316,6 +332,101 @@ func TestAdminDashboardEndpointsReturnReadOnlyInventory(t *testing.T) {
 			t.Fatalf("unexpected keypair resources: %+v", body.Keypairs)
 		}
 	})
+}
+
+func createTestUser(t *testing.T, client *ent.Client, email, name string) *ent.User {
+	t.Helper()
+	return client.User.Create().
+		SetEmail(email).
+		SetName(name).
+		SetGoogleID("google-" + name).
+		SetGoogleAccessToken("access").
+		SetGoogleRefreshToken("refresh").
+		SetGoogleTokenExpiry(time.Now()).
+		SaveX(context.Background())
+}
+
+func createTestInstance(t *testing.T, client *ent.Client, owner *ent.User, openstackID, status string) {
+	t.Helper()
+	client.Instance.Create().
+		SetOwner(owner).
+		SetOpenstackID(openstackID).
+		SetName(openstackID).
+		SetStatus(status).
+		SetImageID("ubuntu").
+		SetFlavorID("m1.small").
+		SetProviderCreatedAt(time.Now()).
+		SaveX(context.Background())
+}
+
+func TestServiceOverlaysLiveInstanceStatus(t *testing.T) {
+	ctx := context.Background()
+	client := newAdminTestClient(t, "admin-live-status")
+	student := createTestUser(t, client, "student@return.dev", "student")
+
+	// DB status is stale ("BUILD"); vm-gone is absent from live data.
+	createTestInstance(t, client, student, "vm-live", "BUILD")
+	createTestInstance(t, client, student, "vm-gone", "BUILD")
+
+	svc := NewService(NewRepository(client), nil, fakeInstanceStatusSource{
+		statuses: map[string]string{"vm-live": "ACTIVE"},
+	})
+
+	statusOf := func(items []InstanceResponse, id string) string {
+		for _, item := range items {
+			if item.ID == id {
+				return item.Status
+			}
+		}
+		t.Fatalf("instance %s missing from %+v", id, items)
+		return ""
+	}
+
+	list, err := svc.Instances(ctx, "1", "10")
+	if err != nil {
+		t.Fatalf("Instances: %v", err)
+	}
+	if got := statusOf(list.Items, "vm-live"); got != "ACTIVE" {
+		t.Fatalf("list: expected ACTIVE, got %q", got)
+	}
+	if got := statusOf(list.Items, "vm-gone"); got != "BUILD" {
+		t.Fatalf("list: expected fallback BUILD, got %q", got)
+	}
+
+	detail, err := svc.Instance(ctx, "vm-live")
+	if err != nil {
+		t.Fatalf("Instance: %v", err)
+	}
+	if detail.Status != "ACTIVE" {
+		t.Fatalf("detail: expected ACTIVE, got %q", detail.Status)
+	}
+
+	res, err := svc.UserResources(ctx, student.ID.String())
+	if err != nil {
+		t.Fatalf("UserResources: %v", err)
+	}
+	if got := statusOf(res.Instances, "vm-live"); got != "ACTIVE" {
+		t.Fatalf("user resources: expected ACTIVE, got %q", got)
+	}
+}
+
+func TestServiceFallsBackToDBStatusWhenLiveFetchFails(t *testing.T) {
+	ctx := context.Background()
+	client := newAdminTestClient(t, "admin-live-status-error")
+	student := createTestUser(t, client, "student@return.dev", "student")
+	createTestInstance(t, client, student, "vm-live", "ACTIVE")
+
+	svc := NewService(NewRepository(client), nil, fakeInstanceStatusSource{
+		err: errors.New("openstack unreachable"),
+	})
+
+	list, err := svc.Instances(ctx, "1", "10")
+	if err != nil {
+		t.Fatalf("Instances: %v", err)
+	}
+	if len(list.Items) != 1 || list.Items[0].Status != "ACTIVE" {
+		t.Fatalf("expected DB status fallback, got %+v", list.Items)
+	}
 }
 
 func TestAdminSystemReturnsRealHealthStatuses(t *testing.T) {
