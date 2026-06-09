@@ -32,6 +32,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.ShutdownTimeout != 30*time.Second {
 		t.Fatalf("ShutdownTimeout got %v", cfg.ShutdownTimeout)
 	}
+	if cfg.FixedIPCacheTTL != 5*time.Minute {
+		t.Fatalf("FixedIPCacheTTL got %v", cfg.FixedIPCacheTTL)
+	}
 	if cfg.LogLevel != "info" {
 		t.Fatalf("LogLevel got %q", cfg.LogLevel)
 	}
@@ -39,14 +42,15 @@ func TestLoadConfigDefaults(t *testing.T) {
 
 func TestLoadConfigUsesExplicitValues(t *testing.T) {
 	cfg, err := LoadConfig(envFromMap(map[string]string{
-		"APP_GATEWAY_PORT":            "19090",
-		"RCP_NS_PROXY_SOCK":           "/tmp/ns-proxy.sock",
-		"DB_DRIVER":                   "postgres",
-		"DB_DSN":                      "host=db dbname=rcp",
-		"RCP_APP_GW_FIXED_NETWORK":    "tenant-net",
-		"RCP_APP_GW_READ_TIMEOUT":     "5s",
-		"RCP_APP_GW_SHUTDOWN_TIMEOUT": "7s",
-		"RCP_APP_GW_LOG_LEVEL":        "debug",
+		"APP_GATEWAY_PORT":              "19090",
+		"RCP_NS_PROXY_SOCK":             "/tmp/ns-proxy.sock",
+		"DB_DRIVER":                     "postgres",
+		"DB_DSN":                        "host=db dbname=rcp",
+		"RCP_APP_GW_FIXED_NETWORK":      "tenant-net",
+		"RCP_APP_GW_READ_TIMEOUT":       "5s",
+		"RCP_APP_GW_SHUTDOWN_TIMEOUT":   "7s",
+		"RCP_APP_GW_FIXED_IP_CACHE_TTL": "9s",
+		"RCP_APP_GW_LOG_LEVEL":          "debug",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -62,6 +66,9 @@ func TestLoadConfigUsesExplicitValues(t *testing.T) {
 	}
 	if cfg.ReadTimeout != 5*time.Second || cfg.ShutdownTimeout != 7*time.Second {
 		t.Fatalf("unexpected timeouts: %+v", cfg)
+	}
+	if cfg.FixedIPCacheTTL != 9*time.Second {
+		t.Fatalf("FixedIPCacheTTL got %v", cfg.FixedIPCacheTTL)
 	}
 	if cfg.LogLevel != "debug" {
 		t.Fatalf("LogLevel got %q", cfg.LogLevel)
