@@ -323,7 +323,8 @@ func (h *Handler) WebConsole(c *gin.Context) {
 func (h *Handler) relayConsole(client io.ReadWriteCloser, console *consoleSession) error {
 	sshAddress := net.JoinHostPort(console.Host, "22")
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancelCause := context.WithCancelCause(context.Background())
+	cancel := func() { cancelCause(nil) }
 	defer cancel()
 
 	dialCtx, dialCancel := context.WithTimeout(ctx, webConsoleDialTimeout)
@@ -377,9 +378,17 @@ func (h *Handler) relayConsole(client io.ReadWriteCloser, console *consoleSessio
 		return err
 	}
 
-	go func() { defer cancel(); _, _ = io.Copy(client, stdout) }()
-	go func() { defer cancel(); _, _ = io.Copy(client, stderr) }()
-	go func() { defer cancel(); _, _ = io.Copy(stdin, client); _ = stdin.Close() }()
+	probes := []consoleProbe{sshKeepaliveProbe(sshConn)}
+	if pinger, ok := client.(interface{ Ping(context.Context) error }); ok {
+		probes = append(probes, pinger.Ping)
+	}
+	liveness := newConsoleLiveness(time.Now(), webConsoleIdleTimeout, webConsoleMaxLifetime, probes...)
+	tracked := &trackedConsole{ReadWriteCloser: client, liveness: liveness}
+	go watchConsole(ctx, cancelCause, webConsoleKeepaliveInterval, liveness)
+
+	go func() { defer cancel(); _, _ = io.Copy(tracked, stdout) }()
+	go func() { defer cancel(); _, _ = io.Copy(tracked, stderr) }()
+	go func() { defer cancel(); _, _ = io.Copy(stdin, tracked); _ = stdin.Close() }()
 
 	waitErr := make(chan error, 1)
 	go func() { waitErr <- sess.Wait() }()
@@ -389,6 +398,10 @@ func (h *Handler) relayConsole(client io.ReadWriteCloser, console *consoleSessio
 	case <-ctx.Done():
 		_ = sess.Close()
 		err = <-waitErr
+		// Prefer the liveness verdict over the generic wait error it caused.
+		if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+			err = cause
+		}
 	}
 	// Closing the transport unblocks the input pump still reading from the client.
 	_ = client.Close()
@@ -501,6 +514,12 @@ func newWebSocketConsole(conn *websocket.Conn) *webSocketConsole {
 	w.cond = sync.NewCond(&w.mu)
 	go w.flushLoop()
 	return w
+}
+
+// Ping verifies the browser peer is still reachable. Browsers answer
+// protocol-level pings automatically, so this needs no frontend support.
+func (w *webSocketConsole) Ping(ctx context.Context) error {
+	return w.conn.Ping(ctx)
 }
 
 func (w *webSocketConsole) Read(p []byte) (int, error) {
