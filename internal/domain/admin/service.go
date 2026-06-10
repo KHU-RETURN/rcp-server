@@ -13,12 +13,13 @@ const (
 )
 
 type Service struct {
-	repo   *Repository
-	health healthChecker
+	repo         *Repository
+	health       healthChecker
+	statusSource instanceStatusSource
 }
 
-func NewService(repo *Repository, health healthChecker) *Service {
-	return &Service{repo: repo, health: health}
+func NewService(repo *Repository, health healthChecker, statusSource instanceStatusSource) *Service {
+	return &Service{repo: repo, health: health, statusSource: statusSource}
 }
 
 func (s *Service) Summary(ctx context.Context) (SummaryResponse, error) {
@@ -30,11 +31,25 @@ func (s *Service) Users(ctx context.Context, rawPage, rawLimit string) (Paginate
 }
 
 func (s *Service) Instances(ctx context.Context, rawPage, rawLimit string) (PaginatedInstancesResponse, error) {
-	return s.repo.Instances(ctx, parsePageParams(rawPage, rawLimit))
+	res, err := s.repo.Instances(ctx, parsePageParams(rawPage, rawLimit))
+	if err != nil {
+		return PaginatedInstancesResponse{}, err
+	}
+	s.overlayLiveStatuses(ctx, res.Items)
+	return res, nil
 }
 
 func (s *Service) Instance(ctx context.Context, id string) (InstanceResponse, error) {
-	return s.repo.Instance(ctx, id)
+	res, err := s.repo.Instance(ctx, id)
+	if err != nil {
+		return InstanceResponse{}, err
+	}
+	if s.statusSource != nil {
+		if live, statusErr := s.statusSource.InstanceStatus(ctx, res.ID); statusErr == nil && live != "" {
+			res.Status = live
+		}
+	}
+	return res, nil
 }
 
 func (s *Service) Containers(ctx context.Context, rawPage, rawLimit string) (PaginatedContainersResponse, error) {
@@ -46,7 +61,28 @@ func (s *Service) Container(ctx context.Context, id string) (ContainerResponse, 
 }
 
 func (s *Service) UserResources(ctx context.Context, id string) (UserResourcesResponse, error) {
-	return s.repo.UserResources(ctx, id)
+	res, err := s.repo.UserResources(ctx, id)
+	if err != nil {
+		return UserResourcesResponse{}, err
+	}
+	s.overlayLiveStatuses(ctx, res.Instances)
+	return res, nil
+}
+
+// overlayLiveStatuses replaces stale DB statuses with live OpenStack statuses, best-effort.
+func (s *Service) overlayLiveStatuses(ctx context.Context, items []InstanceResponse) {
+	if s.statusSource == nil || len(items) == 0 {
+		return
+	}
+	statuses, err := s.statusSource.InstanceStatuses(ctx)
+	if err != nil {
+		return
+	}
+	for i := range items {
+		if live, ok := statuses[items[i].ID]; ok && live != "" {
+			items[i].Status = live
+		}
+	}
 }
 
 func (s *Service) System(ctx context.Context) SystemResponse {

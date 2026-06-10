@@ -54,6 +54,7 @@ func NewApp(deps AppDeps) (*App, error) {
 		Admin: admin.Init(
 			deps.EntClient,
 			admin.WithLiveHealthChecker(deps.Provider, deps.SSHGatewaySock, deps.NSProxySock, deps.HTTPProxyAddress),
+			admin.WithLiveInstanceStatusSource(deps.Provider),
 		),
 		Apps:    apps.Init(deps.EntClient),
 		Auth:    authHandler,
