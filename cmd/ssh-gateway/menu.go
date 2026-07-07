@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var ErrSelectionInvalid = errors.New("invalid selection")
@@ -45,21 +46,30 @@ func FindByName(vms []VM, name string) (VM, bool) {
 	return VM{}, false
 }
 
+// applyRuntimeInfo resolves each VM's live status/address concurrently so a
+// user with N VMs pays one round-trip of latency instead of N sequential ones
+// under the shared timeout.
 func applyRuntimeInfo(vms []VM, resolve func(VM) (VMRuntime, error)) []VM {
-	out := make([]VM, 0, len(vms))
-	for _, vm := range vms {
-		runtime, err := resolve(vm)
-		if err != nil {
-			vm.Status = "UNKNOWN"
-			vm.FixedIPv4 = ""
-			out = append(out, vm)
-			continue
-		}
-		if strings.TrimSpace(runtime.Status) != "" {
-			vm.Status = runtime.Status
-		}
-		vm.FixedIPv4 = runtime.FixedIPv4
-		out = append(out, vm)
+	out := make([]VM, len(vms))
+	var wg sync.WaitGroup
+	for i, vm := range vms {
+		wg.Add(1)
+		go func(i int, vm VM) {
+			defer wg.Done()
+			runtime, err := resolve(vm)
+			if err != nil {
+				vm.Status = "UNKNOWN"
+				vm.FixedIPv4 = ""
+				out[i] = vm
+				return
+			}
+			if strings.TrimSpace(runtime.Status) != "" {
+				vm.Status = runtime.Status
+			}
+			vm.FixedIPv4 = runtime.FixedIPv4
+			out[i] = vm
+		}(i, vm)
 	}
+	wg.Wait()
 	return out
 }

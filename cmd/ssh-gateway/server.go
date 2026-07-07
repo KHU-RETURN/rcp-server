@@ -178,10 +178,12 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	vms, err := s.repo.ListInstancesByEmail(ctx, email)
 	if err != nil {
 		_, _ = fmt.Fprintf(ch, "lookup failed: %v\r\n", err)
+		drainRequests(reqs)
 		return
 	}
 	if len(vms) == 0 {
 		_, _ = fmt.Fprintf(ch, "No instances. Create one at %s\r\n", s.cfg.AuthURLBase)
+		drainRequests(reqs)
 		return
 	}
 
@@ -198,6 +200,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		v, ok := FindByName(vms, strings.TrimSpace(execCmd))
 		if !ok {
 			_, _ = fmt.Fprintf(ch, "VM %q not found among your instances.\r\n", execCmd)
+			drainRequests(reqs)
 			return
 		}
 		target = v
@@ -206,6 +209,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	default:
 		v, ok := promptForVM(ch, vms)
 		if !ok {
+			drainRequests(reqs)
 			return
 		}
 		target = v
@@ -214,21 +218,39 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	ip := strings.TrimSpace(target.FixedIPv4)
 	if ip == "" {
 		_, _ = fmt.Fprintf(ch, "VM unreachable: no fixed IPv4 address for %s\r\n", target.Name)
+		drainRequests(reqs)
 		return
 	}
 
 	inner, keyReq, err := s.dialVMWithEphemeralKey(ctx, target, ip)
 	if err != nil {
 		_, _ = fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
+		drainRequests(reqs)
 		return
 	}
 	defer func() { _ = inner.Close() }()
 	defer s.deleteEphemeralKey(keyReq)
 
 	if err := pipeSession(s.log, ch, reqs, inner, pty, func() { _ = sshConn.Close() }); err != nil {
+		// pipeSession only errors before it starts forwarding reqs, so the
+		// queue still needs a consumer.
+		drainRequests(reqs)
 		s.log.Info("pipe ended", "err", err)
 		return
 	}
+}
+
+// drainRequests keeps servicing a session's channel-request queue after an
+// early exit. Without a reader, a client that sends further channel requests
+// wedges its own connection mux until the channel fully closes.
+func drainRequests(reqs <-chan *ssh.Request) {
+	go func() {
+		for req := range reqs {
+			if req.WantReply {
+				_ = req.Reply(false, nil)
+			}
+		}
+	}()
 }
 
 func (s *Server) dialVMWithEphemeralKey(ctx context.Context, target VM, ip string) (*ssh.Client, access.EphemeralAuthorizedKeyRequest, error) {

@@ -41,6 +41,13 @@ func transportViaNSProxy(sockPath string) (*http.Transport, error) {
 			}()
 			select {
 			case <-ctx.Done():
+				// The dial goroutine may still complete; make sure an
+				// abandoned successful dial doesn't leak its connection.
+				go func() {
+					if res := <-ch; res.conn != nil {
+						_ = res.conn.Close()
+					}
+				}()
 				return nil, ctx.Err()
 			case res := <-ch:
 				return res.conn, res.err
@@ -54,13 +61,12 @@ func transportViaNSProxy(sockPath string) (*http.Transport, error) {
 	}, nil
 }
 
-func newReverseProxy(fixedIP string, targetPort int, sockPath string) (*httputil.ReverseProxy, error) {
+// newReverseProxy builds a per-request proxy around a shared transport. The
+// transport (and its idle-connection pool) is created once in NewServer;
+// only the target URL varies per request.
+func newReverseProxy(fixedIP string, targetPort int, transport http.RoundTripper) *httputil.ReverseProxy {
 	target := &url.URL{Scheme: "http", Host: net.JoinHostPort(fixedIP, strconv.Itoa(targetPort))}
-	transport, err := transportViaNSProxy(sockPath)
-	if err != nil {
-		return nil, err
-	}
-	rp := &httputil.ReverseProxy{
+	return &httputil.ReverseProxy{
 		Transport: transport,
 		Rewrite: func(req *httputil.ProxyRequest) {
 			req.SetURL(target)
@@ -68,5 +74,4 @@ func newReverseProxy(fixedIP string, targetPort int, sockPath string) (*httputil
 			req.SetXForwarded()
 		},
 	}
-	return rp, nil
 }
