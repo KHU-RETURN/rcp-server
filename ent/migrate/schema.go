@@ -52,6 +52,13 @@ var (
 				OnDelete:   schema.NoAction,
 			},
 		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "container_name_user_containers",
+				Unique:  true,
+				Columns: []*schema.Column{ContainersColumns[2], ContainersColumns[5]},
+			},
+		},
 	}
 	// InstancesColumns holds the columns for the "instances" table.
 	InstancesColumns = []*schema.Column{

@@ -16,6 +16,7 @@ var (
 	ErrContainerNotFound      = errors.New("container not found")
 	ErrContainerNotEmpty      = errors.New("container not empty, use force=true to delete all")
 	ErrContainerAlreadyExists = errors.New("container name already in use")
+	ErrObjectNotFound         = errors.New("object not found")
 	ErrObjectPrefixNotFound   = errors.New("object prefix not found")
 	ErrStorageOperationFailed = errors.New("storage operation failed")
 )
@@ -64,7 +65,13 @@ func (s *Service) CreateContainer(ctx context.Context, ownerID uuid.UUID, name s
 
 	c := &Container{OpenstackName: openstackName, Name: name}
 	if err := s.repo.Save(ctx, ownerID, c); err != nil {
-		if delErr := s.client.DeleteContainer(openstackName.String()); delErr != nil {
+		delErr := s.client.DeleteContainer(openstackName.String())
+		// 동시 생성 경쟁에서 유니크 제약에 걸린 경우: 방금 만든 Swift 컨테이너를
+		// 정리(best-effort)하고 이름 충돌로 응답한다.
+		if errors.Is(err, ErrContainerAlreadyExists) {
+			return nil, ErrContainerAlreadyExists
+		}
+		if delErr != nil {
 			return nil, fmt.Errorf("%w: %v (cleanup failed: %v)", ErrStorageOperationFailed, err, delErr)
 		}
 		return nil, fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
@@ -93,7 +100,12 @@ func (s *Service) DeleteContainer(ctx context.Context, ownerID uuid.UUID, name s
 
 	objs, err := s.client.ListObjects(c.OpenstackName.String())
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+		// Swift 컨테이너가 이미 삭제된 경우(이전 삭제 시도가 DB 정리 전에 실패한 재시도 등)에는
+		// 남은 DB 행 정리만 이어서 진행한다.
+		if !isSwiftNotFound(err) {
+			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+		}
+		objs = nil
 	}
 
 	if len(objs) > 0 {
@@ -109,7 +121,7 @@ func (s *Service) DeleteContainer(ctx context.Context, ownerID uuid.UUID, name s
 		}
 	}
 
-	if err := s.client.DeleteContainer(c.OpenstackName.String()); err != nil {
+	if err := s.client.DeleteContainer(c.OpenstackName.String()); err != nil && !isSwiftNotFound(err) {
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 
@@ -148,6 +160,9 @@ func (s *Service) DownloadObject(ctx context.Context, ownerID uuid.UUID, contain
 		return err
 	}
 	if err := s.client.DownloadObject(c.OpenstackName.String(), objectName, w); err != nil {
+		if isSwiftNotFound(err) {
+			return ErrObjectNotFound
+		}
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 	return nil
@@ -207,6 +222,9 @@ func (s *Service) DeleteObject(ctx context.Context, ownerID uuid.UUID, container
 		return err
 	}
 	if err := s.client.DeleteObject(c.OpenstackName.String(), objectName); err != nil {
+		if isSwiftNotFound(err) {
+			return ErrObjectNotFound
+		}
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 	return nil
