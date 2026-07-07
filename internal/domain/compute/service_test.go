@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/gophercloud/gophercloud"
 )
 
 var testOwnerID = uuid.New()
@@ -187,6 +188,46 @@ func TestServiceGetFlavors(t *testing.T) {
 		_, err := svc.GetFlavors()
 		if err == nil {
 			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("caches flavors across calls", func(t *testing.T) {
+		calls := 0
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				calls++
+				return []Flavor{{ID: "1", Name: "m1.small"}}, nil
+			},
+		}
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
+		for range 3 {
+			if _, err := svc.GetFlavors(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		}
+		if calls != 1 {
+			t.Fatalf("expected 1 upstream fetch, got %d", calls)
+		}
+	})
+
+	t.Run("does not cache errors", func(t *testing.T) {
+		calls := 0
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				calls++
+				if calls == 1 {
+					return nil, errors.New("upstream error")
+				}
+				return []Flavor{{ID: "1"}}, nil
+			},
+		}
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
+		if _, err := svc.GetFlavors(); err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		res, err := svc.GetFlavors()
+		if err != nil || len(res) != 1 {
+			t.Fatalf("expected retry to succeed, got res=%v err=%v", res, err)
 		}
 	})
 }
@@ -610,9 +651,14 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("returns operation failed when repo save errors", func(t *testing.T) {
+		var cleanedUpID string
 		client := &fakeClient{
 			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				return testServer(map[string]any{}), nil
+			},
+			deleteServerFn: func(id string) error {
+				cleanedUpID = id
+				return nil
 			},
 		}
 		repo := &fakeRepo{
@@ -629,6 +675,9 @@ func TestServiceCreateInstance(t *testing.T) {
 		})
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
+		}
+		if cleanedUpID != "server-1" {
+			t.Fatalf("expected orphaned server-1 to be cleaned up, got %q", cleanedUpID)
 		}
 	})
 }
@@ -661,6 +710,9 @@ func TestServiceGetInstances(t *testing.T) {
 						},
 					},
 				}}, nil
+			},
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return nil, gophercloud.ErrDefault404{}
 			},
 			fetchFlavorsFn: func() ([]Flavor, error) {
 				return []Flavor{
@@ -697,13 +749,125 @@ func TestServiceGetInstances(t *testing.T) {
 		}
 		client := &fakeClient{
 			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
-			fetchFlavorsFn:   func() ([]Flavor, error) { return []Flavor{}, nil },
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return nil, gophercloud.ErrDefault404{}
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
 		}
 
 		svc := NewService(client, repo, "project-1", "")
 		_, err := svc.GetInstances(ctx, testOwnerID)
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
+		}
+	})
+
+	t.Run("keeps DB row when server missing from list snapshot but still exists", func(t *testing.T) {
+		var deletedIDs []string
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-racing"}}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+				deletedIDs = append(deletedIDs, id)
+				return nil
+			},
+		}
+		client := &fakeClient{
+			// 목록 스냅샷에는 없지만 개별 조회로는 살아있는 서버 (생성 직후 레이스)
+			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return &Server{ID: id, Status: "BUILD"}, nil
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+
+		svc := NewService(client, repo, "project-1", "")
+		if _, err := svc.GetInstances(ctx, testOwnerID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deletedIDs) != 0 {
+			t.Fatalf("expected no deletion for live server, got %#v", deletedIDs)
+		}
+	})
+
+	t.Run("keeps DB row when per-ID confirm fails transiently", func(t *testing.T) {
+		var deletedIDs []string
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-x"}}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+				deletedIDs = append(deletedIDs, id)
+				return nil
+			},
+		}
+		client := &fakeClient{
+			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return nil, errors.New("timeout")
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+
+		svc := NewService(client, repo, "project-1", "")
+		if _, err := svc.GetInstances(ctx, testOwnerID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deletedIDs) != 0 {
+			t.Fatalf("expected no deletion on transient error, got %#v", deletedIDs)
+		}
+	})
+}
+
+func TestServiceUpdateInstance(t *testing.T) {
+	ctx := context.Background()
+	existing := &Instance{OpenstackID: "server-1", Name: "old-name", KeyName: "my-key", Note: "my-note"}
+
+	t.Run("preserves key_name and note when request only sets name", func(t *testing.T) {
+		var captured UpdateInstanceRequest
+		repo := &fakeRepo{
+			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (*Instance, error) {
+				return existing, nil
+			},
+			updateMetadataFn: func(_ context.Context, _ uuid.UUID, _ string, update UpdateInstanceRequest) error {
+				captured = update
+				return nil
+			},
+		}
+		svc := NewService(&fakeClient{}, repo, "project-1", "")
+		if _, err := svc.UpdateInstance(ctx, testOwnerID, "server-1", UpdateInstanceRequest{Name: "new-name"}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := UpdateInstanceRequest{Name: "new-name", KeyName: "my-key", Note: "my-note"}
+		if captured != want {
+			t.Fatalf("expected %+v, got %+v", want, captured)
+		}
+	})
+
+	t.Run("does not touch DB when OpenStack rename fails", func(t *testing.T) {
+		dbTouched := false
+		repo := &fakeRepo{
+			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (*Instance, error) {
+				return existing, nil
+			},
+			updateMetadataFn: func(_ context.Context, _ uuid.UUID, _ string, _ UpdateInstanceRequest) error {
+				dbTouched = true
+				return nil
+			},
+		}
+		client := &fakeClient{
+			updateServerNameFn: func(id, name string) (*Server, error) {
+				return nil, errors.New("nova down")
+			},
+		}
+		svc := NewService(client, repo, "project-1", "")
+		_, err := svc.UpdateInstance(ctx, testOwnerID, "server-1", UpdateInstanceRequest{Name: "new-name"})
+		if !errors.Is(err, ErrInstanceOperationFailed) {
+			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
+		}
+		if dbTouched {
+			t.Fatal("expected DB untouched when OpenStack rename fails")
 		}
 	})
 }

@@ -1,6 +1,8 @@
 package compute
 
 import (
+	"errors"
+
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/diagnostics"
@@ -19,6 +21,12 @@ type Client struct {
 
 func NewClient(provider *gophercloud.ProviderClient) *Client {
 	return &Client{provider: provider}
+}
+
+// isServerNotFound는 OpenStack 404 응답 여부를 판별한다.
+func isServerNotFound(err error) bool {
+	var notFound gophercloud.ErrDefault404
+	return errors.As(err, &notFound)
 }
 
 func (c *Client) serviceClient() (*gophercloud.ServiceClient, error) {
