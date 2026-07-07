@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -90,6 +91,10 @@ func (s *Service) CreateKeyPair(ctx context.Context, ownerID uuid.UUID, req Crea
 	}
 
 	if err := s.repo.SaveKeyPair(ctx, ownerID, kp); err != nil {
+		// 소유권 기록 실패 시 방금 만든 키페어를 회수해 고아 키페어를 막는다.
+		if delErr := s.client.DeleteKeyPair(kp.Name); delErr != nil {
+			log.Printf("CRITICAL: orphaned keypair %s: DB save failed (%v) and cleanup failed (%v)", kp.Name, err, delErr)
+		}
 		return nil, fmt.Errorf("%w: %v", ErrKeyPairOperationFailed, err)
 	}
 

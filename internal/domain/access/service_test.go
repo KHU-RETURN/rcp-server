@@ -232,6 +232,60 @@ func TestServiceCreateKeyPair(t *testing.T) {
 		}
 	})
 
+	t.Run("deletes just-created openstack keypair when DB save fails", func(t *testing.T) {
+		deletedName := ""
+		osClient := &fakeClient{
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return &KeyPair{Name: name, Fingerprint: "fingerprint", PublicKey: publicKey}, nil
+			},
+			deleteKeyPairFn: func(name string) error {
+				deletedName = name
+				return nil
+			},
+		}
+		repo := &fakeRepo{
+			saveKeyPairFn: func(_ context.Context, _ uuid.UUID, _ *KeyPair) error {
+				return errors.New("db save error")
+			},
+		}
+
+		svc := NewService(osClient, repo)
+		_, err := svc.CreateKeyPair(ctx, testOwnerID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		if !errors.Is(err, ErrKeyPairOperationFailed) {
+			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
+		}
+		if deletedName != "key" {
+			t.Fatalf("expected compensating delete of %q, got %q", "key", deletedName)
+		}
+	})
+
+	t.Run("returns original save error even when compensating delete fails", func(t *testing.T) {
+		deleteCalled := false
+		osClient := &fakeClient{
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return &KeyPair{Name: name, Fingerprint: "fingerprint", PublicKey: publicKey}, nil
+			},
+			deleteKeyPairFn: func(name string) error {
+				deleteCalled = true
+				return errors.New("cleanup error")
+			},
+		}
+		repo := &fakeRepo{
+			saveKeyPairFn: func(_ context.Context, _ uuid.UUID, _ *KeyPair) error {
+				return errors.New("db save error")
+			},
+		}
+
+		svc := NewService(osClient, repo)
+		_, err := svc.CreateKeyPair(ctx, testOwnerID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		if !errors.Is(err, ErrKeyPairOperationFailed) {
+			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
+		}
+		if !deleteCalled {
+			t.Fatal("expected compensating delete to be attempted")
+		}
+	})
+
 	t.Run("normalizes generic openstack errors as internal operation error", func(t *testing.T) {
 		osClient := &fakeClient{
 			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
