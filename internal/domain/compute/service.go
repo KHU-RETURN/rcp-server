@@ -27,7 +27,7 @@ type computeClient interface {
 
 type instanceRepo interface {
 	SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
-	DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error
+	DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (bool, error)
 	UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error
 	ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Instance, error)
 	FindByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
@@ -38,6 +38,7 @@ type Service struct {
 	repo             instanceRepo
 	projectID        string
 	defaultNetworkID string
+	userUsageLimits  UserUsageLimits
 }
 
 var (
@@ -46,14 +47,21 @@ var (
 	ErrCreateInstanceFlavorRequired = errors.New("flavor_id is required")
 	ErrInstanceNotFound             = errors.New("instance not found")
 	ErrInstanceOperationFailed      = errors.New("instance operation failed")
+	ErrFlavorNotFound               = errors.New("flavor not found")
+	ErrUserUsageLimitExceeded       = errors.New("user usage limit exceeded")
 )
 
-func NewService(client computeClient, repo instanceRepo, projectID, defaultNetworkID string) *Service {
+func NewService(client computeClient, repo instanceRepo, projectID, defaultNetworkID string, userUsageLimits ...UserUsageLimits) *Service {
+	limits := UserUsageLimits{}
+	if len(userUsageLimits) > 0 {
+		limits = normalizeUserUsageLimits(userUsageLimits[0])
+	}
 	return &Service{
 		client:           client,
 		repo:             repo,
 		projectID:        projectID,
 		defaultNetworkID: strings.TrimSpace(defaultNetworkID),
+		userUsageLimits:  limits,
 	}
 }
 
@@ -185,7 +193,7 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 
 func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, staleIDs []string) error {
 	for _, id := range staleIDs {
-		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+		if _, err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
 			return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 		}
 	}
@@ -321,12 +329,18 @@ func (s *Service) DeleteInstance(ctx context.Context, ownerID uuid.UUID, id stri
 		return ErrInstanceNotFound
 	}
 
+	// OpenStack 삭제: 404(이미 삭제된 VM)는 client 레벨에서 성공으로 처리됨.
 	if err := s.client.DeleteServer(id); err != nil {
 		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 
-	if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+	// DB 삭제: 0 rows → 동시 요청이 이미 처리 → NotFound 반환 (할당량 이중 반납 방지).
+	deleted, err := s.repo.DeleteByOpenstackID(ctx, ownerID, id)
+	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	if !deleted {
+		return ErrInstanceNotFound
 	}
 	return nil
 }
@@ -337,6 +351,9 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 		normalizedOpts.Networks = []NetworkID{{UUID: s.defaultNetworkID}}
 	}
 	if err := validateCreateServerOpts(normalizedOpts); err != nil {
+		return nil, err
+	}
+	if err := s.ensureUserUsageLimits(ctx, ownerID, normalizedOpts.FlavorRef); err != nil {
 		return nil, err
 	}
 
@@ -363,6 +380,47 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 	return buildCreateInstanceResponse(server, normalizedOpts), nil
 }
 
+func (s *Service) ensureUserUsageLimits(ctx context.Context, ownerID uuid.UUID, requestedFlavorID string) error {
+	if s.userUsageLimits.isZero() {
+		return nil
+	}
+
+	instances, err := s.repo.ListByOwner(ctx, ownerID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+
+	flavors, err := s.client.FetchFlavors()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	}
+	flavorMap := make(map[string]Flavor, len(flavors))
+	for _, flavor := range flavors {
+		flavorMap[flavor.ID] = flavor
+	}
+
+	requestedFlavor, ok := flavorMap[requestedFlavorID]
+	if !ok {
+		return ErrFlavorNotFound
+	}
+
+	usage := UserUsage{Instances: len(instances)}
+	for _, inst := range instances {
+		flavor, ok := flavorMap[inst.FlavorID]
+		if !ok {
+			continue
+		}
+		usage.addFlavor(flavor)
+	}
+	usage.Instances++
+	usage.addFlavor(requestedFlavor)
+
+	if usage.exceeds(s.userUsageLimits) {
+		return ErrUserUsageLimitExceeded
+	}
+	return nil
+}
+
 func (s *Service) fetchFlavorMap() (map[string]FlavorResponse, error) {
 	rawFlavors, err := s.client.FetchFlavors()
 	if err != nil {
@@ -373,6 +431,41 @@ func (s *Service) fetchFlavorMap() (map[string]FlavorResponse, error) {
 		m[f.ID] = FlavorResponse(f)
 	}
 	return m, nil
+}
+
+func normalizeUserUsageLimits(limits UserUsageLimits) UserUsageLimits {
+	return UserUsageLimits{
+		Instances: max(limits.Instances, 0),
+		VCPUs:     max(limits.VCPUs, 0),
+		RAMMB:     max(limits.RAMMB, 0),
+		DiskGB:    max(limits.DiskGB, 0),
+	}
+}
+
+func (limits UserUsageLimits) isZero() bool {
+	return limits.Instances <= 0 && limits.VCPUs <= 0 && limits.RAMMB <= 0 && limits.DiskGB <= 0
+}
+
+func (usage *UserUsage) addFlavor(flavor Flavor) {
+	usage.VCPUs += flavor.VCPUs
+	usage.RAMMB += flavor.RAM
+	usage.DiskGB += flavor.Disk
+}
+
+func (usage UserUsage) exceeds(limits UserUsageLimits) bool {
+	if limits.Instances > 0 && usage.Instances > limits.Instances {
+		return true
+	}
+	if limits.VCPUs > 0 && usage.VCPUs > limits.VCPUs {
+		return true
+	}
+	if limits.RAMMB > 0 && usage.RAMMB > limits.RAMMB {
+		return true
+	}
+	if limits.DiskGB > 0 && usage.DiskGB > limits.DiskGB {
+		return true
+	}
+	return false
 }
 
 type serverAddress struct {

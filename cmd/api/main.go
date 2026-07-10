@@ -2,10 +2,14 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/database"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
@@ -57,6 +61,16 @@ func main() {
 		log.Fatalf("google oauth 연결 실패: %v", err)
 	}
 
+	usageLimits, err := loadUserUsageLimits()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	storageLimits, err := loadUserStorageLimits()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	notifySock := strings.TrimSpace(os.Getenv("RCP_SSH_GW_NOTIFY_SOCK"))
 	if notifySock == "" {
 		notifySock = "/run/rcp/ssh-gateway-notify.sock"
@@ -85,6 +99,8 @@ func main() {
 		NSProxySock:      nsProxySock,
 		HTTPProxyAddress: httpProxyAddress,
 		FrontendBaseURL:  frontendBaseURL,
+		UsageLimits:      usageLimits,
+		StorageLimits:    storageLimits,
 	})
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
@@ -99,6 +115,43 @@ func main() {
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("HTTP 서버 시작 실패: %v", err)
 	}
+}
+
+func loadUserUsageLimits() (compute.UserUsageLimits, error) {
+	instances, err := parseNonNegativeEnv("RCP_MAX_INSTANCES_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+	vcpus, err := parseNonNegativeEnv("RCP_MAX_VCPUS_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+	ramMB, err := parseNonNegativeEnv("RCP_MAX_RAM_MB_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+	diskGB, err := parseNonNegativeEnv("RCP_MAX_DISK_GB_PER_USER")
+	if err != nil {
+		return compute.UserUsageLimits{}, err
+	}
+	return compute.UserUsageLimits{
+		Instances: instances,
+		VCPUs:     vcpus,
+		RAMMB:     ramMB,
+		DiskGB:    diskGB,
+	}, nil
+}
+
+func loadUserStorageLimits() (storage.UserStorageLimits, error) {
+	containers, err := parseNonNegativeEnv("RCP_MAX_CONTAINERS_PER_USER")
+	if err != nil {
+		return storage.UserStorageLimits{}, err
+	}
+	storageGB, err := parseNonNegativeEnv("RCP_MAX_STORAGE_GB_PER_USER")
+	if err != nil {
+		return storage.UserStorageLimits{}, err
+	}
+	return storage.UserStorageLimits{Containers: containers, StorageGB: storageGB}, nil
 }
 
 func resolveFrontendBaseURL(getenv func(string) string) string {
@@ -135,4 +188,19 @@ func resolveDBConfig(getenv func(string) string) (string, string) {
 		dsn = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)"
 	}
 	return driver, dsn
+}
+
+func parseNonNegativeEnv(name string) (int, error) {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s must be greater than or equal to 0", name)
+	}
+	return value, nil
 }

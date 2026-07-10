@@ -13,6 +13,9 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 )
 
+// bodyLimitError는 MaxBytesReader가 초과 시 반환하는 에러 타입이다.
+type bodyLimitError = http.MaxBytesError
+
 type Handler struct {
 	Svc *Service
 }
@@ -68,6 +71,8 @@ func (h *Handler) CreateContainer(c *gin.Context) {
 		switch {
 		case errors.Is(err, ErrContainerAlreadyExists):
 			c.JSON(http.StatusConflict, api.ErrorResponse{Error: err.Error()})
+		case errors.Is(err, ErrUserStorageLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, api.ErrorResponse{Error: err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		}
@@ -135,8 +140,25 @@ func (h *Handler) UploadObject(c *gin.Context) {
 		return
 	}
 
+	// 파일을 읽기 전에 body 크기를 "남은 쿼터" 기준으로 제한한다(전체 한도가 아님 —
+	// 이미 사용 중인 용량이 있으면 그만큼 상한이 낮아져야 한다).
+	// 한도를 초과하는 파일은 디스크를 채우기 전에 차단된다.
+	remaining, limited, err := h.Svc.RemainingStorageBytes(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if limited {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, remaining)
+	}
+
 	reader, err := c.Request.MultipartReader()
 	if err != nil {
+		var limitErr *bodyLimitError
+		if errors.As(err, &limitErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, api.ErrorResponse{Error: "file exceeds storage quota limit"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "missing file"})
 		return
 	}
@@ -147,6 +169,11 @@ func (h *Handler) UploadObject(c *gin.Context) {
 			break
 		}
 		if err != nil {
+			var limitErr *bodyLimitError
+			if errors.As(err, &limitErr) {
+				c.JSON(http.StatusRequestEntityTooLarge, api.ErrorResponse{Error: "file exceeds storage quota limit"})
+				return
+			}
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid multipart body"})
 			return
 		}
@@ -167,6 +194,8 @@ func (h *Handler) UploadObject(c *gin.Context) {
 			switch {
 			case errors.Is(err, ErrContainerNotFound):
 				c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+			case errors.Is(err, ErrUserStorageLimitExceeded):
+				c.JSON(http.StatusTooManyRequests, api.ErrorResponse{Error: err.Error()})
 			default:
 				c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 			}

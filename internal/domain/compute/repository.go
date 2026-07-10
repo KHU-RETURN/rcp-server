@@ -50,13 +50,18 @@ func (r *Repository) UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UU
 	return err
 }
 
-func (r *Repository) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error {
-	_, err := r.client.Instance.Delete().
+// DeleteByOpenstackID removes the instance row and reports whether a row was actually deleted.
+// Returns (false, nil) when the row was already gone (concurrent delete).
+func (r *Repository) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (bool, error) {
+	n, err := r.client.Instance.Delete().
 		Where(
 			entinstance.OpenstackID(openstackID),
 			entinstance.HasOwnerWith(entuser.ID(ownerID)),
 		).Exec(ctx)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 func (r *Repository) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Instance, error) {

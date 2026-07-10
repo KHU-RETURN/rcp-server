@@ -47,6 +47,12 @@ func (r *Repository) FindByName(ctx context.Context, ownerID uuid.UUID, name str
 	return &c, nil
 }
 
+func (r *Repository) CountByOwner(ctx context.Context, ownerID uuid.UUID) (int, error) {
+	return r.client.Container.Query().
+		Where(entcontainer.HasOwnerWith(entuser.ID(ownerID))).
+		Count(ctx)
+}
+
 func (r *Repository) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Container, error) {
 	rows, err := r.client.Container.Query().
 		Where(entcontainer.HasOwnerWith(entuser.ID(ownerID))).
@@ -61,13 +67,18 @@ func (r *Repository) ListByOwner(ctx context.Context, ownerID uuid.UUID) ([]Cont
 	return result, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, ownerID uuid.UUID, name string) error {
-	_, err := r.client.Container.Delete().
+// Delete removes the container row and reports whether a row was actually deleted.
+// Returns (false, nil) when the row was already gone (concurrent delete).
+func (r *Repository) Delete(ctx context.Context, ownerID uuid.UUID, name string) (bool, error) {
+	n, err := r.client.Container.Delete().
 		Where(
 			entcontainer.Name(name),
 			entcontainer.HasOwnerWith(entuser.ID(ownerID)),
 		).Exec(ctx)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 func entToContainer(row *ent.Container) Container {
