@@ -140,10 +140,16 @@ func (h *Handler) UploadObject(c *gin.Context) {
 		return
 	}
 
-	// FormFile이 전체 파일을 /tmp에 버퍼링하기 전에 body 크기를 제한한다.
+	// 파일을 읽기 전에 body 크기를 "남은 쿼터" 기준으로 제한한다(전체 한도가 아님 —
+	// 이미 사용 중인 용량이 있으면 그만큼 상한이 낮아져야 한다).
 	// 한도를 초과하는 파일은 디스크를 채우기 전에 차단된다.
-	if maxBytes := h.Svc.StorageLimitBytes(); maxBytes > 0 {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+	remaining, limited, err := h.Svc.RemainingStorageBytes(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if limited {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, remaining)
 	}
 
 	reader, err := c.Request.MultipartReader()
@@ -183,11 +189,7 @@ func (h *Handler) UploadObject(c *gin.Context) {
 			objectName,
 		)
 
-		size := c.Request.ContentLength
-		if size < 0 {
-			size = 0
-		}
-		if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, fileStream, contentType, size); err != nil {
+		if err := h.Svc.UploadObject(c.Request.Context(), id, containerName, objectName, fileStream, contentType); err != nil {
 			_ = part.Close()
 			switch {
 			case errors.Is(err, ErrContainerNotFound):

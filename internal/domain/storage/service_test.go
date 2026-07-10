@@ -425,7 +425,7 @@ func TestServiceUploadObject(t *testing.T) {
 		}
 
 		svc := NewService(client, repo)
-		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "hello.txt", nil, "text/plain", 0)
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "hello.txt", nil, "text/plain")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -436,15 +436,47 @@ func TestServiceUploadObject(t *testing.T) {
 
 	t.Run("returns ErrContainerNotFound for unknown container", func(t *testing.T) {
 		svc := NewService(&fakeStorageClient{}, &fakeContainerRepo{})
-		err := svc.UploadObject(ctx, testOwnerID, "missing", "file.txt", nil, "", 0)
+		err := svc.UploadObject(ctx, testOwnerID, "missing", "file.txt", nil, "")
 		if !errors.Is(err, ErrContainerNotFound) {
 			t.Fatalf("expected ErrContainerNotFound, got %v", err)
 		}
 	})
 
-	t.Run("rejects upload when total storage would exceed GB limit", func(t *testing.T) {
+	t.Run("rejects upload when post-upload usage exceeds GB limit and rolls back the object", func(t *testing.T) {
 		const gb = int64(1024 * 1024 * 1024)
-		// 유저가 현재 49 GB 사용 중, 한도 50 GB, 새 파일 2 GB → 초과
+		// 업로드 반영 후 실제 사용량 51 GB, 한도 50 GB → 초과 → 방금 올린 오브젝트 삭제(롤백)
+		var deletedContainer, deletedObject string
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{{SizeBytes: 51 * gb}}, nil
+			},
+			deleteObjectFn: func(containerName, objectName string) error {
+				deletedContainer, deletedObject = containerName, objectName
+				return nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Container, error) {
+				return []Container{{Name: "my-bucket", OpenstackName: testContainerUUID}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "big.bin", nil, "")
+		if !errors.Is(err, ErrUserStorageLimitExceeded) {
+			t.Fatalf("expected ErrUserStorageLimitExceeded, got %v", err)
+		}
+		if deletedContainer != testContainerUUID.String() || deletedObject != "big.bin" {
+			t.Fatalf("expected rollback delete of big.bin in %s, got container=%q object=%q", testContainerUUID, deletedContainer, deletedObject)
+		}
+	})
+
+	t.Run("allows upload when post-upload usage is strictly within GB limit", func(t *testing.T) {
+		const gb = int64(1024 * 1024 * 1024)
+		// 업로드 반영 후 실제 사용량 49 GB < 한도 50 GB → 허용
 		client := &fakeStorageClient{
 			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
 				return []ObjectInfo{{SizeBytes: 49 * gb}}, nil
@@ -460,42 +492,18 @@ func TestServiceUploadObject(t *testing.T) {
 		}
 
 		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
-		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "big.bin", nil, "", 2*gb)
-		if !errors.Is(err, ErrUserStorageLimitExceeded) {
-			t.Fatalf("expected ErrUserStorageLimitExceeded, got %v", err)
-		}
-	})
-
-	t.Run("allows upload when total storage is strictly within GB limit", func(t *testing.T) {
-		const gb = int64(1024 * 1024 * 1024)
-		// 현재 40 GB, 한도 50 GB, 새 파일 9 GB → 합계 49 GB < 50 GB → 허용
-		client := &fakeStorageClient{
-			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
-				return []ObjectInfo{{SizeBytes: 40 * gb}}, nil
-			},
-		}
-		repo := &fakeContainerRepo{
-			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
-				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
-			},
-			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Container, error) {
-				return []Container{{Name: "my-bucket", OpenstackName: testContainerUUID}}, nil
-			},
-		}
-
-		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
-		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "ok.bin", nil, "", 9*gb)
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "ok.bin", nil, "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	t.Run("rejects upload when total would exactly reach the limit (>= boundary)", func(t *testing.T) {
+	t.Run("rejects upload when post-upload usage exactly reaches the limit (>= boundary)", func(t *testing.T) {
 		const gb = int64(1024 * 1024 * 1024)
-		// 현재 40 GB, 한도 50 GB, 새 파일 10 GB → 합계 50 GB = 한도 → 거부 (>= 이므로)
+		// 업로드 반영 후 실제 사용량 50 GB = 한도 → 거부 (>= 이므로, 한도는 배타적 상한)
 		client := &fakeStorageClient{
 			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
-				return []ObjectInfo{{SizeBytes: 40 * gb}}, nil
+				return []ObjectInfo{{SizeBytes: 50 * gb}}, nil
 			},
 		}
 		repo := &fakeContainerRepo{
@@ -508,7 +516,7 @@ func TestServiceUploadObject(t *testing.T) {
 		}
 
 		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
-		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "exact.bin", nil, "", 10*gb)
+		err := svc.UploadObject(ctx, testOwnerID, "my-bucket", "exact.bin", nil, "")
 		if !errors.Is(err, ErrUserStorageLimitExceeded) {
 			t.Fatalf("expected ErrUserStorageLimitExceeded at exact boundary, got %v", err)
 		}
@@ -529,9 +537,77 @@ func TestServiceUploadObject(t *testing.T) {
 		}
 
 		svc := NewService(client, repo, UserStorageLimits{StorageGB: 0})
-		_ = svc.UploadObject(ctx, testOwnerID, "my-bucket", "file.bin", nil, "", 999*1024*1024*1024)
+		_ = svc.UploadObject(ctx, testOwnerID, "my-bucket", "file.bin", nil, "")
 		if listObjectsCalled {
 			t.Fatal("ListObjects should not be called when StorageGB limit is disabled")
+		}
+	})
+}
+
+func TestServiceRemainingStorageBytes(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns unlimited when StorageGB is 0", func(t *testing.T) {
+		svc := NewService(&fakeStorageClient{}, &fakeContainerRepo{}, UserStorageLimits{StorageGB: 0})
+		remaining, limited, err := svc.RemainingStorageBytes(ctx, testOwnerID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if limited {
+			t.Fatal("expected limited=false when StorageGB is 0")
+		}
+		if remaining != 0 {
+			t.Fatalf("expected remaining=0 (unused sentinel), got %d", remaining)
+		}
+	})
+
+	t.Run("returns limit minus current usage", func(t *testing.T) {
+		const gb = int64(1024 * 1024 * 1024)
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{{SizeBytes: 40 * gb}}, nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Container, error) {
+				return []Container{{Name: "my-bucket", OpenstackName: testContainerUUID}}, nil
+			},
+		}
+		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
+		remaining, limited, err := svc.RemainingStorageBytes(ctx, testOwnerID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !limited {
+			t.Fatal("expected limited=true when StorageGB is set")
+		}
+		if want := 10 * gb; remaining != want {
+			t.Fatalf("expected remaining=%d, got %d", want, remaining)
+		}
+	})
+
+	t.Run("clamps remaining to 0 when usage already exceeds the limit", func(t *testing.T) {
+		const gb = int64(1024 * 1024 * 1024)
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return []ObjectInfo{{SizeBytes: 60 * gb}}, nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Container, error) {
+				return []Container{{Name: "my-bucket", OpenstackName: testContainerUUID}}, nil
+			},
+		}
+		svc := NewService(client, repo, UserStorageLimits{StorageGB: 50})
+		remaining, limited, err := svc.RemainingStorageBytes(ctx, testOwnerID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !limited {
+			t.Fatal("expected limited=true when StorageGB is set")
+		}
+		if remaining != 0 {
+			t.Fatalf("expected remaining=0, got %d", remaining)
 		}
 	})
 }

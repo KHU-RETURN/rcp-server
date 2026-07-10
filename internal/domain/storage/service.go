@@ -151,16 +151,22 @@ func (s *Service) ListObjects(ctx context.Context, ownerID uuid.UUID, containerN
 	return objs, nil
 }
 
-func (s *Service) UploadObject(ctx context.Context, ownerID uuid.UUID, containerName, objectName string, r io.Reader, contentType string, size int64) error {
+func (s *Service) UploadObject(ctx context.Context, ownerID uuid.UUID, containerName, objectName string, r io.Reader, contentType string) error {
 	c, err := s.resolveContainer(ctx, ownerID, containerName)
 	if err != nil {
 		return err
 	}
-	if err := s.ensureUserStorageSizeLimit(ctx, ownerID, size); err != nil {
-		return err
-	}
 	if err := s.client.UploadObject(c.OpenstackName.String(), objectName, r, contentType); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+	}
+	// 클라이언트가 보내는 Content-Length는 신뢰할 수 없으므로(누락 시 -1, 위조 가능)
+	// 사전 검증에 쓰지 않는다. 대신 업로드가 끝난 뒤 Swift에 실제로 기록된
+	// 오브젝트 크기 기준으로 한도를 검증하고, 초과 시 방금 올린 오브젝트를 되돌린다.
+	if err := s.ensureUserStorageSizeLimit(ctx, ownerID); err != nil {
+		if delErr := s.client.DeleteObject(c.OpenstackName.String(), objectName); delErr != nil {
+			return fmt.Errorf("%w: quota exceeded and rollback failed: %v", ErrStorageOperationFailed, delErr)
+		}
+		return err
 	}
 	return nil
 }
@@ -235,16 +241,14 @@ func (s *Service) DeleteObject(ctx context.Context, ownerID uuid.UUID, container
 	return nil
 }
 
-func (s *Service) ensureUserStorageSizeLimit(ctx context.Context, ownerID uuid.UUID, additionalBytes int64) error {
-	if s.userLimits.StorageGB <= 0 {
-		return nil
-	}
+// currentStorageUsageBytes는 유저 소유의 모든 컨테이너에 대해 오브젝트 목록을
+// 병렬로 조회해 실제 사용량(바이트)을 집계한다.
+func (s *Service) currentStorageUsageBytes(ctx context.Context, ownerID uuid.UUID) (int64, error) {
 	containers, err := s.repo.ListByOwner(ctx, ownerID)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
+		return 0, fmt.Errorf("%w: %v", ErrStorageOperationFailed, err)
 	}
 
-	// 컨테이너별 오브젝트 목록을 병렬로 조회해 총 사용량 집계.
 	type listResult struct {
 		bytes int64
 		err   error
@@ -270,25 +274,47 @@ func (s *Service) ensureUserStorageSizeLimit(ctx context.Context, ownerID uuid.U
 	var totalBytes int64
 	for _, r := range results {
 		if r.err != nil {
-			return fmt.Errorf("%w: %v", ErrStorageOperationFailed, r.err)
+			return 0, fmt.Errorf("%w: %v", ErrStorageOperationFailed, r.err)
 		}
 		totalBytes += r.bytes
 	}
+	return totalBytes, nil
+}
 
+// ensureUserStorageSizeLimit은 유저의 현재 실사용량이 한도를 넘는지 검증한다.
+// 정확히 한도에 도달하는 것도 거부한다(>=): 한도는 "이 값보다 적게" 허용하는
+// 상한으로 취급한다.
+func (s *Service) ensureUserStorageSizeLimit(ctx context.Context, ownerID uuid.UUID) error {
+	if s.userLimits.StorageGB <= 0 {
+		return nil
+	}
+	totalBytes, err := s.currentStorageUsageBytes(ctx, ownerID)
+	if err != nil {
+		return err
+	}
 	limitBytes := int64(s.userLimits.StorageGB) * 1024 * 1024 * 1024
-	if totalBytes+additionalBytes >= limitBytes {
+	if totalBytes >= limitBytes {
 		return ErrUserStorageLimitExceeded
 	}
 	return nil
 }
 
-// StorageLimitBytes는 유저당 총 스토리지 한도를 바이트 단위로 반환한다.
-// 한도 미설정(0)이면 0을 반환한다.
-func (s *Service) StorageLimitBytes() int64 {
+// RemainingStorageBytes는 유저가 추가로 올릴 수 있는 바이트 수를 반환한다.
+// limited가 false면 한도가 설정되지 않은 것이므로 remaining 값은 의미가 없다.
+func (s *Service) RemainingStorageBytes(ctx context.Context, ownerID uuid.UUID) (remaining int64, limited bool, err error) {
 	if s.userLimits.StorageGB <= 0 {
-		return 0
+		return 0, false, nil
 	}
-	return int64(s.userLimits.StorageGB) * 1024 * 1024 * 1024
+	used, err := s.currentStorageUsageBytes(ctx, ownerID)
+	if err != nil {
+		return 0, true, err
+	}
+	limitBytes := int64(s.userLimits.StorageGB) * 1024 * 1024 * 1024
+	remaining = limitBytes - used
+	if remaining < 0 {
+		remaining = 0
+	}
+	return remaining, true, nil
 }
 
 func (s *Service) ensureUserStorageLimits(ctx context.Context, ownerID uuid.UUID) error {
