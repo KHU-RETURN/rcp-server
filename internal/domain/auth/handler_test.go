@@ -455,6 +455,17 @@ func TestLoginIncludesAllowedRedirectOriginInState(t *testing.T) {
 	if state.Nonce == "" {
 		t.Fatal("expected nonce in state")
 	}
+
+	stateCookie := findCookie(w.Result(), cookieOAuthState)
+	if stateCookie == nil {
+		t.Fatal("expected oauth_state cookie to be set")
+	}
+	if stateCookie.Value != state.Nonce {
+		t.Fatalf("expected oauth_state cookie to match state nonce, got %q vs %q", stateCookie.Value, state.Nonce)
+	}
+	if !stateCookie.HttpOnly || stateCookie.SameSite != http.SameSiteLaxMode {
+		t.Error("oauth_state cookie missing HttpOnly or wrong SameSite")
+	}
 }
 
 func TestLoginRejectsInvalidRedirectOrigin(t *testing.T) {
@@ -660,6 +671,7 @@ func TestCallbackFailureRedirectsToStoredFrontendOrigin(t *testing.T) {
 
 	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")), nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/callback?code=bad-code&state="+url.QueryEscape(rawState), nil)
+	req.AddCookie(&http.Cookie{Name: cookieOAuthState, Value: "test-nonce"})
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
@@ -672,6 +684,72 @@ func TestCallbackFailureRedirectsToStoredFrontendOrigin(t *testing.T) {
 	wantLocation := "https://preview-21.frontend.example.com" + pathLoginError
 	if got := w.Header().Get("Location"); got != wantLocation {
 		t.Fatalf("expected redirect %q, got %q", wantLocation, got)
+	}
+}
+
+func TestCallbackRejectsMissingOrMismatchedStateNonce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stateBytes, err := json.Marshal(oauthState{Nonce: "expected-nonce"})
+	if err != nil {
+		t.Fatalf("failed to marshal state: %v", err)
+	}
+	rawState := base64.RawURLEncoding.EncodeToString(stateBytes)
+
+	tests := []struct {
+		name        string
+		cookieValue string
+		hasCookie   bool
+	}{
+		{name: "missing cookie", hasCookie: false},
+		{name: "mismatched cookie", cookieValue: "wrong-nonce", hasCookie: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")), nil, "")
+			req := httptest.NewRequest(http.MethodGet, "/callback?code=oauth-code&state="+url.QueryEscape(rawState), nil)
+			if tt.hasCookie {
+				req.AddCookie(&http.Cookie{Name: cookieOAuthState, Value: tt.cookieValue})
+			}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = req
+
+			handler.Callback(c)
+
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+			}
+		})
+	}
+}
+
+func TestCallbackAcceptsMatchingStateNonce(t *testing.T) {
+	t.Setenv(envAuthCookieSecure, "false")
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler(NewService(&fakeRepo{users: map[string]*User{}}, &oauth2.Config{}, NewTokenService("test-secret")), nil, "")
+
+	stateBytes, err := json.Marshal(oauthState{Nonce: "matching-nonce"})
+	if err != nil {
+		t.Fatalf("failed to marshal state: %v", err)
+	}
+	rawState := base64.RawURLEncoding.EncodeToString(stateBytes)
+
+	// verifyGoogleCode/ProcessGoogleCallback will still fail on this fake code
+	// (redirect-to-error), but a matching nonce must get past the 401
+	// short-circuit — that's what this test asserts.
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=fake-code&state="+url.QueryEscape(rawState), nil)
+	req.AddCookie(&http.Cookie{Name: cookieOAuthState, Value: "matching-nonce"})
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	handler.Callback(c)
+
+	if w.Code == http.StatusUnauthorized {
+		t.Fatalf("matching nonce should not be rejected with 401, got %d body=%s", w.Code, w.Body.String())
 	}
 }
 

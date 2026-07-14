@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -26,6 +27,12 @@ type responseHeaderWriter interface {
 
 func NewClient(provider *gophercloud.ProviderClient) *Client {
 	return &Client{provider: provider}
+}
+
+// isSwiftNotFound는 OpenStack Swift 404 응답 여부를 판별한다.
+func isSwiftNotFound(err error) bool {
+	var notFound gophercloud.ErrDefault404
+	return errors.As(err, &notFound)
 }
 
 func (c *Client) serviceClient() (*gophercloud.ServiceClient, error) {

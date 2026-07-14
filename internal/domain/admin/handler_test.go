@@ -410,6 +410,31 @@ func TestServiceOverlaysLiveInstanceStatus(t *testing.T) {
 	}
 }
 
+func TestServiceSummaryCountsLiveStatuses(t *testing.T) {
+	ctx := context.Background()
+	client := newAdminTestClient(t, "admin-summary-live")
+	student := createTestUser(t, client, "student@return.dev", "student")
+
+	// DB statuses are stale ("BUILD"); vm-gone is absent from live data.
+	createTestInstance(t, client, student, "vm-live", "BUILD")
+	createTestInstance(t, client, student, "vm-gone", "BUILD")
+
+	svc := NewService(NewRepository(client), nil, fakeInstanceStatusSource{
+		statuses: map[string]string{"vm-live": "ACTIVE"},
+	})
+
+	res, err := svc.Summary(ctx)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if res.Users != 1 || res.Instances != 2 {
+		t.Fatalf("unexpected summary counts: %+v", res)
+	}
+	if res.StatusCounts["ACTIVE"] != 1 || res.StatusCounts["BUILD"] != 1 {
+		t.Fatalf("expected live status counts with DB fallback, got %+v", res.StatusCounts)
+	}
+}
+
 func TestServiceFallsBackToDBStatusWhenLiveFetchFails(t *testing.T) {
 	ctx := context.Background()
 	client := newAdminTestClient(t, "admin-live-status-error")

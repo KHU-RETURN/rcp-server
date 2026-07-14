@@ -8,6 +8,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -38,7 +39,23 @@ type Service struct {
 	repo             instanceRepo
 	projectID        string
 	defaultNetworkID string
+
+	flavorMu         sync.Mutex
+	flavorCache      []Flavor
+	flavorExpire     time.Time
+	flavorInflight   *flavorFetch // 콜드 스타트(캐시 비어있음)에서 fetch를 공유하기 위한 핸들
+	flavorRefreshing bool         // 만료된 캐시를 백그라운드에서 갱신 중인지 여부
 }
+
+// flavorFetch는 콜드 스타트 시 동시 호출자들이 하나의 upstream fetch 결과를 공유하기 위한 핸들이다.
+type flavorFetch struct {
+	done   chan struct{}
+	result []Flavor
+	err    error
+}
+
+// flavorCacheTTL — flavor 목록은 거의 정적이라 요청마다 OpenStack에 묻지 않는다.
+const flavorCacheTTL = 5 * time.Minute
 
 var (
 	ErrCreateInstanceNameRequired   = errors.New("name is required")
@@ -57,8 +74,70 @@ func NewService(client computeClient, repo instanceRepo, projectID, defaultNetwo
 	}
 }
 
+// fetchFlavors는 flavor 목록을 TTL 캐시를 거쳐 반환한다.
+// 네트워크 호출은 절대 flavorMu를 잡은 채로 하지 않는다: 캐시가 있으면 만료돼도 stale 값을
+// 즉시 돌려주고 갱신은 단일 goroutine에 맡기며(stale-while-revalidate), 캐시가 비어있는
+// 콜드 스타트에서만 한 goroutine이 락 밖에서 fetch하고 나머지는 그 결과를 공유받는다.
+func (s *Service) fetchFlavors() ([]Flavor, error) {
+	s.flavorMu.Lock()
+
+	if time.Now().Before(s.flavorExpire) {
+		cache := s.flavorCache
+		s.flavorMu.Unlock()
+		return cache, nil
+	}
+
+	if len(s.flavorCache) > 0 {
+		stale := s.flavorCache
+		if !s.flavorRefreshing {
+			s.flavorRefreshing = true
+			go s.refreshFlavorsStale()
+		}
+		s.flavorMu.Unlock()
+		return stale, nil
+	}
+
+	if fetch := s.flavorInflight; fetch != nil {
+		s.flavorMu.Unlock()
+		<-fetch.done
+		return fetch.result, fetch.err
+	}
+
+	fetch := &flavorFetch{done: make(chan struct{})}
+	s.flavorInflight = fetch
+	s.flavorMu.Unlock()
+
+	raw, err := s.client.FetchFlavors()
+
+	s.flavorMu.Lock()
+	if err == nil {
+		s.flavorCache = raw
+		s.flavorExpire = time.Now().Add(flavorCacheTTL)
+	}
+	s.flavorInflight = nil
+	s.flavorMu.Unlock()
+
+	fetch.result, fetch.err = raw, err
+	close(fetch.done)
+
+	return raw, err
+}
+
+// refreshFlavorsStale은 만료된 캐시를 백그라운드에서 갱신한다. 실패해도 기존 stale 캐시를 유지한다.
+func (s *Service) refreshFlavorsStale() {
+	raw, err := s.client.FetchFlavors()
+
+	s.flavorMu.Lock()
+	if err == nil {
+		s.flavorCache = raw
+		s.flavorExpire = time.Now().Add(flavorCacheTTL)
+	}
+	s.flavorRefreshing = false
+	s.flavorMu.Unlock()
+}
+
 func (s *Service) GetFlavors() ([]FlavorResponse, error) {
-	rawFlavors, err := s.client.FetchFlavors()
+	rawFlavors, err := s.fetchFlavors()
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +150,7 @@ func (s *Service) GetFlavors() ([]FlavorResponse, error) {
 }
 
 func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, error) {
-	rawFlavors, err := s.client.FetchFlavors()
+	rawFlavors, err := s.fetchFlavors()
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +160,10 @@ func (s *Service) GetAvailableFlavorsWithLimit() ([]AvailableFlavorResponse, err
 		return nil, fmt.Errorf("쿼터 조회 실패: %v", err)
 	}
 
-	remCores := quota.Cores.Limit - quota.Cores.InUse
-	remRAM := quota.RAM.Limit - quota.RAM.InUse
-	remInstances := quota.Instances.Limit - quota.Instances.InUse
+	// Reserved: 빌드 진행 중인 예약분도 이미 소진된 용량이다.
+	remCores := quota.Cores.Limit - quota.Cores.InUse - quota.Cores.Reserved
+	remRAM := quota.RAM.Limit - quota.RAM.InUse - quota.RAM.Reserved
+	remInstances := quota.Instances.Limit - quota.Instances.InUse - quota.Instances.Reserved
 
 	var res []AvailableFlavorResponse
 	for _, f := range rawFlavors {
@@ -176,21 +256,46 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Created:    srv.Created,
 		})
 	}
+	// prune 실패는 non-fatal — 이미 조회한 라이브 목록 res는 그대로 반환한다.
 	if err := s.pruneStaleInstances(ctx, ownerID, staleIDs); err != nil {
-		return nil, err
+		log.Printf("WARN: failed to prune stale instances for owner %s: %v", ownerID, err)
 	}
 
 	return res, nil
 }
 
+// pruneStaleInstances는 목록 스냅샷에 없던 DB 행을 정리한다.
+// 생성 직후 레이스(목록 API 지연)로 살아있는 서버의 소유권 행을 지우면
+// 해당 VM이 API에서 영영 보이지 않게 되므로, 개별 조회로 404를 확인한 뒤에만 삭제한다.
+// staleID별 확인은 서로 독립적이므로 병렬로 처리하되, stale 행이 비정상적으로
+// 많아도 Nova로의 동시 호출이 폭주하지 않게 상한을 둔다.
 func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, staleIDs []string) error {
-	for _, id := range staleIDs {
-		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
-			return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
-		}
-	}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	sem := make(chan struct{}, 8)
 
-	return nil
+	wg.Add(len(staleIDs))
+	for _, id := range staleIDs {
+		go func(id string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if _, err := s.client.FetchInstance(id); !isServerNotFound(err) {
+				return
+			}
+			if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+				}
+				mu.Unlock()
+			}
+		}(id)
+	}
+	wg.Wait()
+
+	return firstErr
 }
 
 // GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
@@ -264,20 +369,29 @@ func (s *Service) UpdateInstance(ctx context.Context, ownerID uuid.UUID, id stri
 	}
 
 	req = normalizeUpdateInstanceRequest(req)
+	// PATCH 시맨틱: 빈 필드는 기존 값 유지.
+	// ponytail: 빈 문자열로 필드를 비우는 건 불가 — 필요해지면 *string DTO로 전환.
 	if req.Name == "" {
 		req.Name = inst.Name
 	}
-
-	if err := s.repo.UpdateInstanceMetadata(ctx, ownerID, id, req); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+	if req.KeyName == "" {
+		req.KeyName = inst.KeyName
+	}
+	if req.Note == "" {
+		req.Note = inst.Note
 	}
 
+	// OpenStack 먼저, DB 나중: 원격 실패 시 DB가 먼저 바뀌어 두 시스템이 어긋나는 것을 막는다.
 	if req.Name != inst.Name {
 		if _, err := s.client.UpdateServerName(id, req.Name); err != nil {
 			log.Printf("CRITICAL: Failed to update OpenStack name for %s: %v", id, err)
 
 			return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 		}
+	}
+
+	if err := s.repo.UpdateInstanceMetadata(ctx, ownerID, id, req); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 
 	return s.GetInstanceDetail(ctx, ownerID, id)
@@ -357,6 +471,10 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 	}
 
 	if err := s.repo.SaveInstance(ctx, ownerID, inst); err != nil {
+		// 소유권 기록 실패 시 방금 만든 서버를 회수해 고아 VM을 막는다.
+		if delErr := s.client.DeleteServer(server.ID); delErr != nil {
+			log.Printf("CRITICAL: orphaned server %s: DB save failed (%v) and cleanup failed (%v)", server.ID, err, delErr)
+		}
 		return nil, fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
 	}
 
@@ -364,7 +482,7 @@ func (s *Service) CreateInstance(ctx context.Context, ownerID uuid.UUID, opts Cr
 }
 
 func (s *Service) fetchFlavorMap() (map[string]FlavorResponse, error) {
-	rawFlavors, err := s.client.FetchFlavors()
+	rawFlavors, err := s.fetchFlavors()
 	if err != nil {
 		return nil, err
 	}

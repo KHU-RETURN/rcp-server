@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/gophercloud/gophercloud"
 )
 
 var testOwnerID = uuid.New()
@@ -187,6 +191,147 @@ func TestServiceGetFlavors(t *testing.T) {
 		_, err := svc.GetFlavors()
 		if err == nil {
 			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("caches flavors across calls", func(t *testing.T) {
+		calls := 0
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				calls++
+				return []Flavor{{ID: "1", Name: "m1.small"}}, nil
+			},
+		}
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
+		for range 3 {
+			if _, err := svc.GetFlavors(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		}
+		if calls != 1 {
+			t.Fatalf("expected 1 upstream fetch, got %d", calls)
+		}
+	})
+
+	t.Run("does not cache errors", func(t *testing.T) {
+		calls := 0
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				calls++
+				if calls == 1 {
+					return nil, errors.New("upstream error")
+				}
+				return []Flavor{{ID: "1"}}, nil
+			},
+		}
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
+		if _, err := svc.GetFlavors(); err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		res, err := svc.GetFlavors()
+		if err != nil || len(res) != 1 {
+			t.Fatalf("expected retry to succeed, got res=%v err=%v", res, err)
+		}
+	})
+}
+
+func TestServiceFetchFlavorsConcurrency(t *testing.T) {
+	t.Run("cold start: concurrent callers share a single upstream fetch", func(t *testing.T) {
+		var calls int32
+		started := make(chan struct{})
+		var startOnce sync.Once
+		release := make(chan struct{})
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				atomic.AddInt32(&calls, 1)
+				startOnce.Do(func() { close(started) })
+				<-release
+				return []Flavor{{ID: "1"}}, nil
+			},
+		}
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
+
+		const n = 10
+		var wg sync.WaitGroup
+		wg.Add(n)
+		for i := 0; i < n; i++ {
+			go func() {
+				defer wg.Done()
+				res, err := svc.GetFlavors()
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if len(res) != 1 || res[0].ID != "1" {
+					t.Errorf("unexpected result: %#v", res)
+				}
+			}()
+		}
+
+		<-started
+		close(release)
+		wg.Wait()
+
+		if got := atomic.LoadInt32(&calls); got != 1 {
+			t.Fatalf("expected exactly 1 upstream fetch, got %d", got)
+		}
+	})
+
+	t.Run("stale cache is served immediately while a single background refresh runs", func(t *testing.T) {
+		var calls int32
+		release := make(chan struct{})
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				if atomic.AddInt32(&calls, 1) == 1 {
+					return []Flavor{{ID: "stale"}}, nil
+				}
+				<-release // 백그라운드 갱신 호출: 검증이 끝날 때까지 대기
+				return []Flavor{{ID: "fresh"}}, nil
+			},
+		}
+		svc := NewService(client, &fakeRepo{}, "project-1", "")
+
+		if _, err := svc.GetFlavors(); err != nil {
+			t.Fatalf("unexpected error priming cache: %v", err)
+		}
+		svc.flavorMu.Lock()
+		svc.flavorExpire = time.Now().Add(-time.Second)
+		svc.flavorMu.Unlock()
+
+		const n = 5
+		var wg sync.WaitGroup
+		wg.Add(n)
+		for i := 0; i < n; i++ {
+			go func() {
+				defer wg.Done()
+				res, err := svc.GetFlavors()
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if len(res) != 1 || res[0].ID != "stale" {
+					t.Errorf("expected stale flavor served, got %#v", res)
+				}
+			}()
+		}
+		wg.Wait()
+
+		close(release)
+		deadline := time.After(time.Second)
+		for {
+			svc.flavorMu.Lock()
+			refreshing := svc.flavorRefreshing
+			svc.flavorMu.Unlock()
+			if !refreshing {
+				break
+			}
+			select {
+			case <-deadline:
+				t.Fatal("timed out waiting for background refresh to finish")
+			case <-time.After(time.Millisecond):
+			}
+		}
+
+		if got := atomic.LoadInt32(&calls); got != 2 {
+			t.Fatalf("expected exactly 2 upstream fetches (prime + 1 refresh), got %d", got)
 		}
 	})
 }
@@ -610,9 +755,14 @@ func TestServiceCreateInstance(t *testing.T) {
 	})
 
 	t.Run("returns operation failed when repo save errors", func(t *testing.T) {
+		var cleanedUpID string
 		client := &fakeClient{
 			createServerFn: func(opts CreateServerOpts) (*Server, error) {
 				return testServer(map[string]any{}), nil
+			},
+			deleteServerFn: func(id string) error {
+				cleanedUpID = id
+				return nil
 			},
 		}
 		repo := &fakeRepo{
@@ -629,6 +779,9 @@ func TestServiceCreateInstance(t *testing.T) {
 		})
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
+		}
+		if cleanedUpID != "server-1" {
+			t.Fatalf("expected orphaned server-1 to be cleaned up, got %q", cleanedUpID)
 		}
 	})
 }
@@ -662,6 +815,9 @@ func TestServiceGetInstances(t *testing.T) {
 					},
 				}}, nil
 			},
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return nil, gophercloud.ErrDefault404{}
+			},
 			fetchFlavorsFn: func() ([]Flavor, error) {
 				return []Flavor{
 					{ID: "flavor-1", Name: "m1.small", VCPUs: 1, RAM: 1024},
@@ -686,7 +842,7 @@ func TestServiceGetInstances(t *testing.T) {
 		}
 	})
 
-	t.Run("returns operation failed when pruning stale DB rows fails", func(t *testing.T) {
+	t.Run("prune failure is non-fatal and still returns the live instance list", func(t *testing.T) {
 		repo := &fakeRepo{
 			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
 				return []Instance{{OpenstackID: "server-stale"}}, nil
@@ -697,13 +853,183 @@ func TestServiceGetInstances(t *testing.T) {
 		}
 		client := &fakeClient{
 			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
-			fetchFlavorsFn:   func() ([]Flavor, error) { return []Flavor{}, nil },
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return nil, gophercloud.ErrDefault404{}
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
 		}
 
 		svc := NewService(client, repo, "project-1", "")
-		_, err := svc.GetInstances(ctx, testOwnerID)
+		res, err := svc.GetInstances(ctx, testOwnerID)
+		if err != nil {
+			t.Fatalf("expected prune failure to be non-fatal, got err: %v", err)
+		}
+		if len(res) != 0 {
+			t.Fatalf("expected empty live instance list, got %#v", res)
+		}
+	})
+
+	t.Run("confirms stale IDs concurrently", func(t *testing.T) {
+		staleIDs := []string{"server-a", "server-b", "server-c"}
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				instances := make([]Instance, len(staleIDs))
+				for i, id := range staleIDs {
+					instances[i] = Instance{OpenstackID: id}
+				}
+				return instances, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) error { return nil },
+		}
+
+		var inFlight int32
+		var maxInFlight int32
+		release := make(chan struct{})
+		client := &fakeClient{
+			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
+			fetchInstanceFn: func(id string) (*Server, error) {
+				cur := atomic.AddInt32(&inFlight, 1)
+				for {
+					prev := atomic.LoadInt32(&maxInFlight)
+					if cur <= prev || atomic.CompareAndSwapInt32(&maxInFlight, prev, cur) {
+						break
+					}
+				}
+				<-release
+				atomic.AddInt32(&inFlight, -1)
+				return nil, gophercloud.ErrDefault404{}
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+
+		svc := NewService(client, repo, "project-1", "")
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if _, err := svc.GetInstances(ctx, testOwnerID); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		}()
+
+		// 모든 staleID 확인이 동시에 진행 중일 때까지 대기한다.
+		deadline := time.After(time.Second)
+		for int(atomic.LoadInt32(&maxInFlight)) != len(staleIDs) {
+			select {
+			case <-deadline:
+				t.Fatalf("expected %d concurrent FetchInstance calls, max seen %d", len(staleIDs), atomic.LoadInt32(&maxInFlight))
+			case <-time.After(time.Millisecond):
+			}
+		}
+		close(release)
+		<-done
+	})
+
+	t.Run("keeps DB row when server missing from list snapshot but still exists", func(t *testing.T) {
+		var deletedIDs []string
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-racing"}}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+				deletedIDs = append(deletedIDs, id)
+				return nil
+			},
+		}
+		client := &fakeClient{
+			// 목록 스냅샷에는 없지만 개별 조회로는 살아있는 서버 (생성 직후 레이스)
+			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return &Server{ID: id, Status: "BUILD"}, nil
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+
+		svc := NewService(client, repo, "project-1", "")
+		if _, err := svc.GetInstances(ctx, testOwnerID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deletedIDs) != 0 {
+			t.Fatalf("expected no deletion for live server, got %#v", deletedIDs)
+		}
+	})
+
+	t.Run("keeps DB row when per-ID confirm fails transiently", func(t *testing.T) {
+		var deletedIDs []string
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-x"}}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+				deletedIDs = append(deletedIDs, id)
+				return nil
+			},
+		}
+		client := &fakeClient{
+			fetchInstancesFn: func() ([]Server, error) { return []Server{}, nil },
+			fetchInstanceFn: func(id string) (*Server, error) {
+				return nil, errors.New("timeout")
+			},
+			fetchFlavorsFn: func() ([]Flavor, error) { return []Flavor{}, nil },
+		}
+
+		svc := NewService(client, repo, "project-1", "")
+		if _, err := svc.GetInstances(ctx, testOwnerID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deletedIDs) != 0 {
+			t.Fatalf("expected no deletion on transient error, got %#v", deletedIDs)
+		}
+	})
+}
+
+func TestServiceUpdateInstance(t *testing.T) {
+	ctx := context.Background()
+	existing := &Instance{OpenstackID: "server-1", Name: "old-name", KeyName: "my-key", Note: "my-note"}
+
+	t.Run("preserves key_name and note when request only sets name", func(t *testing.T) {
+		var captured UpdateInstanceRequest
+		repo := &fakeRepo{
+			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (*Instance, error) {
+				return existing, nil
+			},
+			updateMetadataFn: func(_ context.Context, _ uuid.UUID, _ string, update UpdateInstanceRequest) error {
+				captured = update
+				return nil
+			},
+		}
+		svc := NewService(&fakeClient{}, repo, "project-1", "")
+		if _, err := svc.UpdateInstance(ctx, testOwnerID, "server-1", UpdateInstanceRequest{Name: "new-name"}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := UpdateInstanceRequest{Name: "new-name", KeyName: "my-key", Note: "my-note"}
+		if captured != want {
+			t.Fatalf("expected %+v, got %+v", want, captured)
+		}
+	})
+
+	t.Run("does not touch DB when OpenStack rename fails", func(t *testing.T) {
+		dbTouched := false
+		repo := &fakeRepo{
+			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (*Instance, error) {
+				return existing, nil
+			},
+			updateMetadataFn: func(_ context.Context, _ uuid.UUID, _ string, _ UpdateInstanceRequest) error {
+				dbTouched = true
+				return nil
+			},
+		}
+		client := &fakeClient{
+			updateServerNameFn: func(id, name string) (*Server, error) {
+				return nil, errors.New("nova down")
+			},
+		}
+		svc := NewService(client, repo, "project-1", "")
+		_, err := svc.UpdateInstance(ctx, testOwnerID, "server-1", UpdateInstanceRequest{Name: "new-name"})
 		if !errors.Is(err, ErrInstanceOperationFailed) {
 			t.Fatalf("expected ErrInstanceOperationFailed, got %v", err)
+		}
+		if dbTouched {
+			t.Fatal("expected DB untouched when OpenStack rename fails")
 		}
 	})
 }

@@ -41,11 +41,12 @@ func (s *Service) BuildLoginURL(stateOverride string) string {
 	return s.OauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
 }
 
-// GetGoogleLoginURL은 사용자를 리다이렉트시킬 구글 승인 페이지 URL을 생성합니다.
-func (s *Service) GetGoogleLoginURL(redirectOrigin string) string {
-	// 실제 운영 환경에서는 state를 세션에 저장하고 콜백에서 검증해야 보안상 안전합니다.
-	state := s.generateOAuthState(redirectOrigin)
-	return s.OauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
+// GetGoogleLoginURL은 사용자를 리다이렉트시킬 구글 승인 페이지 URL과, 호출자가
+// double-submit 쿠키로 저장해 콜백에서 검증해야 할 state nonce를 함께 반환합니다.
+func (s *Service) GetGoogleLoginURL(redirectOrigin string) (loginURL, nonce string) {
+	nonce = s.generateState(oauthStateByteLen)
+	state := s.encodeOAuthState(nonce, redirectOrigin)
+	return s.OauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline), nonce
 }
 
 // verifiedGoogleIdentity는 id_token 검증으로 확인된 사용자 정보입니다.
@@ -146,9 +147,9 @@ func (s *Service) generateState(n int) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (s *Service) generateOAuthState(redirectOrigin string) string {
+func (s *Service) encodeOAuthState(nonce, redirectOrigin string) string {
 	state := oauthState{
-		Nonce:          s.generateState(oauthStateByteLen),
+		Nonce:          nonce,
 		RedirectOrigin: redirectOrigin,
 	}
 	b, err := json.Marshal(state)

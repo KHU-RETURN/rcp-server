@@ -113,6 +113,65 @@ func TestRepository_UpsertUserWithGoogleAuth(t *testing.T) {
 		}
 	})
 
+	t.Run("재로그인 시 refresh_token이 비어있으면 기존 값을 보존한다", func(t *testing.T) {
+		repo := newTestRepo(t)
+		email := "refresh-preserve@khu.ac.kr"
+
+		if err := repo.UpsertUser(ctx, &User{
+			Email: email,
+			Name:  "유저",
+			GoogleAuth: &GoogleInfo{
+				AccessToken:  "access-1",
+				RefreshToken: "original-refresh-token",
+			},
+		}); err != nil {
+			t.Fatalf("failed to seed user: %v", err)
+		}
+
+		// Google은 최초 동의 이후 재로그인 시 refresh_token을 내려주지 않는다.
+		if err := repo.UpsertUser(ctx, &User{
+			Email: email,
+			Name:  "유저",
+			GoogleAuth: &GoogleInfo{
+				AccessToken:  "access-2",
+				RefreshToken: "",
+			},
+		}); err != nil {
+			t.Fatalf("upsert failed: %v", err)
+		}
+
+		saved, err := repo.FindByEmail(ctx, email)
+		if err != nil || saved == nil {
+			t.Fatalf("FindByEmail failed: %v", err)
+		}
+		if saved.GoogleAuth.RefreshToken != "original-refresh-token" {
+			t.Errorf("expected refresh token to be preserved, got %q", saved.GoogleAuth.RefreshToken)
+		}
+		if saved.GoogleAuth.AccessToken != "access-2" {
+			t.Errorf("expected access token to be updated, got %q", saved.GoogleAuth.AccessToken)
+		}
+
+		// 이후 새 refresh_token을 받으면 정상적으로 갱신된다.
+		if err := repo.UpsertUser(ctx, &User{
+			Email: email,
+			Name:  "유저",
+			GoogleAuth: &GoogleInfo{
+				AccessToken:  "access-3",
+				RefreshToken: "new-refresh-token",
+			},
+		}); err != nil {
+			t.Fatalf("upsert failed: %v", err)
+		}
+
+		saved, err = repo.FindByEmail(ctx, email)
+		if err != nil || saved == nil {
+			t.Fatalf("FindByEmail failed: %v", err)
+		}
+		if saved.GoogleAuth.RefreshToken != "new-refresh-token" {
+			t.Errorf("expected refresh token to be updated to new value, got %q", saved.GoogleAuth.RefreshToken)
+		}
+	})
+
 	t.Run("google tokens are empty when GoogleAuth is nil", func(t *testing.T) {
 		repo := newTestRepo(t)
 

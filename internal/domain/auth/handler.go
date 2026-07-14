@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"encoding/base64"
 	"encoding/json"
 	"net"
@@ -34,6 +35,10 @@ const (
 
 	cookieAccessToken  = "access_token"
 	cookieRefreshToken = "refresh_token"
+	cookieOAuthState   = "oauth_state"
+
+	// oauthStateCookieMaxAge는 OAuth state nonce 쿠키의 유효 시간(초)입니다.
+	oauthStateCookieMaxAge = 10 * 60
 
 	defaultFrontendURL = "http://localhost:4173"
 )
@@ -102,7 +107,9 @@ func (h *Handler) Login(c *gin.Context) {
 		redirectOrigin = allowedOrigin
 	}
 
-	c.Redirect(http.StatusTemporaryRedirect, h.Svc.GetGoogleLoginURL(redirectOrigin))
+	loginURL, nonce := h.Svc.GetGoogleLoginURL(redirectOrigin)
+	setOAuthStateCookie(c, nonce)
+	c.Redirect(http.StatusTemporaryRedirect, loginURL)
 }
 
 func (h *Handler) Callback(c *gin.Context) {
@@ -111,6 +118,13 @@ func (h *Handler) Callback(c *gin.Context) {
 		h.handleSSHCallback(c, state)
 		return
 	}
+
+	if !validOAuthStateNonce(c, state) {
+		clearOAuthStateCookie(c)
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: ErrInvalidOAuthState.Error()})
+		return
+	}
+	clearOAuthStateCookie(c)
 
 	code := c.Query("code")
 	if code == "" {
@@ -385,6 +399,40 @@ func authCookieSecure() bool {
 func setAuthCookie(c *gin.Context, name, value string, maxAge int) {
 	c.SetSameSite(authCookieSameSite())
 	c.SetCookie(name, value, maxAge, "/", "", authCookieSecure(), true)
+}
+
+// setOAuthStateCookie는 로그인 CSRF 방지를 위해 state nonce를 double-submit
+// 쿠키로 저장합니다. 콜백에서 state 파라미터의 nonce와 비교됩니다.
+func setOAuthStateCookie(c *gin.Context, nonce string) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(cookieOAuthState, nonce, oauthStateCookieMaxAge, "/", "", authCookieSecure(), true)
+}
+
+// clearOAuthStateCookie는 콜백 처리 후 state 쿠키를 제거합니다.
+func clearOAuthStateCookie(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(cookieOAuthState, "", -1, "/", "", authCookieSecure(), true)
+}
+
+// validOAuthStateNonce는 state 파라미터에 인코딩된 nonce가 oauth_state 쿠키
+// 값과 일치하는지 상수 시간 비교로 검증합니다.
+func validOAuthStateNonce(c *gin.Context, raw string) bool {
+	b, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return false
+	}
+
+	var state oauthState
+	if err := json.Unmarshal(b, &state); err != nil || state.Nonce == "" {
+		return false
+	}
+
+	cookieNonce, err := c.Cookie(cookieOAuthState)
+	if err != nil || cookieNonce == "" {
+		return false
+	}
+
+	return hmac.Equal([]byte(state.Nonce), []byte(cookieNonce))
 }
 
 func authCookieSameSite() http.SameSite {

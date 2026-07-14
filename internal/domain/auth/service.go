@@ -19,6 +19,7 @@ var (
 	ErrInvalidTokenType       = errors.New("invalid token type")
 	ErrUserNotFound           = errors.New("user not found")
 	ErrUserLookupFailed       = errors.New("failed to verify user")
+	ErrInvalidOAuthState      = errors.New("invalid oauth state")
 )
 
 // userRepository는 유저 데이터 접근 인터페이스입니다.

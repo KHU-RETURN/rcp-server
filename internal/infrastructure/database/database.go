@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
+	entsql "entgo.io/ent/dialect/sql"
 	_ "github.com/lib/pq"
 	"modernc.org/sqlite"
 
@@ -35,9 +37,14 @@ func NewEntClient(cfg Config) (*ent.Client, error) {
 }
 
 func OpenEntClient(cfg Config) (*ent.Client, error) {
-	client, err := ent.Open(cfg.Driver, cfg.DSN)
+	drv, err := entsql.Open(cfg.Driver, cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	return client, nil
+	// sqlite는 파일 단위 write lock이라 writer 커넥션을 1개로 제한해
+	// 풀 내부 경쟁으로 인한 SQLITE_BUSY를 막는다 (읽기 전용 DSN은 제외).
+	if cfg.Driver == "sqlite3" && !strings.Contains(cfg.DSN, "mode=ro") {
+		drv.DB().SetMaxOpenConns(1)
+	}
+	return ent.NewClient(ent.Driver(drv)), nil
 }

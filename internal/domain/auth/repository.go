@@ -38,7 +38,7 @@ func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 		SetName(user.Name).
 		SetGoogleID(user.GoogleID).
 		SetGoogleAccessToken(googleAccessToken).
-		SetGoogleRefreshToken(googleRefreshToken).
+		SetGoogleRefreshToken(googleRefreshToken). // required column; empty is harmless on insert
 		SetGoogleTokenExpiry(googleExpiry)
 	if user.CurrentRefreshJTI != nil {
 		create = create.SetCurrentRefreshJti(*user.CurrentRefreshJTI)
@@ -48,11 +48,15 @@ func (r *Repository) UpsertUser(ctx context.Context, user *User) error {
 		OnConflict(
 			sql.ConflictColumns(entuser.FieldEmail),
 		).
+		// Google은 최초 동의 시에만 refresh_token을 내려주므로, 재로그인 시 빈 값으로
+		// 기존 값을 덮어쓰지 않도록 non-empty일 때만 갱신합니다.
 		Update(func(u *ent.UserUpsert) {
 			u.SetName(user.Name)
 			u.SetGoogleID(user.GoogleID)
 			u.SetGoogleAccessToken(googleAccessToken)
-			u.SetGoogleRefreshToken(googleRefreshToken)
+			if googleRefreshToken != "" {
+				u.SetGoogleRefreshToken(googleRefreshToken)
+			}
 			u.SetGoogleTokenExpiry(googleExpiry)
 			u.SetUpdatedAt(time.Now())
 			if user.CurrentRefreshJTI != nil {

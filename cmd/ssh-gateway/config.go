@@ -9,6 +9,8 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/utils"
 )
 
+const defaultMaxConns = 256
+
 type Config struct {
 	Listen             string        // outer SSH listen address, e.g. ":2222"
 	HostKeyPath        string        // ed25519 host key file (created on first boot)
@@ -20,6 +22,7 @@ type Config struct {
 	APIURLBase         string        // API origin used for internal ephemeral-key registration
 	NonceTTL           time.Duration // pending-session lifetime
 	MaxPendingSessions int           // pending OAuth sessions cap
+	MaxConns           int           // concurrent accepted SSH connections cap
 	FixedNetworkName   string        // optional OpenStack network name for fixed IP selection
 	VMUsers            []string      // inner SSH login users tried in order
 	DBDriver           string        // ent DB driver
@@ -84,7 +87,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		dbDSN = "file:" + dbPath + "?mode=ro&cache=shared&_pragma=foreign_keys(1)"
+		dbDSN = "file:" + dbPath + "?mode=ro&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 	}
 	if err := validateGatewayDBDSN(dbDriver, dbDSN); err != nil {
 		return nil, err
@@ -100,6 +103,13 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 	}
 	if maxPending <= 0 {
 		return nil, fmt.Errorf("RCP_SSH_GW_MAX_PENDING_SESSIONS: must be > 0, got %d", maxPending)
+	}
+	maxConns, err := utils.EnvInt(getenv, "RCP_SSH_GW_MAX_CONNS", defaultMaxConns)
+	if err != nil {
+		return nil, err
+	}
+	if maxConns <= 0 {
+		return nil, fmt.Errorf("RCP_SSH_GW_MAX_CONNS: must be > 0, got %d", maxConns)
 	}
 	fixedNetwork := strings.TrimSpace(getenv("RCP_SSH_GW_FIXED_NETWORK"))
 	vmUsers := parseVMUsers(getenv)
@@ -120,6 +130,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 		APIURLBase:         apiURL,
 		NonceTTL:           ttl,
 		MaxPendingSessions: maxPending,
+		MaxConns:           maxConns,
 		FixedNetworkName:   fixedNetwork,
 		VMUsers:            vmUsers,
 		DBDriver:           dbDriver,

@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/gophercloud/gophercloud"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
@@ -497,6 +498,62 @@ func TestHandlerDownloadObject(t *testing.T) {
 			t.Fatalf("unexpected body: %q", w.Body.String())
 		}
 	})
+
+	t.Run("returns 404 when object does not exist in Swift", func(t *testing.T) {
+		client := &fakeStorageClient{
+			downloadObjectFn: func(_, _ string, _ io.Writer) error {
+				return gophercloud.ErrDefault404{}
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/storage/containers/my-bucket/objects/missing.txt", nil)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		withTestUser(v1)
+		newTestHandler(client, repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("does not append JSON error after body streaming started", func(t *testing.T) {
+		// 이미 200 응답 본문이 흘러나간 뒤 다운로드가 실패하면
+		// JSON 에러로 스트림을 오염시키지 않아야 한다.
+		client := &fakeStorageClient{
+			downloadObjectFn: func(_, _ string, w io.Writer) error {
+				_, _ = w.Write([]byte("partial content"))
+				return errors.New("stream error: connection reset")
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, api.BasePath+"/storage/containers/my-bucket/objects/hello.txt", nil)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		withTestUser(v1)
+		newTestHandler(client, repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 (headers already sent), got %d", w.Code)
+		}
+		if w.Body.String() != "partial content" {
+			t.Fatalf("expected only partial content in body, got %q", w.Body.String())
+		}
+	})
 }
 
 func TestHandlerArchiveObjects(t *testing.T) {
@@ -581,6 +638,31 @@ func TestHandlerDeleteObject(t *testing.T) {
 
 		if w.Code != http.StatusNoContent {
 			t.Fatalf("expected 204, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns 404 when object does not exist in Swift", func(t *testing.T) {
+		client := &fakeStorageClient{
+			deleteObjectFn: func(_, _ string) error {
+				return gophercloud.ErrDefault404{}
+			},
+		}
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return &Container{Name: "my-bucket", OpenstackName: testContainerUUID}, nil
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, api.BasePath+"/storage/containers/my-bucket/objects/missing.txt", nil)
+		w := httptest.NewRecorder()
+		r := gin.New()
+		v1 := r.Group(api.BasePath)
+		withTestUser(v1)
+		newTestHandler(client, repo).InitRoutes(v1)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 }

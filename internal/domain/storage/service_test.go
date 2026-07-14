@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/gophercloud/gophercloud"
 )
 
 var (
@@ -161,6 +162,31 @@ func TestServiceCreateContainer(t *testing.T) {
 			t.Fatalf("expected ErrContainerAlreadyExists, got %v", err)
 		}
 	})
+
+	t.Run("maps unique constraint violation on save to ErrContainerAlreadyExists and cleans up Swift", func(t *testing.T) {
+		// 동시 생성 경쟁: FindByName은 통과했지만 Save가 유니크 제약에 걸린 경우.
+		var cleanedUp string
+		client := &fakeStorageClient{
+			deleteContainerFn: func(name string) error {
+				cleanedUp = name
+				return nil
+			},
+		}
+		repo := &fakeContainerRepo{
+			saveFn: func(_ context.Context, _ uuid.UUID, _ *Container) error {
+				return ErrContainerAlreadyExists
+			},
+		}
+
+		svc := NewService(client, repo)
+		_, err := svc.CreateContainer(ctx, testOwnerID, "my-bucket")
+		if !errors.Is(err, ErrContainerAlreadyExists) {
+			t.Fatalf("expected ErrContainerAlreadyExists, got %v", err)
+		}
+		if cleanedUp == "" {
+			t.Fatal("expected orphaned Swift container to be cleaned up")
+		}
+	})
 }
 
 func TestServiceListContainers(t *testing.T) {
@@ -286,6 +312,37 @@ func TestServiceDeleteContainer(t *testing.T) {
 		err := svc.DeleteContainer(ctx, testOwnerID, "missing", false)
 		if !errors.Is(err, ErrContainerNotFound) {
 			t.Fatalf("expected ErrContainerNotFound, got %v", err)
+		}
+	})
+
+	t.Run("deletes DB row even when Swift container is already gone", func(t *testing.T) {
+		// 이전 삭제 시도에서 Swift 컨테이너만 지워지고 DB 정리가 실패한 경우,
+		// 재시도가 404에 막히지 않고 수렴해야 한다.
+		client := &fakeStorageClient{
+			listObjectsFn: func(_ string) ([]ObjectInfo, error) {
+				return nil, gophercloud.ErrDefault404{}
+			},
+			deleteContainerFn: func(_ string) error {
+				return gophercloud.ErrDefault404{}
+			},
+		}
+		var deletedFromDB string
+		repo := &fakeContainerRepo{
+			findByNameFn: func(_ context.Context, _ uuid.UUID, _ string) (*Container, error) {
+				return existingContainer, nil
+			},
+			deleteFn: func(_ context.Context, _ uuid.UUID, name string) error {
+				deletedFromDB = name
+				return nil
+			},
+		}
+
+		svc := NewService(client, repo)
+		if err := svc.DeleteContainer(ctx, testOwnerID, "my-bucket", false); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if deletedFromDB != "my-bucket" {
+			t.Fatalf("expected DB delete with name, got %q", deletedFromDB)
 		}
 	})
 }

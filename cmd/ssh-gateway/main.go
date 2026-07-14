@@ -155,6 +155,11 @@ type gopherResolver struct {
 }
 
 func newGopherResolver(p *gophercloud.ProviderClient, fixedNetwork string) (*gopherResolver, error) {
+	// Without a timeout a hung OpenStack API blocks forever; the caller's
+	// context is also honored per call via computeWithContext.
+	if p.HTTPClient.Timeout <= 0 {
+		p.HTTPClient.Timeout = 15 * time.Second
+	}
 	c, err := goopenstack.NewComputeV2(p, gophercloud.EndpointOpts{Region: "RegionOne"})
 	if err != nil {
 		return nil, err
@@ -162,8 +167,8 @@ func newGopherResolver(p *gophercloud.ProviderClient, fixedNetwork string) (*gop
 	return &gopherResolver{compute: c, fixedNetwork: strings.TrimSpace(fixedNetwork)}, nil
 }
 
-func (g *gopherResolver) ResolveVM(_ context.Context, openstackID string) (VMRuntime, error) {
-	srv, err := gccompute.Get(g.compute, openstackID).Extract()
+func (g *gopherResolver) ResolveVM(ctx context.Context, openstackID string) (VMRuntime, error) {
+	srv, err := gccompute.Get(g.computeWithContext(ctx), openstackID).Extract()
 	if err != nil {
 		return VMRuntime{}, err
 	}
@@ -172,6 +177,16 @@ func (g *gopherResolver) ResolveVM(_ context.Context, openstackID string) (VMRun
 		return VMRuntime{Status: srv.Status}, nil
 	}
 	return VMRuntime{Status: srv.Status, FixedIPv4: fixedIP}, nil
+}
+
+// computeWithContext returns a shallow copy of the compute client whose
+// provider carries ctx, so gophercloud requests respect caller deadlines.
+func (g *gopherResolver) computeWithContext(ctx context.Context) *gophercloud.ServiceClient {
+	provider := *g.compute.ProviderClient
+	provider.Context = ctx
+	client := *g.compute
+	client.ProviderClient = &provider
+	return &client
 }
 
 func fixedIPv4FromAddresses(addresses map[string]any, fixedNetwork string) (string, error) {

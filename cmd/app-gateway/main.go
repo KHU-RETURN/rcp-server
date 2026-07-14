@@ -52,7 +52,10 @@ func main() {
 		fatal("openstack compute client: %v", err)
 	}
 
-	app := NewServer(cfg, log, newRepo(db), resolver)
+	app, err := NewServer(cfg, log, newRepo(db), resolver)
+	if err != nil {
+		fatal("server build: %v", err)
+	}
 	httpSrv := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           app,

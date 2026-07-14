@@ -7,10 +7,11 @@ import (
 )
 
 func TestNewReverseProxyPreservesOriginalHost(t *testing.T) {
-	rp, err := newReverseProxy("10.0.0.8", 80, "/tmp/missing.sock")
+	tr, err := transportViaNSProxy("/tmp/missing.sock")
 	if err != nil {
-		t.Fatalf("newReverseProxy returned error: %v", err)
+		t.Fatalf("transportViaNSProxy returned error: %v", err)
 	}
+	rp := newReverseProxy("10.0.0.8", 80, tr)
 
 	req, err := http.NewRequest(http.MethodGet, "http://return.apps.khu-return.com/path?q=1", nil)
 	if err != nil {

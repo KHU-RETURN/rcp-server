@@ -191,8 +191,13 @@ func (h *Handler) DownloadObject(c *gin.Context) {
 	objectName := strings.TrimPrefix(c.Param("key"), "/")
 
 	if err := h.Svc.DownloadObject(c.Request.Context(), id, containerName, objectName, c.Writer); err != nil {
+		// 이미 응답 본문이 흘러나간 뒤라면 JSON 에러를 덧붙이지 않고 스트림을 중단한다.
+		if c.Writer.Written() {
+			_ = c.Error(err)
+			return
+		}
 		switch {
-		case errors.Is(err, ErrContainerNotFound):
+		case errors.Is(err, ErrContainerNotFound), errors.Is(err, ErrObjectNotFound):
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
@@ -240,7 +245,7 @@ func (h *Handler) DeleteObject(c *gin.Context) {
 
 	if err := h.Svc.DeleteObject(c.Request.Context(), id, containerName, objectName); err != nil {
 		switch {
-		case errors.Is(err, ErrContainerNotFound):
+		case errors.Is(err, ErrContainerNotFound), errors.Is(err, ErrObjectNotFound):
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})

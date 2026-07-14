@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/KHU-RETURN/rcp-server/internal/domain/access"
@@ -27,6 +28,11 @@ type Server struct {
 	keyClient ephemeralKeyRegistrar
 	sshConfig *ssh.ServerConfig
 	hostKeyCB ssh.HostKeyCallback
+
+	sem chan struct{} // cfg.MaxConns 크기의 동시 접속 semaphore
+
+	activeConns int64 // sync/atomic으로만 접근
+	deniedConns int64
 }
 
 type ephemeralKeyRegistrar interface {
@@ -58,6 +64,7 @@ func NewServer(cfg *Config, log *slog.Logger, store *sessionStore, r *repo, reso
 		keyClient: newEphemeralKeyClient(cfg.APIURLBase, []byte(cfg.NotifySecret)),
 		sshConfig: sc,
 		hostKeyCB: hostKeyCB,
+		sem:       make(chan struct{}, cfg.MaxConns),
 	}, nil
 }
 
@@ -68,21 +75,49 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		<-ctx.Done()
 		_ = ln.Close()
 	}()
+	var tempDelay time.Duration
 	for {
 		c, err := ln.Accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return nil
 			}
-			s.log.Warn("accept", "err", err)
+			if tempDelay == 0 {
+				tempDelay = 10 * time.Millisecond
+			} else {
+				tempDelay *= 2
+			}
+			if tempDelay > time.Second {
+				tempDelay = time.Second
+			}
+			s.log.Warn("accept transient error, retrying", "err", err, "delay", tempDelay)
+			time.Sleep(tempDelay)
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.handle(ctx, c)
-		}()
+		tempDelay = 0
+
+		select {
+		case s.sem <- struct{}{}:
+			atomic.AddInt64(&s.activeConns, 1)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer atomic.AddInt64(&s.activeConns, -1)
+				defer func() { <-s.sem }()
+				s.handle(ctx, c)
+			}()
+		default:
+			// 슬롯 만석 — SSH 핸드셰이크 전에 raw TCP를 끊는다.
+			atomic.AddInt64(&s.deniedConns, 1)
+			s.log.Warn("rejected: max conns reached")
+			_ = c.Close()
+		}
 	}
+}
+
+// Stats reports current concurrency for tests/observability.
+func (s *Server) Stats() (active, denied int64) {
+	return atomic.LoadInt64(&s.activeConns), atomic.LoadInt64(&s.deniedConns)
 }
 
 func (s *Server) handle(ctx context.Context, raw net.Conn) {
@@ -178,10 +213,12 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	vms, err := s.repo.ListInstancesByEmail(ctx, email)
 	if err != nil {
 		_, _ = fmt.Fprintf(ch, "lookup failed: %v\r\n", err)
+		drainRequests(reqs)
 		return
 	}
 	if len(vms) == 0 {
 		_, _ = fmt.Fprintf(ch, "No instances. Create one at %s\r\n", s.cfg.AuthURLBase)
+		drainRequests(reqs)
 		return
 	}
 
@@ -198,6 +235,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 		v, ok := FindByName(vms, strings.TrimSpace(execCmd))
 		if !ok {
 			_, _ = fmt.Fprintf(ch, "VM %q not found among your instances.\r\n", execCmd)
+			drainRequests(reqs)
 			return
 		}
 		target = v
@@ -206,6 +244,7 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	default:
 		v, ok := promptForVM(ch, vms)
 		if !ok {
+			drainRequests(reqs)
 			return
 		}
 		target = v
@@ -214,21 +253,39 @@ func (s *Server) handleSession(ctx context.Context, sshConn *ssh.ServerConn, ch 
 	ip := strings.TrimSpace(target.FixedIPv4)
 	if ip == "" {
 		_, _ = fmt.Fprintf(ch, "VM unreachable: no fixed IPv4 address for %s\r\n", target.Name)
+		drainRequests(reqs)
 		return
 	}
 
 	inner, keyReq, err := s.dialVMWithEphemeralKey(ctx, target, ip)
 	if err != nil {
 		_, _ = fmt.Fprintf(ch, "VM auth failed: %v\r\n", err)
+		drainRequests(reqs)
 		return
 	}
 	defer func() { _ = inner.Close() }()
 	defer s.deleteEphemeralKey(keyReq)
 
 	if err := pipeSession(s.log, ch, reqs, inner, pty, func() { _ = sshConn.Close() }); err != nil {
+		// pipeSession only errors before it starts forwarding reqs, so the
+		// queue still needs a consumer.
+		drainRequests(reqs)
 		s.log.Info("pipe ended", "err", err)
 		return
 	}
+}
+
+// drainRequests keeps servicing a session's channel-request queue after an
+// early exit. Without a reader, a client that sends further channel requests
+// wedges its own connection mux until the channel fully closes.
+func drainRequests(reqs <-chan *ssh.Request) {
+	go func() {
+		for req := range reqs {
+			if req.WantReply {
+				_ = req.Reply(false, nil)
+			}
+		}
+	}()
 }
 
 func (s *Server) dialVMWithEphemeralKey(ctx context.Context, target VM, ip string) (*ssh.Client, access.EphemeralAuthorizedKeyRequest, error) {

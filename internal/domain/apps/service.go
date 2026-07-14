@@ -46,7 +46,7 @@ func (s *Service) RegisterApp(ctx context.Context, ownerID uuid.UUID, instanceID
 		return nil, err
 	}
 
-	saved, err := s.repo.SaveForInstance(ctx, ownerID, instanceID, app)
+	saved, err := s.repo.SaveForInstance(ctx, ownerID, app.InstanceID, app)
 	if err != nil {
 		if errors.Is(err, ErrInstanceNotFound) || errors.Is(err, ErrAppAlreadyExists) {
 			return nil, err

@@ -232,6 +232,60 @@ func TestServiceCreateKeyPair(t *testing.T) {
 		}
 	})
 
+	t.Run("deletes just-created openstack keypair when DB save fails", func(t *testing.T) {
+		deletedName := ""
+		osClient := &fakeClient{
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return &KeyPair{Name: name, Fingerprint: "fingerprint", PublicKey: publicKey}, nil
+			},
+			deleteKeyPairFn: func(name string) error {
+				deletedName = name
+				return nil
+			},
+		}
+		repo := &fakeRepo{
+			saveKeyPairFn: func(_ context.Context, _ uuid.UUID, _ *KeyPair) error {
+				return errors.New("db save error")
+			},
+		}
+
+		svc := NewService(osClient, repo)
+		_, err := svc.CreateKeyPair(ctx, testOwnerID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		if !errors.Is(err, ErrKeyPairOperationFailed) {
+			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
+		}
+		if deletedName != "key" {
+			t.Fatalf("expected compensating delete of %q, got %q", "key", deletedName)
+		}
+	})
+
+	t.Run("returns original save error even when compensating delete fails", func(t *testing.T) {
+		deleteCalled := false
+		osClient := &fakeClient{
+			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
+				return &KeyPair{Name: name, Fingerprint: "fingerprint", PublicKey: publicKey}, nil
+			},
+			deleteKeyPairFn: func(name string) error {
+				deleteCalled = true
+				return errors.New("cleanup error")
+			},
+		}
+		repo := &fakeRepo{
+			saveKeyPairFn: func(_ context.Context, _ uuid.UUID, _ *KeyPair) error {
+				return errors.New("db save error")
+			},
+		}
+
+		svc := NewService(osClient, repo)
+		_, err := svc.CreateKeyPair(ctx, testOwnerID, CreateKeyPairRequest{Name: "key", PublicKey: testPublicKey})
+		if !errors.Is(err, ErrKeyPairOperationFailed) {
+			t.Fatalf("expected ErrKeyPairOperationFailed, got %v", err)
+		}
+		if !deleteCalled {
+			t.Fatal("expected compensating delete to be attempted")
+		}
+	})
+
 	t.Run("normalizes generic openstack errors as internal operation error", func(t *testing.T) {
 		osClient := &fakeClient{
 			createKeyPairFn: func(name, publicKey string) (*KeyPair, error) {
@@ -342,6 +396,43 @@ func TestServiceEphemeralAuthorizedKey(t *testing.T) {
 	if keys := svc.AuthorizedKeys("server-1", "ubuntu"); keys != "" {
 		t.Fatalf("expected key deleted, got %q", keys)
 	}
+}
+
+func TestServiceDeleteKeyPair(t *testing.T) {
+	ctx := context.Background()
+	found := func(context.Context, uuid.UUID, string) (*KeyPair, error) {
+		return &KeyPair{Name: "k"}, nil
+	}
+
+	t.Run("deletes DB row even when OpenStack key is already gone", func(t *testing.T) {
+		dbDeleted := false
+		svc := NewService(
+			&fakeClient{deleteKeyPairFn: func(string) error { return newStatusErr(http.StatusNotFound) }},
+			&fakeRepo{
+				findByNameFn: found,
+				deleteByNameFn: func(context.Context, uuid.UUID, string) error {
+					dbDeleted = true
+					return nil
+				},
+			},
+		)
+		if err := svc.DeleteKeyPair(ctx, testOwnerID, "k"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !dbDeleted {
+			t.Fatal("expected DB row to be deleted")
+		}
+	})
+
+	t.Run("propagates non-404 OpenStack delete failure", func(t *testing.T) {
+		svc := NewService(
+			&fakeClient{deleteKeyPairFn: func(string) error { return newStatusErr(http.StatusInternalServerError) }},
+			&fakeRepo{findByNameFn: found},
+		)
+		if err := svc.DeleteKeyPair(ctx, testOwnerID, "k"); !errors.Is(err, ErrKeyPairDeleteFailed) {
+			t.Fatalf("expected ErrKeyPairDeleteFailed, got %v", err)
+		}
+	})
 }
 
 func consoleTokenFromURL(t *testing.T, rawURL string) string {
