@@ -267,16 +267,20 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 // pruneStaleInstances는 목록 스냅샷에 없던 DB 행을 정리한다.
 // 생성 직후 레이스(목록 API 지연)로 살아있는 서버의 소유권 행을 지우면
 // 해당 VM이 API에서 영영 보이지 않게 되므로, 개별 조회로 404를 확인한 뒤에만 삭제한다.
-// staleID별 확인은 서로 독립적이므로 병렬로 처리한다.
+// staleID별 확인은 서로 독립적이므로 병렬로 처리하되, stale 행이 비정상적으로
+// 많아도 Nova로의 동시 호출이 폭주하지 않게 상한을 둔다.
 func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, staleIDs []string) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var firstErr error
+	sem := make(chan struct{}, 8)
 
 	wg.Add(len(staleIDs))
 	for _, id := range staleIDs {
 		go func(id string) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			if _, err := s.client.FetchInstance(id); !isServerNotFound(err) {
 				return
 			}
