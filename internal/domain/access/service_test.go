@@ -398,6 +398,43 @@ func TestServiceEphemeralAuthorizedKey(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteKeyPair(t *testing.T) {
+	ctx := context.Background()
+	found := func(context.Context, uuid.UUID, string) (*KeyPair, error) {
+		return &KeyPair{Name: "k"}, nil
+	}
+
+	t.Run("deletes DB row even when OpenStack key is already gone", func(t *testing.T) {
+		dbDeleted := false
+		svc := NewService(
+			&fakeClient{deleteKeyPairFn: func(string) error { return newStatusErr(http.StatusNotFound) }},
+			&fakeRepo{
+				findByNameFn: found,
+				deleteByNameFn: func(context.Context, uuid.UUID, string) error {
+					dbDeleted = true
+					return nil
+				},
+			},
+		)
+		if err := svc.DeleteKeyPair(ctx, testOwnerID, "k"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !dbDeleted {
+			t.Fatal("expected DB row to be deleted")
+		}
+	})
+
+	t.Run("propagates non-404 OpenStack delete failure", func(t *testing.T) {
+		svc := NewService(
+			&fakeClient{deleteKeyPairFn: func(string) error { return newStatusErr(http.StatusInternalServerError) }},
+			&fakeRepo{findByNameFn: found},
+		)
+		if err := svc.DeleteKeyPair(ctx, testOwnerID, "k"); !errors.Is(err, ErrKeyPairDeleteFailed) {
+			t.Fatalf("expected ErrKeyPairDeleteFailed, got %v", err)
+		}
+	})
+}
+
 func consoleTokenFromURL(t *testing.T, rawURL string) string {
 	t.Helper()
 

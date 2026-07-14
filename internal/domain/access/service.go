@@ -142,10 +142,9 @@ func (s *Service) DeleteKeyPair(ctx context.Context, ownerID uuid.UUID, name str
 		return ErrKeyPairNotFound
 	}
 
-	if err := s.client.DeleteKeyPair(name); err != nil {
-		if isNotFoundError(err) {
-			return ErrKeyPairNotFound
-		}
+	// OpenStack에 이미 없는 키(외부 삭제/이전 삭제의 DB 실패 잔재)는 성공으로
+	// 취급해 DB 정리까지 진행한다 — 아니면 그 행은 영원히 지울 수 없다.
+	if err := s.client.DeleteKeyPair(name); err != nil && !isNotFoundError(err) {
 		return fmt.Errorf("%w: %v", ErrKeyPairDeleteFailed, err)
 	}
 
