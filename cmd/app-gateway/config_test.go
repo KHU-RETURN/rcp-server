@@ -23,7 +23,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.DBDriver != "sqlite3" {
 		t.Fatalf("DBDriver got %q", cfg.DBDriver)
 	}
-	if cfg.DBDSN != "file:rcp.db?mode=ro&cache=shared&_pragma=foreign_keys(1)" {
+	if cfg.DBDSN != "file:rcp.db?mode=ro&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)" {
 		t.Fatalf("DBDSN got %q", cfg.DBDSN)
 	}
 	if cfg.ReadTimeout != 30*time.Second {

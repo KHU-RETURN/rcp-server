@@ -40,7 +40,7 @@ func LoadConfig(getenv func(string) string) (*Config, error) {
 	}
 	dbDSN := strings.TrimSpace(getenv("DB_DSN"))
 	if dbDSN == "" {
-		dbDSN = "file:rcp.db?mode=ro&cache=shared&_pragma=foreign_keys(1)"
+		dbDSN = "file:rcp.db?mode=ro&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 	}
 	if err := validateGatewayDBDSN(dbDriver, dbDSN); err != nil {
 		return nil, err
