@@ -914,7 +914,7 @@ func TestServiceGetInstances(t *testing.T) {
 		// 모든 staleID 확인이 동시에 진행 중일 때까지 대기한다.
 		deadline := time.After(time.Second)
 		for {
-			if atomic.LoadInt32(&maxInFlight) == int32(len(staleIDs)) {
+			if int(atomic.LoadInt32(&maxInFlight)) == len(staleIDs) {
 				break
 			}
 			select {
