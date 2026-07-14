@@ -40,9 +40,18 @@ type Service struct {
 	projectID        string
 	defaultNetworkID string
 
-	flavorMu     sync.Mutex
-	flavorCache  []Flavor
-	flavorExpire time.Time
+	flavorMu         sync.Mutex
+	flavorCache      []Flavor
+	flavorExpire     time.Time
+	flavorInflight   *flavorFetch // 콜드 스타트(캐시 비어있음)에서 fetch를 공유하기 위한 핸들
+	flavorRefreshing bool         // 만료된 캐시를 백그라운드에서 갱신 중인지 여부
+}
+
+// flavorFetch는 콜드 스타트 시 동시 호출자들이 하나의 upstream fetch 결과를 공유하기 위한 핸들이다.
+type flavorFetch struct {
+	done   chan struct{}
+	result []Flavor
+	err    error
 }
 
 // flavorCacheTTL — flavor 목록은 거의 정적이라 요청마다 OpenStack에 묻지 않는다.
@@ -66,19 +75,65 @@ func NewService(client computeClient, repo instanceRepo, projectID, defaultNetwo
 }
 
 // fetchFlavors는 flavor 목록을 TTL 캐시를 거쳐 반환한다.
+// 네트워크 호출은 절대 flavorMu를 잡은 채로 하지 않는다: 캐시가 있으면 만료돼도 stale 값을
+// 즉시 돌려주고 갱신은 단일 goroutine에 맡기며(stale-while-revalidate), 캐시가 비어있는
+// 콜드 스타트에서만 한 goroutine이 락 밖에서 fetch하고 나머지는 그 결과를 공유받는다.
 func (s *Service) fetchFlavors() ([]Flavor, error) {
 	s.flavorMu.Lock()
-	defer s.flavorMu.Unlock()
+
 	if time.Now().Before(s.flavorExpire) {
-		return s.flavorCache, nil
+		cache := s.flavorCache
+		s.flavorMu.Unlock()
+		return cache, nil
 	}
+
+	if len(s.flavorCache) > 0 {
+		stale := s.flavorCache
+		if !s.flavorRefreshing {
+			s.flavorRefreshing = true
+			go s.refreshFlavorsStale()
+		}
+		s.flavorMu.Unlock()
+		return stale, nil
+	}
+
+	if fetch := s.flavorInflight; fetch != nil {
+		s.flavorMu.Unlock()
+		<-fetch.done
+		return fetch.result, fetch.err
+	}
+
+	fetch := &flavorFetch{done: make(chan struct{})}
+	s.flavorInflight = fetch
+	s.flavorMu.Unlock()
+
 	raw, err := s.client.FetchFlavors()
-	if err != nil {
-		return nil, err
+
+	s.flavorMu.Lock()
+	if err == nil {
+		s.flavorCache = raw
+		s.flavorExpire = time.Now().Add(flavorCacheTTL)
 	}
-	s.flavorCache = raw
-	s.flavorExpire = time.Now().Add(flavorCacheTTL)
-	return raw, nil
+	s.flavorInflight = nil
+	s.flavorMu.Unlock()
+
+	fetch.result, fetch.err = raw, err
+	close(fetch.done)
+
+	return raw, err
+}
+
+// refreshFlavorsStale은 만료된 캐시를 백그라운드에서 갱신한다. 실패해도 기존 stale 캐시를 유지한다.
+func (s *Service) refreshFlavorsStale() {
+	raw, err := s.client.FetchFlavors()
+
+	s.flavorMu.Lock()
+	if err == nil {
+		s.flavorCache = raw
+		s.flavorExpire = time.Now().Add(flavorCacheTTL)
+	}
+	s.flavorRefreshing = false
+	s.flavorMu.Unlock()
 }
 
 func (s *Service) GetFlavors() ([]FlavorResponse, error) {
@@ -201,8 +256,9 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 			Created:    srv.Created,
 		})
 	}
+	// prune 실패는 non-fatal — 이미 조회한 라이브 목록 res는 그대로 반환한다.
 	if err := s.pruneStaleInstances(ctx, ownerID, staleIDs); err != nil {
-		return nil, err
+		log.Printf("WARN: failed to prune stale instances for owner %s: %v", ownerID, err)
 	}
 
 	return res, nil
@@ -211,17 +267,31 @@ func (s *Service) GetInstances(ctx context.Context, ownerID uuid.UUID) ([]Instan
 // pruneStaleInstances는 목록 스냅샷에 없던 DB 행을 정리한다.
 // 생성 직후 레이스(목록 API 지연)로 살아있는 서버의 소유권 행을 지우면
 // 해당 VM이 API에서 영영 보이지 않게 되므로, 개별 조회로 404를 확인한 뒤에만 삭제한다.
+// staleID별 확인은 서로 독립적이므로 병렬로 처리한다.
 func (s *Service) pruneStaleInstances(ctx context.Context, ownerID uuid.UUID, staleIDs []string) error {
-	for _, id := range staleIDs {
-		if _, err := s.client.FetchInstance(id); !isServerNotFound(err) {
-			continue
-		}
-		if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
-			return fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
-		}
-	}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
 
-	return nil
+	wg.Add(len(staleIDs))
+	for _, id := range staleIDs {
+		go func(id string) {
+			defer wg.Done()
+			if _, err := s.client.FetchInstance(id); !isServerNotFound(err) {
+				return
+			}
+			if err := s.repo.DeleteByOpenstackID(ctx, ownerID, id); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("%w: %v", ErrInstanceOperationFailed, err)
+				}
+				mu.Unlock()
+			}
+		}(id)
+	}
+	wg.Wait()
+
+	return firstErr
 }
 
 // GetInstanceDetail은 DB(소유권), OpenStack 상태, diagnostics를 병렬로 읽어 조합하여 반환합니다.
