@@ -229,6 +229,32 @@ func TestRouterCORSRejectsUnconfiguredOrigin(t *testing.T) {
 	}
 }
 
+func TestRouterCORSInvalidPatternTreatedAsUnset(t *testing.T) {
+	setGinMode(t, gin.TestMode)
+	t.Setenv(envAllowedOriginPattern, "(unterminated")
+
+	router := NewRouter(&App{
+		Access:  &access.Handler{},
+		Auth:    &auth.Handler{},
+		Compute: &compute.Handler{},
+		Storage: &storage.Handler{},
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, api.BasePath+"/auth/me", nil)
+	req.Header.Set("Origin", "https://frontend.example.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("expected no allowed origin for invalid pattern, got %q", got)
+	}
+}
+
 func setGinMode(t *testing.T, mode string) {
 	t.Helper()
 

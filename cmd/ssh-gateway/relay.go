@@ -18,6 +18,10 @@ import (
 
 const copyDrainTimeout = time.Second
 
+// socks5HandshakeTimeout bounds the SOCKS5 CONNECT handshake when the
+// caller's context carries no deadline of its own.
+const socks5HandshakeTimeout = 15 * time.Second
+
 // vmAddressResolver returns the dial-target IPv4 for an openstack_id. The PoC
 // implementation lives in main.go and uses gophercloud; tests can stub this.
 type vmAddressResolver interface {
@@ -47,7 +51,13 @@ func newNsProxyDialer(sockPath string, timeout time.Duration) (*nsProxyDialer, e
 // Dial opens a TCP-equivalent connection to host:port via the ns-proxy SOCKS5
 // server reachable on the local Unix socket.
 func (d *nsProxyDialer) Dial(ctx context.Context, host string, port int) (net.Conn, error) {
-	return d.socks.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	conn, err := d.socks.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	if conn != nil {
+		// Handshake succeeded; clear the deadline set in unixDialer.DialContext
+		// so it doesn't kill the long-lived proxied stream.
+		_ = conn.SetDeadline(time.Time{})
+	}
+	return conn, err
 }
 
 // unixDialer satisfies proxy.Dialer/proxy.ContextDialer by always dialing a
@@ -69,7 +79,19 @@ func (u *unixDialer) DialContext(ctx context.Context, _, _ string) (net.Conn, er
 		defer cancel()
 	}
 	var d net.Dialer
-	return d.DialContext(dctx, "unix", u.path)
+	conn, err := d.DialContext(dctx, "unix", u.path)
+	if err != nil {
+		return nil, err
+	}
+	// Hold a deadline over the conn until the SOCKS5 handshake that follows
+	// (performed by the caller right after this returns) completes;
+	// nsProxyDialer.Dial clears it once the handshake succeeds.
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(socks5HandshakeTimeout)
+	}
+	_ = conn.SetDeadline(deadline)
+	return conn, nil
 }
 
 // dialInnerSSH performs the inner SSH handshake to the VM using an ephemeral

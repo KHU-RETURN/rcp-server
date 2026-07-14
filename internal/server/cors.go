@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -16,7 +17,7 @@ const (
 
 func corsMiddleware() gin.HandlerFunc {
 	allowedOrigins := parseAllowedOrigins(os.Getenv(envAllowedOrigins))
-	allowedOriginPattern := strings.TrimSpace(os.Getenv(envAllowedOriginPattern))
+	allowedOriginPattern := compileAllowedOriginPattern(os.Getenv(envAllowedOriginPattern))
 
 	return func(c *gin.Context) {
 		origin := strings.TrimSpace(c.GetHeader("Origin"))
@@ -50,14 +51,28 @@ func parseAllowedOrigins(rawOrigins string) map[string]bool {
 	return allowedOrigins
 }
 
-func isOriginAllowed(origin string, allowedOrigins map[string]bool, allowedOriginPattern string) bool {
+// compileAllowedOriginPattern compiles the pattern once at middleware setup
+// instead of on every request. An invalid pattern is logged and treated as
+// unset rather than failing startup.
+func compileAllowedOriginPattern(raw string) *regexp.Regexp {
+	pattern := strings.TrimSpace(raw)
+	if pattern == "" {
+		return nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		log.Printf("invalid %s: %v", envAllowedOriginPattern, err)
+		return nil
+	}
+	return re
+}
+
+func isOriginAllowed(origin string, allowedOrigins map[string]bool, allowedOriginPattern *regexp.Regexp) bool {
 	if allowedOrigins[origin] {
 		return true
 	}
-	if allowedOriginPattern == "" {
+	if allowedOriginPattern == nil {
 		return false
 	}
-
-	matched, err := regexp.MatchString(allowedOriginPattern, origin)
-	return err == nil && matched
+	return allowedOriginPattern.MatchString(origin)
 }
