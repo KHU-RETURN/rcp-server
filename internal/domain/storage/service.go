@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sort"
 	"strings"
 
@@ -69,6 +70,9 @@ func (s *Service) CreateContainer(ctx context.Context, ownerID uuid.UUID, name s
 		// 동시 생성 경쟁에서 유니크 제약에 걸린 경우: 방금 만든 Swift 컨테이너를
 		// 정리(best-effort)하고 이름 충돌로 응답한다.
 		if errors.Is(err, ErrContainerAlreadyExists) {
+			if delErr != nil {
+				log.Printf("CRITICAL: orphaned swift container %s: name conflict and cleanup failed (%v)", openstackName, delErr)
+			}
 			return nil, ErrContainerAlreadyExists
 		}
 		if delErr != nil {
