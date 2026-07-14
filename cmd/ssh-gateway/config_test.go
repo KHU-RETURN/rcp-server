@@ -41,7 +41,7 @@ func TestLoadConfig_AllDefaultsExceptRequired(t *testing.T) {
 	if cfg.DBDriver != "sqlite3" {
 		t.Errorf("DBDriver default: got %q", cfg.DBDriver)
 	}
-	if cfg.DBDSN != "file:/var/lib/rcp/rcp.db?mode=ro&cache=shared&_pragma=foreign_keys(1)" {
+	if cfg.DBDSN != "file:/var/lib/rcp/rcp.db?mode=ro&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)" {
 		t.Errorf("DBDSN fallback: got %q", cfg.DBDSN)
 	}
 	if cfg.KnownHostsPath != "/etc/rcp/ssh-gateway/known_hosts" {
@@ -49,6 +49,9 @@ func TestLoadConfig_AllDefaultsExceptRequired(t *testing.T) {
 	}
 	if cfg.MaxPendingSessions != defaultMaxPendingSessions {
 		t.Errorf("MaxPendingSessions default: got %d", cfg.MaxPendingSessions)
+	}
+	if cfg.MaxConns != defaultMaxConns {
+		t.Errorf("MaxConns default: got %d", cfg.MaxConns)
 	}
 	if cfg.FixedNetworkName != "" {
 		t.Errorf("FixedNetworkName default: got %q", cfg.FixedNetworkName)
@@ -158,6 +161,19 @@ func TestLoadConfig_MaxPendingPositive(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatalf("expected MAX_PENDING_SESSIONS > 0 error")
+	}
+}
+
+func TestLoadConfig_MaxConnsPositive(t *testing.T) {
+	_, err := LoadConfig(envFromMap(map[string]string{
+		"RCP_SSH_GW_NOTIFY_SECRET": "x",
+		"RCP_SSH_GW_AUTH_URL_BASE": "x",
+		"RCP_SSH_GW_API_URL_BASE":  "api-x",
+		"RCP_SSH_GW_DB_PATH":       "/x",
+		"RCP_SSH_GW_MAX_CONNS":     "0",
+	}))
+	if err == nil {
+		t.Fatalf("expected MAX_CONNS > 0 error")
 	}
 }
 

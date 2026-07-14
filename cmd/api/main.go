@@ -3,8 +3,10 @@ package main
 import (
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/database"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
@@ -96,7 +98,15 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	if err := r.Run(":" + port); err != nil {
+	// gin의 기본 서버는 타임아웃이 없어 Slowloris에 취약하다. ReadTimeout/WriteTimeout은
+	// 콘솔 websocket 연결이 장시간 유지돼야 해서 일부러 설정하지 않는다.
+	httpSrv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	if err := httpSrv.ListenAndServe(); err != nil {
 		log.Fatalf("HTTP 서버 시작 실패: %v", err)
 	}
 }
@@ -132,7 +142,7 @@ func resolveDBConfig(getenv func(string) string) (string, string) {
 	}
 	dsn := strings.TrimSpace(getenv("DB_DSN"))
 	if dsn == "" {
-		dsn = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)"
+		dsn = "file:rcp.db?cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 	}
 	return driver, dsn
 }
