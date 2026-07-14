@@ -913,10 +913,7 @@ func TestServiceGetInstances(t *testing.T) {
 
 		// 모든 staleID 확인이 동시에 진행 중일 때까지 대기한다.
 		deadline := time.After(time.Second)
-		for {
-			if int(atomic.LoadInt32(&maxInFlight)) == len(staleIDs) {
-				break
-			}
+		for int(atomic.LoadInt32(&maxInFlight)) != len(staleIDs) {
 			select {
 			case <-deadline:
 				t.Fatalf("expected %d concurrent FetchInstance calls, max seen %d", len(staleIDs), atomic.LoadInt32(&maxInFlight))
