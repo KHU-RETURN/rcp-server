@@ -6,9 +6,15 @@ on:
     paths:
       - 'cmd/ns-proxy/**'
       - 'internal/utils/**'
+      - 'go.mod'
+      - 'go.sum'
       - 'deploy/systemd/ns-proxy.service'
       - '.github/workflows/deploy-ns-proxy.yml'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   deploy:

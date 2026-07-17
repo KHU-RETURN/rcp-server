@@ -3,6 +3,19 @@ name: Go CD Pipeline
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "cmd/api/**"
+      - "internal/**"
+      - "ent/**"
+      - "go.mod"
+      - "go.sum"
+      - "deploy/systemd/rcp-server.service"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   deploy:

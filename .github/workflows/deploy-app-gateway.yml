@@ -6,7 +6,9 @@ on:
     paths:
       - "cmd/app-gateway/**"
       - "internal/infrastructure/database/**"
+      - "internal/infrastructure/http/**"
       - "internal/infrastructure/openstack/**"
+      - "internal/schema/**"
       - "internal/utils/**"
       - "ent/**"
       - "go.mod"
@@ -15,6 +17,10 @@ on:
       - "deploy/systemd/app-gateway.service"
       - ".github/workflows/deploy-app-gateway.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
