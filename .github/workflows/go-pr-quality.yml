@@ -108,6 +108,9 @@ jobs:
           - name: api
             output: server
             target: ./cmd/api/main.go
+          - name: app-gateway
+            output: app-gateway
+            target: ./cmd/app-gateway
           - name: ns-proxy
             output: ns-proxy
             target: ./cmd/ns-proxy
