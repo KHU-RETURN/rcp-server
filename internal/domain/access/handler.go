@@ -1,6 +1,7 @@
 package access
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,13 +18,23 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
-	"golang.org/x/net/websocket"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
+)
+
+const (
+	webConsoleDialTimeout   = 15 * time.Second
+	webConsoleWriteTimeout  = 10 * time.Second
+	webConsoleReadLimit     = 1 << 20
+	webConsoleFlushInterval = 8 * time.Millisecond
+	webConsoleFlushMaxBytes = 64 * 1024
+	webConsoleBufferLimit   = 1 << 20
 )
 
 const (
@@ -279,26 +290,46 @@ func (h *Handler) WebConsole(c *gin.Context) {
 		return
 	}
 
-	server := websocket.Server{
-		Handshake: validateWebSocketOrigin,
-		Handler: func(ws *websocket.Conn) {
-			defer func() { _ = ws.Close() }()
-			if err := h.bridgeWebConsole(ws, session); err != nil {
-				slog.Default().Warn("web console bridge failed",
-					"instance_id", session.InstanceID,
-					"host", session.Host,
-					"username", session.Username,
-					"err", err,
-				)
-			}
-		},
+	if !isWebSocketOriginAllowed(c.Request) {
+		c.JSON(http.StatusForbidden, api.ErrorResponse{Error: "websocket origin is not allowed"})
+		return
 	}
-	server.ServeHTTP(c.Writer, c.Request)
+
+	// Origin is validated above; skip the library's built-in check.
+	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		slog.Default().Warn("web console websocket accept failed",
+			"instance_id", session.InstanceID,
+			"err", err,
+		)
+		return
+	}
+	conn.SetReadLimit(webConsoleReadLimit)
+	defer func() { _ = conn.CloseNow() }()
+
+	if err := h.relayConsole(newWebSocketConsole(conn), session); err != nil {
+		slog.Default().Warn("web console bridge failed",
+			"instance_id", session.InstanceID,
+			"host", session.Host,
+			"username", session.Username,
+			"err", err,
+		)
+	}
 }
 
-func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) error {
+// relayConsole runs an SSH shell over a console session against any client transport.
+func (h *Handler) relayConsole(client io.ReadWriteCloser, console *consoleSession) error {
 	sshAddress := net.JoinHostPort(console.Host, "22")
-	tcpConn, err := dialViaNSProxy(h.NSProxySockPath, sshAddress)
+
+	ctx, cancelCause := context.WithCancelCause(context.Background())
+	cancel := func() { cancelCause(nil) }
+	defer cancel()
+
+	dialCtx, dialCancel := context.WithTimeout(ctx, webConsoleDialTimeout)
+	tcpConn, err := dialViaNSProxy(dialCtx, h.NSProxySockPath, sshAddress)
+	dialCancel()
 	if err != nil {
 		return err
 	}
@@ -310,6 +341,7 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 			ssh.PublicKeys(console.Signer),
 		},
 		HostKeyCallback: vmHostKeyCallbackForAddress(sshAddress, h.VMHostKeyCallback),
+		Timeout:         webConsoleDialTimeout,
 	}
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(tcpConn, sshAddress, sshCfg)
@@ -317,10 +349,10 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 		return err
 	}
 	h.Svc.DeleteAuthorizedKey(console.InstanceID, console.Username, console.AuthorizedKey)
-	client := ssh.NewClient(sshConn, chans, reqs)
-	defer func() { _ = client.Close() }()
+	sshClient := ssh.NewClient(sshConn, chans, reqs)
+	defer func() { _ = sshClient.Close() }()
 
-	sess, err := client.NewSession()
+	sess, err := sshClient.NewSession()
 	if err != nil {
 		return err
 	}
@@ -346,15 +378,34 @@ func (h *Handler) bridgeWebConsole(ws *websocket.Conn, console *consoleSession) 
 		return err
 	}
 
-	var writeMu sync.Mutex
-	done := make(chan struct{})
-	go copySSHToWebSocket(ws, stdout, &writeMu, done)
-	go copySSHToWebSocket(ws, stderr, &writeMu, done)
-	go copyWebSocketToSSH(ws, stdin, done)
+	probes := []consoleProbe{sshKeepaliveProbe(sshConn)}
+	if pinger, ok := client.(interface{ Ping(context.Context) error }); ok {
+		probes = append(probes, pinger.Ping)
+	}
+	liveness := newConsoleLiveness(time.Now(), webConsoleIdleTimeout, webConsoleMaxLifetime, probes...)
+	tracked := &trackedConsole{ReadWriteCloser: client, liveness: liveness}
+	go watchConsole(ctx, cancelCause, webConsoleKeepaliveInterval, liveness)
 
-	err = sess.Wait()
+	go func() { defer cancel(); _, _ = io.Copy(tracked, stdout) }()
+	go func() { defer cancel(); _, _ = io.Copy(tracked, stderr) }()
+	go func() { defer cancel(); _, _ = io.Copy(stdin, tracked); _ = stdin.Close() }()
+
+	waitErr := make(chan error, 1)
+	go func() { waitErr <- sess.Wait() }()
+
+	select {
+	case err = <-waitErr:
+	case <-ctx.Done():
+		_ = sess.Close()
+		err = <-waitErr
+		// Prefer the liveness verdict over the generic wait error it caused.
+		if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+			err = cause
+		}
+	}
+	// Closing the transport unblocks the input pump still reading from the client.
+	_ = client.Close()
 	h.Svc.DeleteAuthorizedKey(console.InstanceID, console.Username, console.AuthorizedKey)
-	close(done)
 	return err
 }
 
@@ -434,44 +485,167 @@ func loadVMHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
 	return knownhosts.New(clean)
 }
 
-func copySSHToWebSocket(ws *websocket.Conn, r io.Reader, mu *sync.Mutex, done <-chan struct{}) {
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			payload := append([]byte(nil), buf[:n]...)
-			mu.Lock()
-			_ = websocket.Message.Send(ws, payload)
-			mu.Unlock()
-		}
+// webSocketConsole adapts a WebSocket to the io.ReadWriteCloser the relay drives.
+// Output is batched: writes accumulate in a buffer that a flush loop drains as one
+// binary frame per interval, cutting frame count on bursty output.
+type webSocketConsole struct {
+	conn *websocket.Conn
+	rest []byte // input leftover; Read is single-threaded
+
+	mu        sync.Mutex
+	cond      *sync.Cond // signaled when buf drains or the console closes
+	buf       []byte
+	closed    bool
+	wake      chan struct{}
+	flushNow  chan struct{}
+	done      chan struct{}
+	stopped   chan struct{}
+	closeOnce sync.Once
+}
+
+func newWebSocketConsole(conn *websocket.Conn) *webSocketConsole {
+	w := &webSocketConsole{
+		conn:     conn,
+		wake:     make(chan struct{}, 1),
+		flushNow: make(chan struct{}, 1),
+		done:     make(chan struct{}),
+		stopped:  make(chan struct{}),
+	}
+	w.cond = sync.NewCond(&w.mu)
+	go w.flushLoop()
+	return w
+}
+
+// Ping verifies the browser peer is still reachable. Browsers answer
+// protocol-level pings automatically, so this needs no frontend support.
+func (w *webSocketConsole) Ping(ctx context.Context) error {
+	return w.conn.Ping(ctx)
+}
+
+func (w *webSocketConsole) Read(p []byte) (int, error) {
+	if len(w.rest) == 0 {
+		_, data, err := w.conn.Read(context.Background())
 		if err != nil {
-			return
+			return 0, err
 		}
+		w.rest = data
+	}
+	n := copy(p, w.rest)
+	w.rest = w.rest[n:]
+	return n, nil
+}
+
+func (w *webSocketConsole) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	// Backpressure: block the producer until the flusher drains below the limit,
+	// throttling the SSH read loop instead of buffering output unbounded.
+	for len(w.buf) >= webConsoleBufferLimit && !w.closed {
+		w.cond.Wait()
+	}
+	if w.closed {
+		w.mu.Unlock()
+		return 0, io.ErrClosedPipe
+	}
+	if w.buf == nil {
+		w.buf = getWebConsoleBuf()
+	}
+	w.buf = append(w.buf, p...)
+	large := len(w.buf) >= webConsoleFlushMaxBytes
+	w.mu.Unlock()
+
+	notify(w.wake)
+	if large {
+		notify(w.flushNow)
+	}
+	return len(p), nil
+}
+
+func (w *webSocketConsole) Close() error {
+	w.closeOnce.Do(func() {
+		w.mu.Lock()
+		w.closed = true
+		w.cond.Broadcast()
+		w.mu.Unlock()
+		close(w.done)
+	})
+	<-w.stopped
+	return w.conn.Close(websocket.StatusNormalClosure, "")
+}
+
+func (w *webSocketConsole) flushLoop() {
+	defer close(w.stopped)
+	for {
 		select {
-		case <-done:
+		case <-w.done:
+			_ = w.flush()
 			return
-		default:
+		case <-w.wake:
+			// Accumulate briefly so bursty output coalesces into one frame.
+			select {
+			case <-w.done:
+				_ = w.flush()
+				return
+			case <-w.flushNow:
+			case <-time.After(webConsoleFlushInterval):
+			}
+			if w.flush() != nil {
+				return
+			}
 		}
 	}
 }
 
-func copyWebSocketToSSH(ws *websocket.Conn, w io.WriteCloser, done <-chan struct{}) {
-	defer func() { _ = w.Close() }()
-
-	for {
-		var payload []byte
-		if err := websocket.Message.Receive(ws, &payload); err != nil {
-			return
-		}
-		if len(payload) > 0 {
-			_, _ = w.Write(payload)
-		}
-		select {
-		case <-done:
-			return
-		default:
-		}
+func (w *webSocketConsole) flush() error {
+	w.mu.Lock()
+	if len(w.buf) == 0 {
+		w.mu.Unlock()
+		return nil
 	}
+	out := w.buf
+	w.buf = nil
+	w.cond.Broadcast()
+	w.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), webConsoleWriteTimeout)
+	err := w.conn.Write(ctx, websocket.MessageBinary, out)
+	cancel()
+	putWebConsoleBuf(out) // conn.Write is done with out; reuse its backing array
+	if err != nil {
+		// Slow or dead client: drop further output and force teardown.
+		w.mu.Lock()
+		w.closed = true
+		w.cond.Broadcast()
+		w.mu.Unlock()
+		_ = w.conn.CloseNow()
+	}
+	return err
+}
+
+func notify(ch chan struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+// webConsoleBufPool reuses output buffers across flush cycles to avoid
+// reallocating one per ~8ms window under heavy output.
+var webConsoleBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, webConsoleFlushMaxBytes)
+		return &b
+	},
+}
+
+func getWebConsoleBuf() []byte {
+	return (*webConsoleBufPool.Get().(*[]byte))[:0]
+}
+
+func putWebConsoleBuf(b []byte) {
+	if cap(b) > webConsoleBufferLimit {
+		return // don't retain oversized buffers grown past the cap
+	}
+	webConsoleBufPool.Put(&b)
 }
 
 func websocketBaseURL(c *gin.Context) string {
@@ -505,15 +679,8 @@ func configuredWebConsoleBaseURL() string {
 	return strings.TrimRight(parsed.String(), "/")
 }
 
-func validateWebSocketOrigin(config *websocket.Config, req *http.Request) error {
-	if isWebSocketOriginAllowed(config, req) {
-		return nil
-	}
-	return errors.New("websocket origin is not allowed")
-}
-
-func isWebSocketOriginAllowed(config *websocket.Config, req *http.Request) bool {
-	origin, ok := websocketOrigin(config, req)
+func isWebSocketOriginAllowed(req *http.Request) bool {
+	origin, ok := websocketOrigin(req)
 	if !ok {
 		return true
 	}
@@ -533,11 +700,7 @@ func isWebSocketOriginAllowed(config *websocket.Config, req *http.Request) bool 
 	return sameHost(origin.Host, req.Host)
 }
 
-func websocketOrigin(config *websocket.Config, req *http.Request) (*url.URL, bool) {
-	if config != nil && config.Origin != nil {
-		return normalizeOrigin(config.Origin), true
-	}
-
+func websocketOrigin(req *http.Request) (*url.URL, bool) {
 	rawOrigin := strings.TrimSpace(req.Header.Get("Origin"))
 	if rawOrigin == "" {
 		return nil, false
