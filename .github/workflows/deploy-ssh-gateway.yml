@@ -5,15 +5,24 @@ on:
     branches: [ "main" ]
     paths:
       - "cmd/ssh-gateway/**"
-      - "internal/domain/access/ssh_*.go"
-      - "internal/domain/access/ssh_*_test.go"
-      - "internal/domain/access/hostkey_test.go"
-      - "internal/utils/**"
+      - "internal/api/**"
+      - "internal/domain/access/**"
+      - "internal/domain/auth/**"
       - "internal/infrastructure/database/**"
+      - "internal/infrastructure/http/**"
       - "internal/infrastructure/openstack/**"
+      - "internal/schema/**"
+      - "internal/utils/**"
+      - "ent/**"
+      - "go.mod"
+      - "go.sum"
       - "deploy/systemd/ssh-gateway.service.example"
       - ".github/workflows/deploy-ssh-gateway.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
