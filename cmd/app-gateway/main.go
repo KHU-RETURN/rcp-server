@@ -52,7 +52,7 @@ func main() {
 		fatal("openstack compute client: %v", err)
 	}
 
-	app, err := NewServer(cfg, log, newRepo(db), resolver)
+	app, err := NewServer(cfg, log, newRepo(db), newCachedFixedIPResolver(resolver, cfg.FixedIPCacheTTL))
 	if err != nil {
 		fatal("server build: %v", err)
 	}
