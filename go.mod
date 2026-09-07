@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	entgo.io/ent v0.14.6
+	github.com/coder/websocket v1.8.14
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
