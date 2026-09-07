@@ -182,6 +182,10 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 			errors.Is(err, ErrCreateInstanceImageRequired),
 			errors.Is(err, ErrCreateInstanceFlavorRequired):
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
+		case errors.Is(err, ErrFlavorNotFound):
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
+		case errors.Is(err, ErrUserUsageLimitExceeded):
+			c.JSON(http.StatusConflict, api.ErrorResponse{Error: err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 		}

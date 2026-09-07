@@ -36,6 +36,8 @@ type AppDeps struct {
 	NSProxySock      string
 	HTTPProxyAddress string
 	FrontendBaseURL  string
+	UsageLimits      compute.UserUsageLimits
+	StorageLimits    storage.UserStorageLimits
 }
 
 func NewApp(deps AppDeps) (*App, error) {
@@ -49,7 +51,7 @@ func NewApp(deps AppDeps) (*App, error) {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
 	return &App{
-		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
+		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID, deps.UsageLimits),
 		Access:  access.Init(deps.Provider, deps.EntClient, deps.SSHGatewaySecret),
 		Admin: admin.Init(
 			deps.EntClient,
@@ -58,6 +60,6 @@ func NewApp(deps AppDeps) (*App, error) {
 		),
 		Apps:    apps.Init(deps.EntClient),
 		Auth:    authHandler,
-		Storage: storage.Init(deps.Provider, deps.EntClient),
+		Storage: storage.Init(deps.Provider, deps.EntClient, deps.StorageLimits),
 	}, nil
 }

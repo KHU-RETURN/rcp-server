@@ -17,6 +17,11 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
 )
 
+func isNotFound(err error) bool {
+	var e gophercloud.ErrUnexpectedResponseCode
+	return errors.As(err, &e) && e.Actual == http.StatusNotFound
+}
+
 type Client struct {
 	provider *gophercloud.ProviderClient
 }
@@ -54,7 +59,11 @@ func (c *Client) DeleteContainer(name string) error {
 	if err != nil {
 		return err
 	}
-	return containers.Delete(sc, name).Err
+	err = containers.Delete(sc, name).Err
+	if isNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 func (c *Client) ListObjects(containerName string) ([]ObjectInfo, error) {
@@ -64,6 +73,9 @@ func (c *Client) ListObjects(containerName string) ([]ObjectInfo, error) {
 	}
 	pages, err := objects.List(sc, containerName, objects.ListOpts{Full: true}).AllPages()
 	if err != nil {
+		if isNotFound(err) {
+			return nil, nil // 컨테이너가 이미 삭제된 경우 빈 목록 반환
+		}
 		return nil, err
 	}
 	raw, err := objects.ExtractInfo(pages)
@@ -115,7 +127,11 @@ func (c *Client) DeleteObject(containerName, objectName string) error {
 	if err != nil {
 		return err
 	}
-	return objects.Delete(sc, containerName, objectName, nil).Err
+	err = objects.Delete(sc, containerName, objectName, nil).Err
+	if isNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 func (c *Client) BulkDeleteObjects(containerName string, names []string) error {

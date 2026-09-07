@@ -100,7 +100,7 @@ func (f *fakeClient) FetchDiagnostics(id string) (map[string]any, error) {
 
 type fakeRepo struct {
 	saveInstanceFn        func(ctx context.Context, ownerID uuid.UUID, inst *Instance) error
-	deleteByOpenstackIDFn func(ctx context.Context, ownerID uuid.UUID, openstackID string) error
+	deleteByOpenstackIDFn func(ctx context.Context, ownerID uuid.UUID, openstackID string) (bool, error)
 	updateMetadataFn      func(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error
 	listByOwnerFn         func(ctx context.Context, ownerID uuid.UUID) ([]Instance, error)
 	findByOpenstackIDFn   func(ctx context.Context, ownerID uuid.UUID, openstackID string) (*Instance, error)
@@ -113,11 +113,11 @@ func (r *fakeRepo) SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *In
 	return nil
 }
 
-func (r *fakeRepo) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error {
+func (r *fakeRepo) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) (bool, error) {
 	if r.deleteByOpenstackIDFn != nil {
 		return r.deleteByOpenstackIDFn(ctx, ownerID, openstackID)
 	}
-	return nil
+	return true, nil
 }
 
 func (r *fakeRepo) UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error {
@@ -754,6 +754,63 @@ func TestServiceCreateInstance(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects creation when user instance count limit is reached", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{{ID: "flavor-1", VCPUs: 1, RAM: 1024, Disk: 10}}, nil
+			},
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				t.Fatal("CreateServer should not be called when limit is reached")
+				return nil, nil
+			},
+		}
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-1"}, {OpenstackID: "server-2"}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, "project-1", "", UserUsageLimits{Instances: 2})
+		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
+			Name:      "vm",
+			ImageRef:  "image-1",
+			FlavorRef: "flavor-1",
+		})
+		if !errors.Is(err, ErrUserUsageLimitExceeded) {
+			t.Fatalf("expected ErrUserUsageLimitExceeded, got %v", err)
+		}
+	})
+
+	t.Run("rejects creation when user resource usage limit is reached", func(t *testing.T) {
+		client := &fakeClient{
+			fetchFlavorsFn: func() ([]Flavor, error) {
+				return []Flavor{
+					{ID: "small", VCPUs: 1, RAM: 1024, Disk: 10},
+					{ID: "medium", VCPUs: 2, RAM: 2048, Disk: 20},
+				}, nil
+			},
+			createServerFn: func(opts CreateServerOpts) (*Server, error) {
+				t.Fatal("CreateServer should not be called when usage limit is reached")
+				return nil, nil
+			},
+		}
+		repo := &fakeRepo{
+			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
+				return []Instance{{OpenstackID: "server-1", FlavorID: "small"}}, nil
+			},
+		}
+
+		svc := NewService(client, repo, "project-1", "", UserUsageLimits{VCPUs: 2, RAMMB: 4096, DiskGB: 40})
+		_, err := svc.CreateInstance(ctx, testOwnerID, CreateServerOpts{
+			Name:      "vm",
+			ImageRef:  "image-1",
+			FlavorRef: "medium",
+		})
+		if !errors.Is(err, ErrUserUsageLimitExceeded) {
+			t.Fatalf("expected ErrUserUsageLimitExceeded, got %v", err)
+		}
+	})
+
 	t.Run("returns operation failed when repo save errors", func(t *testing.T) {
 		var cleanedUpID string
 		client := &fakeClient{
@@ -798,9 +855,9 @@ func TestServiceGetInstances(t *testing.T) {
 					{OpenstackID: "server-stale", Name: "old-vm", ImageID: "image-2", FlavorID: "flavor-2"},
 				}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedIDs = append(deletedIDs, id)
-				return nil
+				return true, nil
 			},
 		}
 		client := &fakeClient{
@@ -847,8 +904,8 @@ func TestServiceGetInstances(t *testing.T) {
 			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
 				return []Instance{{OpenstackID: "server-stale"}}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) error {
-				return errors.New("db delete failed")
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+				return false, errors.New("db delete failed")
 			},
 		}
 		client := &fakeClient{
@@ -879,7 +936,7 @@ func TestServiceGetInstances(t *testing.T) {
 				}
 				return instances, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) error { return nil },
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) { return true, nil },
 		}
 
 		var inFlight int32
@@ -930,9 +987,9 @@ func TestServiceGetInstances(t *testing.T) {
 			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
 				return []Instance{{OpenstackID: "server-racing"}}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedIDs = append(deletedIDs, id)
-				return nil
+				return true, nil
 			},
 		}
 		client := &fakeClient{
@@ -959,9 +1016,9 @@ func TestServiceGetInstances(t *testing.T) {
 			listByOwnerFn: func(_ context.Context, _ uuid.UUID) ([]Instance, error) {
 				return []Instance{{OpenstackID: "server-x"}}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedIDs = append(deletedIDs, id)
-				return nil
+				return true, nil
 			},
 		}
 		client := &fakeClient{
@@ -1082,9 +1139,9 @@ func TestServiceDeleteInstance(t *testing.T) {
 			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (*Instance, error) {
 				return &Instance{OpenstackID: id}, nil
 			},
-			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) error {
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (bool, error) {
 				deletedID = id
-				return nil
+				return true, nil
 			},
 		}
 		svc := NewService(&fakeClient{}, repo, "project-1", "")
@@ -1093,6 +1150,22 @@ func TestServiceDeleteInstance(t *testing.T) {
 		}
 		if deletedID != "server-1" {
 			t.Fatalf("expected deletedID=server-1, got %q", deletedID)
+		}
+	})
+
+	t.Run("returns ErrInstanceNotFound when DB row already gone (concurrent double-delete)", func(t *testing.T) {
+		repo := &fakeRepo{
+			findByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, id string) (*Instance, error) {
+				return &Instance{OpenstackID: id}, nil
+			},
+			deleteByOpenstackIDFn: func(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+				return false, nil // 0 rows — 다른 요청이 이미 삭제
+			},
+		}
+		svc := NewService(&fakeClient{}, repo, "project-1", "")
+		err := svc.DeleteInstance(ctx, testOwnerID, "server-1")
+		if !errors.Is(err, ErrInstanceNotFound) {
+			t.Fatalf("expected ErrInstanceNotFound, got %v", err)
 		}
 	})
 }
