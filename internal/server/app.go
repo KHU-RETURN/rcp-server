@@ -11,17 +11,19 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/admin"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/apps"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/blockstorage"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 )
 
 type App struct {
-	Compute *compute.Handler
-	Access  *access.Handler
-	Admin   *admin.Handler
-	Apps    *apps.Handler
-	Auth    *auth.Handler
-	Storage *storage.Handler
+	BlockStorage *blockstorage.Handler
+	Compute      *compute.Handler
+	Access       *access.Handler
+	Admin        *admin.Handler
+	Apps         *apps.Handler
+	Auth         *auth.Handler
+	Storage      *storage.Handler
 }
 
 type AppDeps struct {
@@ -49,8 +51,9 @@ func NewApp(deps AppDeps) (*App, error) {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
 	return &App{
-		Compute: compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
-		Access:  access.Init(deps.Provider, deps.EntClient, deps.SSHGatewaySecret),
+		BlockStorage: blockstorage.Init(deps.Provider, deps.EntClient),
+		Compute:      compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
+		Access:       access.Init(deps.Provider, deps.EntClient, deps.SSHGatewaySecret),
 		Admin: admin.Init(
 			deps.EntClient,
 			admin.WithLiveHealthChecker(deps.Provider, deps.SSHGatewaySock, deps.NSProxySock, deps.HTTPProxyAddress),
