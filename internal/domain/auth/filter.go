@@ -18,9 +18,9 @@ const (
 	headerAuthorization = "Authorization"
 	schemeBearer        = "Bearer"
 	envAdminEmails      = "RCP_ADMIN_EMAILS"
-	envDevAuthBypass    = "RCP_DEV_AUTH_BYPASS"
+	envDevAuthBypass    = "RCP_DEV_AUTH_BYPASS" // #nosec G101 -- environment variable name, not a credential.
 	envDevAuthEmail     = "RCP_DEV_AUTH_EMAIL"
-	devAuthToken        = "dev-local-token"
+	devAuthToken        = "dev-local-token" // #nosec G101 -- local-only dev bypass token gated by RCP_DEV_AUTH_BYPASS.
 )
 
 var errInvalidAuthorizationHeader = errors.New("invalid authorization header")

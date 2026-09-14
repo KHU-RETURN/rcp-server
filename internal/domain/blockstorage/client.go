@@ -2,7 +2,6 @@ package blockstorage
 
 import (
 	"errors"
-	"strconv"
 
 	"github.com/gophercloud/gophercloud"
 	goopenstack "github.com/gophercloud/gophercloud/openstack"
@@ -250,13 +249,4 @@ func convertSnapshot(raw snapshots.Snapshot) Snapshot {
 		CreatedAt:   raw.CreatedAt,
 		Metadata:    raw.Metadata,
 	}
-}
-
-func ownerString(ownerID interface{ String() string }) string {
-	return ownerID.String()
-}
-
-func parsePositiveSize(raw string) (int, bool) {
-	size, err := strconv.Atoi(raw)
-	return size, err == nil && size > 0
 }
