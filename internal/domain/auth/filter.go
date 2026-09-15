@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,6 +18,9 @@ const (
 	headerAuthorization = "Authorization"
 	schemeBearer        = "Bearer"
 	envAdminEmails      = "RCP_ADMIN_EMAILS"
+	envDevAuthBypass    = "RCP_DEV_AUTH_BYPASS" // #nosec G101 -- environment variable name, not a credential.
+	envDevAuthEmail     = "RCP_DEV_AUTH_EMAIL"
+	devAuthToken        = "dev-local-token" // #nosec G101 -- local-only dev bypass token gated by RCP_DEV_AUTH_BYPASS.
 )
 
 var errInvalidAuthorizationHeader = errors.New("invalid authorization header")
@@ -26,6 +30,11 @@ func (h *Handler) AuthRequired() gin.HandlerFunc {
 		tokenString, err := accessTokenFromRequest(c)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: ErrAccessTokenNotFound.Error()})
+			return
+		}
+
+		if h.tryDevAuthBypass(c, tokenString) {
+			c.Next()
 			return
 		}
 
@@ -50,6 +59,48 @@ func (h *Handler) AuthRequired() gin.HandlerFunc {
 		c.Set(ContextKeyUser, user)
 		c.Next()
 	}
+}
+
+func (h *Handler) tryDevAuthBypass(c *gin.Context, tokenString string) bool {
+	if os.Getenv(envDevAuthBypass) != "1" || tokenString != devAuthToken {
+		return false
+	}
+
+	email := strings.TrimSpace(os.Getenv(envDevAuthEmail))
+	if email == "" {
+		email = "dev@khu.ac.kr"
+	}
+
+	user, err := h.Svc.repo.FindByEmail(c.Request.Context(), email)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResponse{Error: ErrUserLookupFailed.Error()})
+		return true
+	}
+	if user == nil {
+		user = &User{
+			Email:    email,
+			Name:     "Local Dev User",
+			GoogleID: "local-dev:" + email,
+			GoogleAuth: &GoogleInfo{
+				Expiry: time.Now().Add(24 * time.Hour),
+			},
+		}
+		if err := h.Svc.repo.UpsertUser(c.Request.Context(), user); err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResponse{Error: ErrUserLookupFailed.Error()})
+			return true
+		}
+		user, err = h.Svc.repo.FindByEmail(c.Request.Context(), email)
+		if err != nil || user == nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResponse{Error: ErrUserLookupFailed.Error()})
+			return true
+		}
+	}
+
+	user.Role = RoleForEmail(user.Email)
+	user.AccessToken = tokenString
+	c.Set(ContextKeyUserEmail, user.Email)
+	c.Set(ContextKeyUser, user)
+	return true
 }
 
 func AdminRequired() gin.HandlerFunc {
