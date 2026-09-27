@@ -192,6 +192,9 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | 변수 | 의무 | 설명 |
 |------|------|------|
 | `PORT` | optional (기본 `8080`) | HTTP 리스닝 포트 |
+| `SENTRY_DSN` | optional | Sentry 오류 수집 DSN. 미설정 시 수집 비활성. 운영 배포는 GitHub Actions Secret에 등록 |
+| `SENTRY_ENVIRONMENT` | optional | Sentry 환경 이름. 운영 배포에서는 `production` |
+| `SENTRY_RELEASE` | optional | Sentry 릴리스 식별자. 운영 배포에서는 Git commit SHA |
 | `RCP_JWT_SECRET` | optional (dev 폴백 있음) | JWT 서명 시크릿. 운영에서는 반드시 설정 |
 | `OS_AUTH_URL` | **필수** | OpenStack Identity 엔드포인트 |
 | `OS_USERNAME` | **필수** | OpenStack 사용자 이름 |

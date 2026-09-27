@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/database"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/google"
 	"github.com/KHU-RETURN/rcp-server/internal/infrastructure/openstack"
@@ -20,6 +22,24 @@ import (
 func main() {
 	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Fatalf(".env 로드 실패: %v", err)
+	}
+	if dsn := strings.TrimSpace(os.Getenv("SENTRY_DSN")); dsn != "" {
+		off := &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionOff}
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:         dsn,
+			Environment: os.Getenv("SENTRY_ENVIRONMENT"),
+			Release:     os.Getenv("SENTRY_RELEASE"),
+			DataCollection: &sentry.DataCollection{
+				UserInfo:    sentry.Set(false),
+				Cookies:     off,
+				HTTPHeaders: &sentry.HeaderCollectionConfig{Request: off, Response: off},
+				HTTPBodies:  []sentry.BodyType{},
+				QueryParams: off,
+			},
+		}); err != nil {
+			log.Fatalf("Sentry 초기화 실패: %v", err)
+		}
+		defer sentry.Flush(2 * time.Second)
 	}
 
 	// 환경변수는 main에서만 읽습니다.
