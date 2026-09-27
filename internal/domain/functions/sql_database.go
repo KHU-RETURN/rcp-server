@@ -97,6 +97,7 @@ func (s *DataStore) CreateDatabase(ctx context.Context, owner uuid.UUID, name st
 		return nil, ErrDataUnavailable
 	}
 	path := s.databasePath(id)
+	// #nosec G304 -- path uses a server-generated UUID under the validated private data directory.
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
