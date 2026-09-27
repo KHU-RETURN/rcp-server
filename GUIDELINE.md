@@ -155,6 +155,21 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | GET | `/api/v1/storage/containers/:name/archive?prefix=path/` | ArchiveObjects | prefix 아래 object를 zip으로 다운로드 |
 | DELETE | `/api/v1/storage/containers/:name/objects/*key` | DeleteObject | 파일 삭제 |
 
+### Functions (인증 필요)
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/v1/functions` | 내 WASM 함수 목록 |
+| POST | `/api/v1/functions` | `name`, `language` (`rust`, `go`, `javascript`, `python`, `wasm`), `file` multipart 필드로 함수 등록 |
+| PUT | `/api/v1/functions/:id` | `language`, `file` multipart 필드로 함수 교체 |
+| DELETE | `/api/v1/functions/:id` | 함수 삭제 |
+| POST | `/api/v1/functions/:id/invoke` | JSON 객체 본문을 stdin으로 전달해 실행; 정상 종료 시 stdout도 JSON 객체여야 함 |
+| POST | `/api/v1/functions/:id/key` | 외부 호출 키 발급/로테이션 (`expires_in_days`: 1~90); 원문은 응답에서만 반환 |
+| DELETE | `/api/v1/functions/:id/key` | 외부 호출 키 폐기 |
+| GET | `/api/v1/functions/:id/data/:collection?offset=0` | 내 함수의 SQLite JSON 데이터 목록 (최대 100개) |
+| GET/PUT/DELETE | `/api/v1/functions/:id/data/:collection/:key` | 내 함수의 JSON 값 읽기·저장·삭제 |
+| GET/HEAD/POST/PUT/PATCH/DELETE | `/api/v1/run/:id/*path` | 함수 키 Bearer 인증으로 공개 HTTP 호출 |
+
 ---
 
 ## 6. 기술 스택

@@ -12,6 +12,9 @@ type App func(*sql.Selector)
 // Container is the predicate function for container builders.
 type Container func(*sql.Selector)
 
+// Function is the predicate function for function builders.
+type Function func(*sql.Selector)
+
 // Instance is the predicate function for instance builders.
 type Instance func(*sql.Selector)
 

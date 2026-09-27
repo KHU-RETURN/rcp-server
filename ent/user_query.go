@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/KHU-RETURN/rcp-server/ent/container"
+	"github.com/KHU-RETURN/rcp-server/ent/function"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -30,6 +31,7 @@ type UserQuery struct {
 	withInstances  *InstanceQuery
 	withKeypairs   *KeyPairQuery
 	withContainers *ContainerQuery
+	withFunctions  *FunctionQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -125,6 +127,28 @@ func (_q *UserQuery) QueryContainers() *ContainerQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(container.Table, container.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.ContainersTable, user.ContainersColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryFunctions chains the current query on the "functions" edge.
+func (_q *UserQuery) QueryFunctions() *FunctionQuery {
+	query := (&FunctionClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(function.Table, function.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.FunctionsTable, user.FunctionsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -327,6 +351,7 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withInstances:  _q.withInstances.Clone(),
 		withKeypairs:   _q.withKeypairs.Clone(),
 		withContainers: _q.withContainers.Clone(),
+		withFunctions:  _q.withFunctions.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -363,6 +388,17 @@ func (_q *UserQuery) WithContainers(opts ...func(*ContainerQuery)) *UserQuery {
 		opt(query)
 	}
 	_q.withContainers = query
+	return _q
+}
+
+// WithFunctions tells the query-builder to eager-load the nodes that are connected to
+// the "functions" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithFunctions(opts ...func(*FunctionQuery)) *UserQuery {
+	query := (&FunctionClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withFunctions = query
 	return _q
 }
 
@@ -444,10 +480,11 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			_q.withInstances != nil,
 			_q.withKeypairs != nil,
 			_q.withContainers != nil,
+			_q.withFunctions != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -486,6 +523,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadContainers(ctx, query, nodes,
 			func(n *User) { n.Edges.Containers = []*Container{} },
 			func(n *User, e *Container) { n.Edges.Containers = append(n.Edges.Containers, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withFunctions; query != nil {
+		if err := _q.loadFunctions(ctx, query, nodes,
+			func(n *User) { n.Edges.Functions = []*Function{} },
+			func(n *User, e *Function) { n.Edges.Functions = append(n.Edges.Functions, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -580,6 +624,37 @@ func (_q *UserQuery) loadContainers(ctx context.Context, query *ContainerQuery, 
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "user_containers" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadFunctions(ctx context.Context, query *FunctionQuery, nodes []*User, init func(*User), assign func(*User, *Function)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	query.withFKs = true
+	query.Where(predicate.Function(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.FunctionsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.user_functions
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "user_functions" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_functions" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}

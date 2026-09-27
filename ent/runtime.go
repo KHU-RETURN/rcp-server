@@ -7,6 +7,7 @@ import (
 
 	"github.com/KHU-RETURN/rcp-server/ent/app"
 	"github.com/KHU-RETURN/rcp-server/ent/container"
+	"github.com/KHU-RETURN/rcp-server/ent/function"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -50,6 +51,38 @@ func init() {
 	containerDescID := containerFields[0].Descriptor()
 	// container.DefaultID holds the default value on creation for the id field.
 	container.DefaultID = containerDescID.Default.(func() uuid.UUID)
+	functionFields := schema.Function{}.Fields()
+	_ = functionFields
+	// functionDescName is the schema descriptor for name field.
+	functionDescName := functionFields[1].Descriptor()
+	// function.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	function.NameValidator = functionDescName.Validators[0].(func(string) error)
+	// functionDescWasm is the schema descriptor for wasm field.
+	functionDescWasm := functionFields[2].Descriptor()
+	// function.WasmValidator is a validator for the "wasm" field. It is called by the builders before save.
+	function.WasmValidator = functionDescWasm.Validators[0].(func([]byte) error)
+	// functionDescLanguage is the schema descriptor for language field.
+	functionDescLanguage := functionFields[3].Descriptor()
+	// function.DefaultLanguage holds the default value on creation for the language field.
+	function.DefaultLanguage = functionDescLanguage.Default.(string)
+	// functionDescDataMode is the schema descriptor for data_mode field.
+	functionDescDataMode := functionFields[4].Descriptor()
+	// function.DefaultDataMode holds the default value on creation for the data_mode field.
+	function.DefaultDataMode = functionDescDataMode.Default.(bool)
+	// functionDescCreatedAt is the schema descriptor for created_at field.
+	functionDescCreatedAt := functionFields[9].Descriptor()
+	// function.DefaultCreatedAt holds the default value on creation for the created_at field.
+	function.DefaultCreatedAt = functionDescCreatedAt.Default.(func() time.Time)
+	// functionDescUpdatedAt is the schema descriptor for updated_at field.
+	functionDescUpdatedAt := functionFields[10].Descriptor()
+	// function.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	function.DefaultUpdatedAt = functionDescUpdatedAt.Default.(func() time.Time)
+	// function.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	function.UpdateDefaultUpdatedAt = functionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// functionDescID is the schema descriptor for id field.
+	functionDescID := functionFields[0].Descriptor()
+	// function.DefaultID holds the default value on creation for the id field.
+	function.DefaultID = functionDescID.Default.(func() uuid.UUID)
 	instanceFields := schema.Instance{}.Fields()
 	_ = instanceFields
 	// instanceDescKeyName is the schema descriptor for key_name field.

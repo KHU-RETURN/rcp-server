@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/KHU-RETURN/rcp-server/ent/container"
+	"github.com/KHU-RETURN/rcp-server/ent/function"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
@@ -162,6 +163,21 @@ func (_c *UserCreate) AddContainers(v ...*Container) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddContainerIDs(ids...)
+}
+
+// AddFunctionIDs adds the "functions" edge to the Function entity by IDs.
+func (_c *UserCreate) AddFunctionIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddFunctionIDs(ids...)
+	return _c
+}
+
+// AddFunctions adds the "functions" edges to the Function entity.
+func (_c *UserCreate) AddFunctions(v ...*Function) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddFunctionIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -352,6 +368,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.FunctionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.FunctionsTable,
+			Columns: []string{user.FunctionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(function.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

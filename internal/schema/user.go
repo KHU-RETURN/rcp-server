@@ -33,5 +33,6 @@ func (User) Edges() []ent.Edge {
 		edge.To("instances", Instance.Type),
 		edge.To("keypairs", KeyPair.Type),
 		edge.To("containers", Container.Type),
+		edge.To("functions", Function.Type),
 	}
 }

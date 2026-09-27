@@ -1,0 +1,21 @@
+[Unit]
+Description=RCP isolated WASM function builder
+After=docker.service
+Requires=docker.service
+
+[Service]
+User=return-builder
+Group=return
+SupplementaryGroups=docker
+RuntimeDirectory=rcp-function-builder
+RuntimeDirectoryMode=0750
+Environment=RCP_FUNCTION_BUILDER_SOCKET=/run/rcp-function-builder/builder.sock
+Environment=RCP_PYTHON_WASM_PATH=/opt/rcp-function-builder/python-3.11.4.wasm
+ExecStart=/opt/rcp-function-builder/function-builder
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

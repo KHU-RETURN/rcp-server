@@ -33,6 +33,18 @@ func (f ContainerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ContainerMutation", m)
 }
 
+// The FunctionFunc type is an adapter to allow the use of ordinary
+// function as Function mutator.
+type FunctionFunc func(context.Context, *ent.FunctionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f FunctionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.FunctionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FunctionMutation", m)
+}
+
 // The InstanceFunc type is an adapter to allow the use of ordinary
 // function as Instance mutator.
 type InstanceFunc func(context.Context, *ent.InstanceMutation) (ent.Value, error)

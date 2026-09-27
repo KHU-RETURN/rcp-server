@@ -1,0 +1,7 @@
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gzip && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://github.com/bytecodealliance/javy/releases/download/v9.1.0/javy-x86_64-linux-v9.1.0.gz -o /tmp/javy.gz \
+    && echo 'a68b122d48eb3dfc1b801d4e14c39271fde3638243d3272d206e376ac9189e39  /tmp/javy.gz' | sha256sum -c - \
+    && gzip -dc /tmp/javy.gz > /usr/local/bin/javy \
+    && chmod 0755 /usr/local/bin/javy \
+    && rm /tmp/javy.gz
