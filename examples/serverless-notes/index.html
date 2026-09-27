@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>작은 메모 — RCP Serverless</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div class="mark" aria-hidden="true">✳</div>
+        <div>
+          <p class="product">RCP Serverless example</p>
+          <h1>작은 메모</h1>
+          <p class="intro">생각을 적으면 Go 함수가 SQLite에 저장합니다.</p>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="connection">
+          <h2>함수 연결</h2>
+          <p>콘솔의 HTTP endpoint와 함수 키를 입력하세요. 키는 이 탭을 닫으면 사라집니다.</p>
+          <form id="connection-form">
+            <label for="endpoint">HTTP endpoint</label>
+            <input id="endpoint" type="url" required placeholder="https://return-api.khu-return.com/api/v1/run/.../" spellcheck="false" />
+            <label for="key">Function key</label>
+            <input id="key" type="password" required autocomplete="off" placeholder="rcpf_..." />
+            <button class="dark-button" type="submit">연결하기</button>
+          </form>
+          <button class="text-button" id="disconnect" type="button" hidden>연결 해제</button>
+          <p class="hint">메모는 같은 함수 키를 사용하는 사람에게 공유됩니다. 최신 100개까지 표시합니다.</p>
+        </aside>
+
+        <section class="notebook" aria-label="메모 목록">
+          <div class="notebook-head">
+            <div>
+              <p class="notebook-label">메모장</p>
+              <h2>지금 남길 생각</h2>
+            </div>
+            <span id="count" class="count">0개</span>
+          </div>
+          <form id="note-form">
+            <label for="note-text">새 메모</label>
+            <textarea id="note-text" rows="4" maxlength="500" disabled placeholder="함수를 연결하면 메모를 쓸 수 있어요."></textarea>
+            <div class="compose-bottom">
+              <span id="length">0 / 500 bytes</span>
+              <button class="dark-button" id="save" type="submit" disabled>메모 남기기</button>
+            </div>
+          </form>
+          <p id="status" class="status" role="status" aria-live="polite">함수를 연결해 주세요.</p>
+          <div id="notes" class="notes"></div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

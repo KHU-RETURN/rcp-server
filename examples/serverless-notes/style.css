@@ -1,0 +1,65 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #17252e;
+  background: #f4f6f7;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .55; }
+:focus-visible { outline: 3px solid #4e83bf; outline-offset: 3px; }
+
+.shell { max-width: 1120px; padding: 48px 28px 88px; margin: auto; }
+.masthead { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 42px; }
+.mark { display: grid; place-items: center; width: 58px; height: 58px; flex: 0 0 auto; border-radius: 16px; background: #254f76; color: white; font-size: 32px; }
+.product { margin: 3px 0 8px; color: #5a6c77; font-size: 13px; font-weight: 700; }
+h1 { margin: 0; font-size: clamp(36px, 5vw, 56px); letter-spacing: -.055em; line-height: 1.1; }
+.intro { margin: 12px 0 0; color: #5a6c77; font-size: 17px; }
+
+.layout { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 26px; align-items: start; }
+.connection, .notebook { background: #fff; border: 1px solid #d9e1e5; border-radius: 18px; }
+.connection { padding: 28px; }
+.connection h2 { margin: 0 0 12px; font-size: 22px; letter-spacing: -.03em; }
+.connection p { color: #566a76; line-height: 1.65; margin: 0 0 24px; font-size: 14px; }
+.connection label, #note-form label { display: block; margin: 17px 0 8px; font-size: 13px; font-weight: 700; }
+.connection input, textarea { width: 100%; padding: 12px 14px; border: 1px solid #bfcdd5; border-radius: 9px; background: #fff; color: #17252e; }
+.connection input { font-size: 13px; }
+.connection form .dark-button { width: 100%; margin-top: 20px; }
+.connection .hint { margin: 26px 0 0; padding-top: 20px; border-top: 1px solid #e5eaed; font-size: 12px; }
+
+.dark-button { border: 0; border-radius: 9px; background: #254f76; color: #fff; padding: 11px 17px; font-weight: 700; }
+.dark-button:hover:not(:disabled) { background: #1c3d5d; }
+.text-button { padding: 8px 0; margin-top: 12px; border: 0; background: transparent; color: #254f76; font-weight: 700; }
+
+.notebook { overflow: hidden; }
+.notebook-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; padding: 28px 30px 22px; border-bottom: 1px solid #e5eaed; }
+.notebook-label { margin: 0 0 7px; color: #687c86; font-size: 13px; }
+.notebook-head h2 { margin: 0; font-size: 26px; letter-spacing: -.04em; }
+.count { color: #687c86; font-size: 14px; white-space: nowrap; }
+#note-form { padding: 8px 30px 24px; }
+textarea { min-height: 110px; resize: vertical; line-height: 1.6; }
+textarea:disabled { background: #f8fafb; }
+.compose-bottom { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 12px; }
+.compose-bottom span { color: #687c86; font-size: 12px; }
+.status { margin: 0; padding: 14px 30px; border-top: 1px solid #e5eaed; color: #566a76; font-size: 14px; }
+.status.error { color: #b03a30; }
+.notes { min-height: 160px; }
+.note { padding: 22px 30px; border-top: 1px solid #e5eaed; }
+.note:first-child { border-top: 0; }
+.note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.note-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; color: #73838b; font-size: 12px; }
+.note-foot button { border: 0; padding: 4px 0; background: transparent; color: #7b5b57; font-weight: 600; }
+.note-foot button:hover { color: #b03a30; }
+
+@media (max-width: 760px) {
+  .shell { padding: 26px 16px 64px; }
+  .masthead { gap: 16px; margin-bottom: 28px; }
+  .mark { width: 48px; height: 48px; font-size: 27px; }
+  .layout { grid-template-columns: 1fr; gap: 16px; }
+  .connection, .notebook { border-radius: 14px; }
+  .connection, .notebook-head, #note-form, .note { padding-left: 20px; padding-right: 20px; }
+  .status { padding-left: 20px; padding-right: 20px; }
+}

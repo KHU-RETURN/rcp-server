@@ -209,6 +209,65 @@ func (s *Service) dataFor(ctx context.Context, owner, id uuid.UUID) (*DataStore,
 	return s.data, nil
 }
 
+func (s *Service) CreateDatabase(ctx context.Context, owner uuid.UUID, name string) (*AppDatabase, error) {
+	if s.data == nil {
+		return nil, ErrDataUnavailable
+	}
+	return s.data.CreateDatabase(ctx, owner, name)
+}
+
+func (s *Service) ListDatabases(ctx context.Context, owner uuid.UUID) ([]AppDatabase, error) {
+	if s.data == nil {
+		return nil, ErrDataUnavailable
+	}
+	return s.data.ListDatabases(ctx, owner)
+}
+
+func (s *Service) DeleteDatabase(ctx context.Context, owner, id uuid.UUID) error {
+	if s.data == nil {
+		return ErrDataUnavailable
+	}
+	return s.data.DeleteDatabase(ctx, owner, id)
+}
+
+func (s *Service) QueryDatabase(ctx context.Context, owner, id uuid.UUID, statement string, params []any) (*SQLResult, error) {
+	if s.data == nil {
+		return nil, ErrDataUnavailable
+	}
+	return s.data.QueryDatabase(ctx, owner, id, statement, params)
+}
+
+func (s *Service) BindDatabase(ctx context.Context, owner, function, database uuid.UUID, alias string) error {
+	fn, err := s.repo.Get(ctx, owner, function)
+	if err != nil {
+		return err
+	}
+	if !fn.DataMode || s.data == nil {
+		return ErrDataUnavailable
+	}
+	return s.data.BindDatabase(ctx, owner, function, database, alias)
+}
+
+func (s *Service) UnbindDatabase(ctx context.Context, owner, function uuid.UUID, alias string) error {
+	if _, err := s.repo.Get(ctx, owner, function); err != nil {
+		return err
+	}
+	if s.data == nil {
+		return ErrDataUnavailable
+	}
+	return s.data.UnbindDatabase(ctx, owner, function, alias)
+}
+
+func (s *Service) ListBindings(ctx context.Context, owner, function uuid.UUID) ([]DatabaseBinding, error) {
+	if _, err := s.repo.Get(ctx, owner, function); err != nil {
+		return nil, err
+	}
+	if s.data == nil {
+		return nil, ErrDataUnavailable
+	}
+	return s.data.ListBindings(ctx, owner, function)
+}
+
 func (s *Service) ListData(ctx context.Context, owner, id uuid.UUID, collection string, offset int) ([]DataItem, error) {
 	data, err := s.dataFor(ctx, owner, id)
 	if err != nil {
