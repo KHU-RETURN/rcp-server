@@ -35,7 +35,10 @@ type DataItem struct {
 }
 
 // DataStore is a separate SQLite file; every statement includes owner and function IDs.
-type DataStore struct{ db *sql.DB }
+type DataStore struct {
+	db  *sql.DB
+	dir string
+}
 
 func OpenDataStore(dir string) (*DataStore, error) {
 	// #nosec G703 -- dir is fixed at startup from trusted deployment configuration.
@@ -91,12 +94,26 @@ func OpenDataStore(dir string) (*DataStore, error) {
 		owner_id TEXT NOT NULL,
 		function_id TEXT NOT NULL,
 		PRIMARY KEY (owner_id, function_id)
+	) WITHOUT ROWID;
+	CREATE TABLE IF NOT EXISTS app_databases (
+		id TEXT PRIMARY KEY,
+		owner_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		UNIQUE(owner_id, name)
+	);
+	CREATE TABLE IF NOT EXISTS app_database_bindings (
+		owner_id TEXT NOT NULL,
+		function_id TEXT NOT NULL,
+		alias TEXT NOT NULL,
+		database_id TEXT NOT NULL,
+		PRIMARY KEY(owner_id, function_id, alias)
 	) WITHOUT ROWID`
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	return &DataStore{db: db}, nil
+	return &DataStore{db: db, dir: dir}, nil
 }
 
 func (s *DataStore) Close() error { return s.db.Close() }
@@ -213,6 +230,9 @@ func (s *DataStore) DeleteFunction(ctx context.Context, owner, function uuid.UUI
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `DELETE FROM function_data WHERE owner_id=? AND function_id=?`, owner.String(), function.String()); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM app_database_bindings WHERE owner_id=? AND function_id=?`, owner.String(), function.String()); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO deleted_functions (owner_id,function_id) VALUES (?,?)`, owner.String(), function.String()); err != nil {

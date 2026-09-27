@@ -106,9 +106,15 @@ sudo bash install.sh /path/to/function-builder
 
 함수 데이터는 운영용 Ent DB와 별도의 SQLite 파일에 저장합니다. 기본 경로는 API 서비스 작업 디렉터리의 `function-data/data.sqlite`이고 `RCP_FUNCTION_DATA_DIR`로 디렉터리를 지정할 수 있습니다. 디렉터리는 소유자 전용 권한(0700), DB 파일은 0600이어야 하며, 기존 경로의 권한이 더 넓으면 API가 시작하지 않습니다. 백업·복원할 때 운영 DB와 이 파일을 함께 다뤄야 합니다.
 
-첫 버전은 SQL 테이블 편집기가 아닌 **함수별 JSON 컬렉션/키 저장소**입니다. 모든 쿼리는 소유자 ID와 함수 ID를 함께 사용하며, 함수 삭제 시 해당 데이터도 삭제합니다. 값은 최대 16 KiB, 함수당 최대 256개, 목록은 한 번에 100개, 실행 중 DB 요청은 32개로 제한합니다. 관리 API `GET /api/v1/functions/:id/data/:collection`, `GET/PUT/DELETE /api/v1/functions/:id/data/:collection/:key`는 RCP 로그인 인증이 필요합니다. PUT 본문은 JSON 값 자체입니다.
+기존 **함수별 JSON 컬렉션/키 저장소**는 계속 사용할 수 있습니다. 모든 쿼리는 소유자 ID와 함수 ID를 함께 사용하며, 함수 삭제 시 해당 데이터도 삭제합니다. 값은 최대 16 KiB, 함수당 최대 256개, 목록은 한 번에 100개, 실행 중 DB 요청은 32개로 제한합니다. 관리 API `GET /api/v1/functions/:id/data/:collection`, `GET/PUT/DELETE /api/v1/functions/:id/data/:collection/:key`는 RCP 로그인 인증이 필요합니다. PUT 본문은 JSON 값 자체입니다.
 
 WASM 코드에서 DB를 쓰려면 배포할 때 multipart `data_mode=true`를 설정합니다. 이 모드의 stdin 첫 줄은 기존 호출 이벤트 JSON입니다. 이후 stdout에 `{"$rcp":"db","op":"get","collection":"visits","key":"count"}` 같은 JSON 한 줄을 쓰고 flush하면, stdin 다음 줄로 `{"$rcp":"db.result","ok":true,"item":{"collection":"visits","key":"count","value":1,...}}`가 돌아옵니다. `op`은 `get`, `list`(선택적 `offset`), `put`(JSON `value`), `delete`를 지원합니다. 마지막 stdout 줄에는 기존 호출의 JSON 응답을 씁니다. [Rust](examples/data.rs), [Go](examples/data-go/main.go), [JavaScript](examples/data.js), [Python](examples/data.py) 예제를 참고하세요. 이 프로토콜을 사용하지 않는 기존 함수는 `data_mode=false` 그대로 동작합니다. DB 접속 문자열이나 운영용 DB 권한은 WASM에 전달하지 않습니다.
+
+### 바인딩된 SQLite 데이터베이스
+
+로그인한 사용자는 `POST /api/v1/databases`에 `{"name":"my-app-db"}`를 보내 데이터베이스를 만들고, `GET /api/v1/databases`로 목록을 봅니다. 각 DB는 `RCP_FUNCTION_DATA_DIR/databases/<database-id>.sqlite`에 별도 파일로 저장됩니다. `POST /api/v1/databases/:db_id/query`에 `{"sql":"CREATE TABLE notes (id TEXT PRIMARY KEY, text TEXT)","params":[]}`를 보내 테이블을 만들거나 SQL을 실행할 수 있습니다. `DELETE /api/v1/databases/:db_id`는 DB 파일과 모든 함수 바인딩을 삭제합니다.
+
+함수의 데이터 접근을 켠 뒤 `PUT /api/v1/functions/:id/databases/DB`에 `{"database_id":"<database-id>"}`를 보내 연결합니다. 함수 코드가 stdout에 `{"$rcp":"sql","binding":"DB","sql":"SELECT text FROM notes WHERE id = ?","params":["first"]}`를 한 줄로 쓰고 flush하면, stdin 다음 줄로 `{"$rcp":"sql.result","ok":true,"columns":["text"],"rows":[{"text":"hello"}]}`가 돌아옵니다. 한 함수는 바인딩된 DB만 사용할 수 있고, DB 접근은 소유자를 확인합니다. 쿼리는 한 문장, 최대 4 KiB/32개 매개변수/3초/100행/64 KiB 결과로 제한하며, DB당 파일은 약 10 MiB로 제한합니다. `ATTACH`, `PRAGMA`, `VACUUM` 등 파일·설정 접근 명령은 거부합니다. [메모 앱 예제](examples/serverless-notes/README.md)를 참고하세요.
 
 입력은 UTF-8 JSON 객체여야 하며, 정상 종료한 함수의 stdout도 JSON 객체여야 합니다. 로그는 stderr에 기록합니다. 제한: 사용자당 함수 20개, 모듈 32 MiB, 소스 256 KiB, 외부 HTTP 본문 64 KiB, 내부 이벤트와 stdout/stderr 각각 128 KiB, 실행 시간 10초, 게스트 메모리 256 MiB, 동시 실행 4개. 게스트에는 호스트 파일시스템이나 네트워크를 제공하지 않습니다. 콘솔의 `/invoke` 호출은 RCP 로그인 토큰이 필요합니다.
 

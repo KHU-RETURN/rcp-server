@@ -17,6 +17,11 @@ type Handler struct{ Svc *Service }
 func NewHandler(svc *Service) *Handler { return &Handler{Svc: svc} }
 
 func (h *Handler) InitRoutes(r *gin.RouterGroup) {
+	d := r.Group("/databases")
+	d.GET("", h.listDatabases)
+	d.POST("", h.createDatabase)
+	d.DELETE("/:db_id", h.deleteDatabase)
+	d.POST("/:db_id/query", h.queryDatabase)
 	f := r.Group("/functions")
 	f.GET("", h.list)
 	f.POST("", h.create)
@@ -25,6 +30,9 @@ func (h *Handler) InitRoutes(r *gin.RouterGroup) {
 	f.POST("/:id/invoke", h.invoke)
 	f.POST("/:id/key", h.issueKey)
 	f.DELETE("/:id/key", h.revokeKey)
+	f.GET("/:id/databases", h.listBindings)
+	f.PUT("/:id/databases/:alias", h.bindDatabase)
+	f.DELETE("/:id/databases/:alias", h.unbindDatabase)
 	f.GET("/:id/data/:collection", h.listData)
 	f.GET("/:id/data/:collection/:key", h.getData)
 	f.PUT("/:id/data/:collection/:key", h.putData)
@@ -49,7 +57,7 @@ func writeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrDataNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, ErrInvalidName), errors.Is(err, ErrInvalidWasm), errors.Is(err, ErrInvalidInput), errors.Is(err, ErrInvalidExpiry), errors.Is(err, ErrInvalidData):
+	case errors.Is(err, ErrInvalidName), errors.Is(err, ErrInvalidWasm), errors.Is(err, ErrInvalidInput), errors.Is(err, ErrInvalidExpiry), errors.Is(err, ErrInvalidData), errors.Is(err, ErrInvalidDatabase):
 		status = http.StatusBadRequest
 	case errors.Is(err, ErrInvalidKey):
 		status = http.StatusUnauthorized
@@ -57,13 +65,13 @@ func writeError(c *gin.Context, err error) {
 		status = http.StatusBadRequest
 	case errors.Is(err, ErrBuildUnavailable), errors.Is(err, ErrDataUnavailable):
 		status = http.StatusServiceUnavailable
-	case errors.Is(err, ErrConflict), errors.Is(err, ErrLimit), errors.Is(err, ErrDataLimit):
+	case errors.Is(err, ErrConflict), errors.Is(err, ErrLimit), errors.Is(err, ErrDataLimit), errors.Is(err, ErrDatabaseLimit):
 		status = http.StatusConflict
 	case errors.Is(err, ErrBusy):
 		status = http.StatusTooManyRequests
 	case errors.Is(err, ErrTimeout):
 		status = http.StatusGatewayTimeout
-	case errors.Is(err, ErrOutputLimit), errors.Is(err, ErrInvalidOutput):
+	case errors.Is(err, ErrOutputLimit), errors.Is(err, ErrInvalidOutput), errors.Is(err, ErrSQLLimit):
 		status = http.StatusUnprocessableEntity
 	}
 	if status == http.StatusInternalServerError {

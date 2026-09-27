@@ -40,14 +40,20 @@ type dataRequest struct {
 	Key        string          `json:"key"`
 	Value      json.RawMessage `json:"value"`
 	Offset     int             `json:"offset"`
+	Binding    string          `json:"binding"`
+	SQL        string          `json:"sql"`
+	Params     []any           `json:"params"`
 }
 
 type dataReply struct {
-	Type  string     `json:"$rcp"`
-	OK    bool       `json:"ok"`
-	Item  *DataItem  `json:"item,omitempty"`
-	Items []DataItem `json:"items,omitempty"`
-	Error string     `json:"error,omitempty"`
+	Type         string           `json:"$rcp"`
+	OK           bool             `json:"ok"`
+	Item         *DataItem        `json:"item,omitempty"`
+	Items        []DataItem       `json:"items,omitempty"`
+	Columns      []string         `json:"columns,omitempty"`
+	Rows         []map[string]any `json:"rows,omitempty"`
+	RowsAffected int64            `json:"rows_affected,omitempty"`
+	Error        string           `json:"error,omitempty"`
 }
 
 type dataOutput struct {
@@ -88,27 +94,35 @@ func (out *dataOutput) Write(p []byte) (int, error) {
 
 func (out *dataOutput) line(line []byte) error {
 	var req dataRequest
-	if json.Unmarshal(line, &req) == nil && req.Type == "db" {
+	if json.Unmarshal(line, &req) == nil && (req.Type == "db" || req.Type == "sql") {
 		out.ops++
-		reply := dataReply{Type: "db.result"}
+		reply := dataReply{Type: req.Type + ".result"}
 		if out.ops > maxDataOperationsPerInvocation {
 			reply.Error = "function data operation limit reached"
 		} else {
 			var err error
-			switch req.Op {
-			case "get":
-				reply.Item, err = out.store.Get(out.ctx, out.owner, out.function, req.Collection, req.Key)
-			case "list":
-				reply.Items, err = out.store.List(out.ctx, out.owner, out.function, req.Collection, req.Offset)
-			case "put":
-				reply.Item, err = out.store.Put(out.ctx, out.owner, out.function, req.Collection, req.Key, req.Value)
-			case "delete":
-				err = out.store.Delete(out.ctx, out.owner, out.function, req.Collection, req.Key)
-			default:
-				err = ErrInvalidData
+			if req.Type == "sql" {
+				var result *SQLResult
+				result, err = out.store.QueryBinding(out.ctx, out.owner, out.function, req.Binding, req.SQL, req.Params)
+				if err == nil {
+					reply.Columns, reply.Rows, reply.RowsAffected = result.Columns, result.Rows, result.RowsAffected
+				}
+			} else {
+				switch req.Op {
+				case "get":
+					reply.Item, err = out.store.Get(out.ctx, out.owner, out.function, req.Collection, req.Key)
+				case "list":
+					reply.Items, err = out.store.List(out.ctx, out.owner, out.function, req.Collection, req.Offset)
+				case "put":
+					reply.Item, err = out.store.Put(out.ctx, out.owner, out.function, req.Collection, req.Key, req.Value)
+				case "delete":
+					err = out.store.Delete(out.ctx, out.owner, out.function, req.Collection, req.Key)
+				default:
+					err = ErrInvalidData
+				}
 			}
 			if err != nil {
-				if errors.Is(err, ErrInvalidData) || errors.Is(err, ErrDataNotFound) || errors.Is(err, ErrDataLimit) {
+				if errors.Is(err, ErrInvalidData) || errors.Is(err, ErrDataNotFound) || errors.Is(err, ErrDataLimit) || errors.Is(err, ErrInvalidDatabase) || errors.Is(err, ErrSQLLimit) || errors.Is(err, ErrNotFound) {
 					reply.Error = err.Error()
 				} else {
 					reply.Error = "function data operation failed"
