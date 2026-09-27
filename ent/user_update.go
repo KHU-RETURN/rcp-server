@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/KHU-RETURN/rcp-server/ent/container"
+	"github.com/KHU-RETURN/rcp-server/ent/function"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
 	"github.com/KHU-RETURN/rcp-server/ent/predicate"
@@ -187,6 +188,21 @@ func (_u *UserUpdate) AddContainers(v ...*Container) *UserUpdate {
 	return _u.AddContainerIDs(ids...)
 }
 
+// AddFunctionIDs adds the "functions" edge to the Function entity by IDs.
+func (_u *UserUpdate) AddFunctionIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddFunctionIDs(ids...)
+	return _u
+}
+
+// AddFunctions adds the "functions" edges to the Function entity.
+func (_u *UserUpdate) AddFunctions(v ...*Function) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddFunctionIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
@@ -253,6 +269,27 @@ func (_u *UserUpdate) RemoveContainers(v ...*Container) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveContainerIDs(ids...)
+}
+
+// ClearFunctions clears all "functions" edges to the Function entity.
+func (_u *UserUpdate) ClearFunctions() *UserUpdate {
+	_u.mutation.ClearFunctions()
+	return _u
+}
+
+// RemoveFunctionIDs removes the "functions" edge to Function entities by IDs.
+func (_u *UserUpdate) RemoveFunctionIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveFunctionIDs(ids...)
+	return _u
+}
+
+// RemoveFunctions removes "functions" edges to Function entities.
+func (_u *UserUpdate) RemoveFunctions(v ...*Function) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveFunctionIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -462,6 +499,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.FunctionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.FunctionsTable,
+			Columns: []string{user.FunctionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(function.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedFunctionsIDs(); len(nodes) > 0 && !_u.mutation.FunctionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.FunctionsTable,
+			Columns: []string{user.FunctionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(function.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FunctionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.FunctionsTable,
+			Columns: []string{user.FunctionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(function.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -637,6 +719,21 @@ func (_u *UserUpdateOne) AddContainers(v ...*Container) *UserUpdateOne {
 	return _u.AddContainerIDs(ids...)
 }
 
+// AddFunctionIDs adds the "functions" edge to the Function entity by IDs.
+func (_u *UserUpdateOne) AddFunctionIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddFunctionIDs(ids...)
+	return _u
+}
+
+// AddFunctions adds the "functions" edges to the Function entity.
+func (_u *UserUpdateOne) AddFunctions(v ...*Function) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddFunctionIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
@@ -703,6 +800,27 @@ func (_u *UserUpdateOne) RemoveContainers(v ...*Container) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveContainerIDs(ids...)
+}
+
+// ClearFunctions clears all "functions" edges to the Function entity.
+func (_u *UserUpdateOne) ClearFunctions() *UserUpdateOne {
+	_u.mutation.ClearFunctions()
+	return _u
+}
+
+// RemoveFunctionIDs removes the "functions" edge to Function entities by IDs.
+func (_u *UserUpdateOne) RemoveFunctionIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveFunctionIDs(ids...)
+	return _u
+}
+
+// RemoveFunctions removes "functions" edges to Function entities.
+func (_u *UserUpdateOne) RemoveFunctions(v ...*Function) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveFunctionIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -935,6 +1053,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(container.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.FunctionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.FunctionsTable,
+			Columns: []string{user.FunctionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(function.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedFunctionsIDs(); len(nodes) > 0 && !_u.mutation.FunctionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.FunctionsTable,
+			Columns: []string{user.FunctionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(function.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FunctionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.FunctionsTable,
+			Columns: []string{user.FunctionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(function.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

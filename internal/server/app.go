@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/gophercloud/gophercloud"
@@ -13,6 +14,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/blockstorage"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/functions"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 )
 
@@ -24,6 +26,7 @@ type App struct {
 	Apps         *apps.Handler
 	Auth         *auth.Handler
 	Storage      *storage.Handler
+	Functions    *functions.Handler
 }
 
 type AppDeps struct {
@@ -50,6 +53,10 @@ func NewApp(deps AppDeps) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth: %w", err)
 	}
+	functionHandler, err := functions.Init(context.Background(), deps.EntClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize functions: %w", err)
+	}
 	return &App{
 		BlockStorage: blockstorage.Init(deps.Provider, deps.EntClient),
 		Compute:      compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
@@ -59,8 +66,16 @@ func NewApp(deps AppDeps) (*App, error) {
 			admin.WithLiveHealthChecker(deps.Provider, deps.SSHGatewaySock, deps.NSProxySock, deps.HTTPProxyAddress),
 			admin.WithLiveInstanceStatusSource(deps.Provider),
 		),
-		Apps:    apps.Init(deps.EntClient),
-		Auth:    authHandler,
-		Storage: storage.Init(deps.Provider, deps.EntClient),
+		Apps:      apps.Init(deps.EntClient),
+		Auth:      authHandler,
+		Storage:   storage.Init(deps.Provider, deps.EntClient),
+		Functions: functionHandler,
 	}, nil
+}
+
+func (a *App) Close(ctx context.Context) error {
+	if a.Functions != nil {
+		return a.Functions.Svc.Close(ctx)
+	}
+	return nil
 }

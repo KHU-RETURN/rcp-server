@@ -12,6 +12,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/admin"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/auth"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/functions"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 )
 
@@ -19,11 +20,12 @@ func TestNewRouterRegistersComputeRoutes(t *testing.T) {
 	setGinMode(t, gin.TestMode)
 
 	router := NewRouter(&App{
-		Access:  &access.Handler{},
-		Admin:   &admin.Handler{},
-		Auth:    &auth.Handler{},
-		Compute: &compute.Handler{},
-		Storage: &storage.Handler{},
+		Access:    &access.Handler{},
+		Admin:     &admin.Handler{},
+		Auth:      &auth.Handler{},
+		Compute:   &compute.Handler{},
+		Functions: &functions.Handler{},
+		Storage:   &storage.Handler{},
 	})
 
 	routes := router.Routes()

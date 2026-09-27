@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -91,6 +92,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("App 초기화 실패: %v", err)
 	}
+	defer func() { _ = myApp.Close(context.Background()) }()
 
 	r := server.NewRouter(myApp)
 

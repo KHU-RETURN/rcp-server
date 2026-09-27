@@ -20,6 +20,10 @@ func corsMiddleware() gin.HandlerFunc {
 	allowedOriginPattern := compileAllowedOriginPattern(os.Getenv(envAllowedOriginPattern))
 
 	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/v1/run/") {
+			c.Next()
+			return
+		}
 		origin := strings.TrimSpace(c.GetHeader("Origin"))
 		if origin != "" && isOriginAllowed(origin, allowedOrigins, allowedOriginPattern) {
 			header := c.Writer.Header()
@@ -41,7 +45,7 @@ func corsMiddleware() gin.HandlerFunc {
 
 func parseAllowedOrigins(rawOrigins string) map[string]bool {
 	allowedOrigins := map[string]bool{}
-	for _, origin := range strings.Split(rawOrigins, ",") {
+	for origin := range strings.SplitSeq(rawOrigins, ",") {
 		origin = strings.TrimSpace(origin)
 		if origin == "" {
 			continue

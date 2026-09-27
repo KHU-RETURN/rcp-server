@@ -5,3 +5,4 @@
 # development environment
 .vscode/
 rcp.db
+function-data/

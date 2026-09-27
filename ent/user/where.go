@@ -690,6 +690,29 @@ func HasContainersWith(preds ...predicate.Container) predicate.User {
 	})
 }
 
+// HasFunctions applies the HasEdge predicate on the "functions" edge.
+func HasFunctions() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, FunctionsTable, FunctionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasFunctionsWith applies the HasEdge predicate on the "functions" edge with a given conditions (other predicates).
+func HasFunctionsWith(preds ...predicate.Function) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newFunctionsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.User) predicate.User {
 	return predicate.User(sql.AndPredicates(predicates...))

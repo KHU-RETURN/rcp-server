@@ -16,6 +16,8 @@ type Tx struct {
 	App *AppClient
 	// Container is the client for interacting with the Container builders.
 	Container *ContainerClient
+	// Function is the client for interacting with the Function builders.
+	Function *FunctionClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
 	// KeyPair is the client for interacting with the KeyPair builders.
@@ -155,6 +157,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.App = NewAppClient(tx.config)
 	tx.Container = NewContainerClient(tx.config)
+	tx.Function = NewFunctionClient(tx.config)
 	tx.Instance = NewInstanceClient(tx.config)
 	tx.KeyPair = NewKeyPairClient(tx.config)
 	tx.User = NewUserClient(tx.config)

@@ -5,11 +5,14 @@ on:
     branches: [ "main" ]
     paths:
       - "cmd/api/**"
+      - "cmd/function-builder/**"
       - "internal/**"
       - "ent/**"
       - "go.mod"
       - "go.sum"
       - "deploy/systemd/rcp-server.service"
+      - "deploy/systemd/rcp-function-builder.service"
+      - "deploy/function-builder/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -38,13 +41,17 @@ jobs:
         run: go test ./... -v
 
       - name: Build
-        run: GOOS=linux GOARCH=amd64 go build -v -o server ./cmd/api/main.go
+        run: |
+          GOOS=linux GOARCH=amd64 go build -v -o server ./cmd/api/main.go
+          GOOS=linux GOARCH=amd64 go build -v -o function-builder ./cmd/function-builder
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: rcp-server-${{ github.sha }}
-          path: server
+          path: |
+            server
+            function-builder
           retention-days: 1
 
       - name: Transfer artifacts (SCP)
@@ -53,7 +60,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
-          source: "server,deploy/systemd/rcp-server.service"
+          source: "server,function-builder,deploy/systemd/rcp-server.service,deploy/systemd/rcp-function-builder.service,deploy/function-builder"
           target: "/tmp/rcp-deploy"
 
       - name: Install binary
@@ -66,11 +73,17 @@ jobs:
             set -euo pipefail
             mkdir -p ~/rcp-server
             install -m 0755 /tmp/rcp-deploy/server ~/rcp-server/server
+            if systemctl is-enabled rcp-function-builder.service >/dev/null 2>&1; then
+              sudo install -m 0755 /tmp/rcp-deploy/function-builder /opt/rcp-function-builder/function-builder
+              sudo systemctl restart rcp-function-builder.service
+            fi
 
       - name: Write .env file
         uses: appleboy/ssh-action@v0.1.10
         env:
-          ENV_LIST: RCP_JWT_SECRET,RCP_ADMIN_EMAILS,OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,OS_PROJECT_ID,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,GG_OAUTH_CLIENT,GG_OAUTH_SECRET,GG_REDIRECT_URL,DB_DRIVER,DB_DSN,PORT,RCP_NS_PROXY_SOCK,RCP_WEB_CONSOLE_BASE_URL,RCP_WEB_CONSOLE_ALLOWED_ORIGINS,RCP_VM_KNOWN_HOSTS_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH,FRONTEND_URL,RCP_FRONTEND_BASE_URL,RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN,RCP_AUTH_COOKIE_SAMESITE,RCP_AUTH_COOKIE_SECURE,RCP_ALLOWED_ORIGINS,RCP_ALLOWED_ORIGIN_PATTERN,RCP_DEFAULT_NETWORK_ID,RCP_SSH_GW_NOTIFY_SOCK,RCP_SSH_GW_NOTIFY_SECRET
+          ENV_LIST: RCP_JWT_SECRET,RCP_ADMIN_EMAILS,OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,OS_PROJECT_NAME,OS_USER_DOMAIN_NAME,OS_PROJECT_ID,CF_ACCESS_CLIENT_ID,CF_ACCESS_CLIENT_SECRET,GG_OAUTH_CLIENT,GG_OAUTH_SECRET,GG_REDIRECT_URL,DB_DRIVER,DB_DSN,PORT,RCP_NS_PROXY_SOCK,RCP_FUNCTION_BUILDER_SOCKET,RCP_FUNCTION_DATA_DIR,RCP_WEB_CONSOLE_BASE_URL,RCP_WEB_CONSOLE_ALLOWED_ORIGINS,RCP_VM_KNOWN_HOSTS_PATH,RCP_SSH_GW_KNOWN_HOSTS_PATH,FRONTEND_URL,RCP_FRONTEND_BASE_URL,RCP_ALLOWED_FRONTEND_ORIGIN_PATTERN,RCP_AUTH_COOKIE_SAMESITE,RCP_AUTH_COOKIE_SECURE,RCP_ALLOWED_ORIGINS,RCP_ALLOWED_ORIGIN_PATTERN,RCP_DEFAULT_NETWORK_ID,RCP_SSH_GW_NOTIFY_SOCK,RCP_SSH_GW_NOTIFY_SECRET
+          RCP_FUNCTION_BUILDER_SOCKET: ${{ secrets.RCP_FUNCTION_BUILDER_SOCKET }}
+          RCP_FUNCTION_DATA_DIR: ${{ secrets.RCP_FUNCTION_DATA_DIR }}
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
           RCP_FRONTEND_BASE_URL: ${{ secrets.RCP_FRONTEND_BASE_URL }}
           RCP_JWT_SECRET: ${{ secrets.RCP_JWT_SECRET }}

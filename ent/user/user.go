@@ -39,6 +39,8 @@ const (
 	EdgeKeypairs = "keypairs"
 	// EdgeContainers holds the string denoting the containers edge name in mutations.
 	EdgeContainers = "containers"
+	// EdgeFunctions holds the string denoting the functions edge name in mutations.
+	EdgeFunctions = "functions"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// InstancesTable is the table that holds the instances relation/edge.
@@ -62,6 +64,13 @@ const (
 	ContainersInverseTable = "containers"
 	// ContainersColumn is the table column denoting the containers relation/edge.
 	ContainersColumn = "user_containers"
+	// FunctionsTable is the table that holds the functions relation/edge.
+	FunctionsTable = "functions"
+	// FunctionsInverseTable is the table name for the Function entity.
+	// It exists in this package in order to avoid circular dependency with the "function" package.
+	FunctionsInverseTable = "functions"
+	// FunctionsColumn is the table column denoting the functions relation/edge.
+	FunctionsColumn = "user_functions"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -193,6 +202,20 @@ func ByContainers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newContainersStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByFunctionsCount orders the results by functions count.
+func ByFunctionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newFunctionsStep(), opts...)
+	}
+}
+
+// ByFunctions orders the results by functions terms.
+func ByFunctions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newFunctionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newInstancesStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -212,5 +235,12 @@ func newContainersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ContainersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ContainersTable, ContainersColumn),
+	)
+}
+func newFunctionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(FunctionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, FunctionsTable, FunctionsColumn),
 	)
 }

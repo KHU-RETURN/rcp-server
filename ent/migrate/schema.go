@@ -60,6 +60,42 @@ var (
 			},
 		},
 	}
+	// FunctionsColumns holds the columns for the "functions" table.
+	FunctionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "wasm", Type: field.TypeBytes},
+		{Name: "language", Type: field.TypeString, Default: "wasm"},
+		{Name: "data_mode", Type: field.TypeBool, Default: false},
+		{Name: "source", Type: field.TypeBytes, Nullable: true},
+		{Name: "key_hash", Type: field.TypeBytes, Nullable: true},
+		{Name: "key_created_at", Type: field.TypeTime, Nullable: true},
+		{Name: "key_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_functions", Type: field.TypeUUID},
+	}
+	// FunctionsTable holds the schema information for the "functions" table.
+	FunctionsTable = &schema.Table{
+		Name:       "functions",
+		Columns:    FunctionsColumns,
+		PrimaryKey: []*schema.Column{FunctionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "functions_users_functions",
+				Columns:    []*schema.Column{FunctionsColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "function_name_user_functions",
+				Unique:  true,
+				Columns: []*schema.Column{FunctionsColumns[1], FunctionsColumns[11]},
+			},
+		},
+	}
 	// InstancesColumns holds the columns for the "instances" table.
 	InstancesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -144,6 +180,7 @@ var (
 	Tables = []*schema.Table{
 		AppsTable,
 		ContainersTable,
+		FunctionsTable,
 		InstancesTable,
 		KeyPairsTable,
 		UsersTable,
@@ -153,6 +190,7 @@ var (
 func init() {
 	AppsTable.ForeignKeys[0].RefTable = InstancesTable
 	ContainersTable.ForeignKeys[0].RefTable = UsersTable
+	FunctionsTable.ForeignKeys[0].RefTable = UsersTable
 	InstancesTable.ForeignKeys[0].RefTable = KeyPairsTable
 	InstancesTable.ForeignKeys[1].RefTable = UsersTable
 	KeyPairsTable.ForeignKeys[0].RefTable = UsersTable
