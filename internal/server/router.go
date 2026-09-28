@@ -1,6 +1,11 @@
 package server
 
 import (
+	"fmt"
+	"net/http"
+
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
@@ -9,6 +14,8 @@ import (
 
 func NewRouter(app *App) *gin.Engine {
 	r := gin.Default()
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
+	r.Use(sentryServerErrorMiddleware())
 	r.Use(corsMiddleware())
 
 	v1 := r.Group(api.BasePath)
@@ -42,4 +49,23 @@ func NewRouter(app *App) *gin.Engine {
 	}
 
 	return r
+}
+
+func sentryServerErrorMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+		if c.Writer.Status() < http.StatusInternalServerError {
+			return
+		}
+		if hub := sentrygin.GetHubFromContext(c); hub != nil {
+			path := c.FullPath()
+			if path == "" {
+				path = "unmatched route"
+			}
+			hub.WithScope(func(scope *sentry.Scope) {
+				scope.SetLevel(sentry.LevelError)
+				hub.CaptureMessage(fmt.Sprintf("%s %s returned %d", c.Request.Method, path, c.Writer.Status()))
+			})
+		}
+	}
 }
