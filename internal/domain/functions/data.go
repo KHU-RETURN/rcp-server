@@ -41,6 +41,13 @@ type DataStore struct {
 }
 
 func OpenDataStore(dir string) (*DataStore, error) {
+	// SQLite file URIs require an absolute path. Keep metadata and bound databases
+	// rooted in the same directory even when configuration uses a relative path.
+	var err error
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
 	// #nosec G703 -- dir is fixed at startup from trusted deployment configuration.
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err

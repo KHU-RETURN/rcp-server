@@ -100,7 +100,7 @@ bash setup.sh
 sudo bash install.sh /path/to/function-builder
 ```
 
-빌드 컨테이너는 네트워크 없이 제한된 자원으로 실행합니다. systemd 서비스는 별도 `return-builder` 계정으로 실행되며 API 계정 `return`은 Unix 소켓에만 접근합니다. API 환경 변수 또는 배포 시크릿 `RCP_FUNCTION_BUILDER_SOCKET=/run/rcp-function-builder/builder.sock`를 설정하고 API 서비스를 재시작합니다. 빌더가 설정되지 않으면 소스 업로드는 503을 반환하며 `.wasm` 직접 업로드는 계속 사용할 수 있습니다. CI는 이미 설치된 빌더 서비스의 바이너리만 갱신합니다.
+빌드 컨테이너는 네트워크 없이 제한된 자원으로 실행합니다. systemd 서비스는 별도 `return-builder` 계정으로 실행되며 API 계정 `return`은 Unix 소켓에만 접근합니다. API 환경 변수 또는 배포 시크릿 `RCP_FUNCTION_BUILDER_SOCKET=/run/rcp-function-builder/builder.sock`를 설정하고 API 서비스를 재시작합니다. API는 `RCP_FUNCTION_BUILDER_SOCKET`이 비어 있으면 기본 소켓 `/run/rcp-function-builder/builder.sock`에 연결합니다. 빌더가 설치되지 않았거나 실행 중이 아니면 소스 업로드는 503을 반환하며 `.wasm` 직접 업로드는 계속 사용할 수 있습니다. CI는 이미 설치된 빌더 서비스의 바이너리만 갱신합니다.
 
 ### 함수 데이터 (SQLite)
 
@@ -161,3 +161,17 @@ ssh rcp-gw
 
 - OpenStack 호출은 Cloudflare Access 헤더가 포함된 HTTP 클라이언트를 통해 수행됩니다.
 - 단위 테스트는 `go test ./...`로 실행합니다 — `cmd/ns-proxy`, `cmd/ssh-gateway`, `internal/domain/{auth,access,compute,storage}`, `internal/server` 등에 커버리지가 있습니다.
+
+### Functions 장애 확인
+
+소스 업로드의 503은 API 배포만으로 빌드 도구와 서비스가 설치되지 않는 경우에도 발생합니다. 최초 설치는 위 빌드 서비스 절의 `setup.sh`와 `install.sh`를 실행해야 하며, API 프로세스에 Docker 권한을 추가하지 않습니다. 이후 다음을 확인합니다.
+
+```bash
+sudo systemctl status rcp-function-builder --no-pager
+sudo journalctl -u rcp-function-builder -n 80 --no-pager
+sudo journalctl -u rcp-server -n 80 --no-pager
+```
+
+표준 systemd unit과 다른 소켓 경로를 사용하면 API의 `RCP_FUNCTION_BUILDER_SOCKET`도 맞춰야 합니다. `.wasm` 직접 업로드는 소스 빌더를 사용하지 않습니다.
+
+데이터베이스 API의 500 응답은 내부 오류를 공개하지 않습니다. 원인은 API 서버 로그에서 확인합니다. 함수 데이터 경로는 시작 시 절대 경로로 고정되므로 기본 상대 경로 `function-data`도 사용할 수 있습니다.
