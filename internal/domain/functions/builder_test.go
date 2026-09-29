@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuilderFromEnvUsesDefaultSocket(t *testing.T) {
@@ -46,7 +47,7 @@ func TestSocketBuilderUploadsSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if r.Method != http.MethodPost || r.URL.Path != "/build" || r.URL.Query().Get("language") != "python" || string(body) != "print(1)" {
 			t.Errorf("unexpected build request: %s %s %q", r.Method, r.URL, body)
