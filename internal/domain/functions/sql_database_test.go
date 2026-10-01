@@ -224,3 +224,27 @@ func TestDatabaseHTTPBindingsAndAuthorization(t *testing.T) {
 		t.Fatalf("unsafe SQL accepted: %d %s", got.Code, got.Body.String())
 	}
 }
+
+func TestDatabaseWithRelativeDataDirectory(t *testing.T) {
+	t.Chdir(t.TempDir())
+	store, err := OpenDataStore("function-data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	owner := uuid.New()
+	database, err := store.CreateDatabase(context.Background(), owner, "counter-db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.QueryDatabase(context.Background(), owner, database.ID, "CREATE TABLE visits (id INTEGER PRIMARY KEY)", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.QueryDatabase(context.Background(), owner, database.ID, "INSERT INTO visits DEFAULT VALUES", nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.QueryDatabase(context.Background(), owner, database.ID, "SELECT COUNT(*) AS count FROM visits", nil)
+	if err != nil || len(result.Rows) != 1 {
+		t.Fatalf("query: %+v, %v", result, err)
+	}
+}

@@ -53,6 +53,8 @@ func ownerAndID(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
 }
 
 func writeError(c *gin.Context, err error) {
+	// Preserve the underlying error for server-side diagnostics; responses stay sanitized.
+	_ = c.Error(err)
 	status := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrDataNotFound):

@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const defaultBuilderSocket = "/run/rcp-function-builder/builder.sock"
+
 type Builder interface {
 	Build(context.Context, string, []byte) ([]byte, error)
 }
@@ -56,7 +58,7 @@ func (b *SocketBuilder) Build(ctx context.Context, language string, source []byt
 func BuilderFromEnv() (Builder, error) {
 	path := os.Getenv("RCP_FUNCTION_BUILDER_SOCKET")
 	if path == "" {
-		return nil, nil
+		path = defaultBuilderSocket
 	}
 	// #nosec G703 -- this path is supplied by trusted deployment configuration.
 	if _, err := os.Stat(path); err != nil && !errors.Is(err, os.ErrNotExist) {
