@@ -21,5 +21,14 @@ type Instance func(*sql.Selector)
 // KeyPair is the predicate function for keypair builders.
 type KeyPair func(*sql.Selector)
 
+// OutboxEvent is the predicate function for outboxevent builders.
+type OutboxEvent func(*sql.Selector)
+
+// ResourceObservation is the predicate function for resourceobservation builders.
+type ResourceObservation func(*sql.Selector)
+
+// ResourceOperation is the predicate function for resourceoperation builders.
+type ResourceOperation func(*sql.Selector)
+
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

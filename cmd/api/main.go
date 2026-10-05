@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -114,6 +116,9 @@ func main() {
 	}
 	defer func() { _ = myApp.Close(context.Background()) }()
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	myApp.Operations.Svc.Start(ctx)
 	r := server.NewRouter(myApp)
 
 	port := os.Getenv("PORT")
@@ -128,8 +133,14 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	if err := httpSrv.ListenAndServe(); err != nil {
-		log.Fatalf("HTTP 서버 시작 실패: %v", err)
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
+		_ = httpSrv.Shutdown(shutdown)
+	}()
+	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("HTTP 서버 시작 실패: %v", err)
 	}
 }
 

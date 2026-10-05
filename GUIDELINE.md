@@ -251,3 +251,7 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 | `RCP_SSH_GW_VM_USERS` | optional (기본 `ubuntu,rocky`) | inner VM SSH 로그인 사용자 후보. 현재 Ubuntu, Rocky Linux를 지원하며 순서대로 임시 키 등록과 SSH handshake를 시도 |
 | `RCP_NS_PROXY_SOCK` | optional (기본 `/run/rcp/ns-proxy.sock`) | ns-proxy SOCKS5 소켓 |
 | `RCP_SSH_GW_LOG_LEVEL` | optional (기본 `info`) | |
+
+## 리소스 작업과 상태 대조
+
+인스턴스·Swift 컨테이너·Cinder 볼륨 생성/삭제는 운영 DB의 작업/outbox를 통해 비동기로 처리합니다. 응답은 `202 Accepted`와 `operation_id`이며 `/api/v1/operations/:id`로 완료를 확인합니다. 관리자 대조 결과와 알림은 `/api/v1/admin/reconciliation`, `/api/v1/admin/notifications`에서 조회합니다. 상세 API 변경과 복구 정책은 [운영 가이드](docs/resource-outbox-operations.md)를 참고하세요.

@@ -21,6 +21,9 @@ import (
 	"github.com/KHU-RETURN/rcp-server/ent/function"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
+	"github.com/KHU-RETURN/rcp-server/ent/outboxevent"
+	"github.com/KHU-RETURN/rcp-server/ent/resourceobservation"
+	"github.com/KHU-RETURN/rcp-server/ent/resourceoperation"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
 )
 
@@ -39,6 +42,12 @@ type Client struct {
 	Instance *InstanceClient
 	// KeyPair is the client for interacting with the KeyPair builders.
 	KeyPair *KeyPairClient
+	// OutboxEvent is the client for interacting with the OutboxEvent builders.
+	OutboxEvent *OutboxEventClient
+	// ResourceObservation is the client for interacting with the ResourceObservation builders.
+	ResourceObservation *ResourceObservationClient
+	// ResourceOperation is the client for interacting with the ResourceOperation builders.
+	ResourceOperation *ResourceOperationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 }
@@ -57,6 +66,9 @@ func (c *Client) init() {
 	c.Function = NewFunctionClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
 	c.KeyPair = NewKeyPairClient(c.config)
+	c.OutboxEvent = NewOutboxEventClient(c.config)
+	c.ResourceObservation = NewResourceObservationClient(c.config)
+	c.ResourceOperation = NewResourceOperationClient(c.config)
 	c.User = NewUserClient(c.config)
 }
 
@@ -148,14 +160,17 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:       ctx,
-		config:    cfg,
-		App:       NewAppClient(cfg),
-		Container: NewContainerClient(cfg),
-		Function:  NewFunctionClient(cfg),
-		Instance:  NewInstanceClient(cfg),
-		KeyPair:   NewKeyPairClient(cfg),
-		User:      NewUserClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		App:                 NewAppClient(cfg),
+		Container:           NewContainerClient(cfg),
+		Function:            NewFunctionClient(cfg),
+		Instance:            NewInstanceClient(cfg),
+		KeyPair:             NewKeyPairClient(cfg),
+		OutboxEvent:         NewOutboxEventClient(cfg),
+		ResourceObservation: NewResourceObservationClient(cfg),
+		ResourceOperation:   NewResourceOperationClient(cfg),
+		User:                NewUserClient(cfg),
 	}, nil
 }
 
@@ -173,14 +188,17 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:       ctx,
-		config:    cfg,
-		App:       NewAppClient(cfg),
-		Container: NewContainerClient(cfg),
-		Function:  NewFunctionClient(cfg),
-		Instance:  NewInstanceClient(cfg),
-		KeyPair:   NewKeyPairClient(cfg),
-		User:      NewUserClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		App:                 NewAppClient(cfg),
+		Container:           NewContainerClient(cfg),
+		Function:            NewFunctionClient(cfg),
+		Instance:            NewInstanceClient(cfg),
+		KeyPair:             NewKeyPairClient(cfg),
+		OutboxEvent:         NewOutboxEventClient(cfg),
+		ResourceObservation: NewResourceObservationClient(cfg),
+		ResourceOperation:   NewResourceOperationClient(cfg),
+		User:                NewUserClient(cfg),
 	}, nil
 }
 
@@ -210,7 +228,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.App, c.Container, c.Function, c.Instance, c.KeyPair, c.User,
+		c.App, c.Container, c.Function, c.Instance, c.KeyPair, c.OutboxEvent,
+		c.ResourceObservation, c.ResourceOperation, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -220,7 +239,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.App, c.Container, c.Function, c.Instance, c.KeyPair, c.User,
+		c.App, c.Container, c.Function, c.Instance, c.KeyPair, c.OutboxEvent,
+		c.ResourceObservation, c.ResourceOperation, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -239,6 +259,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Instance.mutate(ctx, m)
 	case *KeyPairMutation:
 		return c.KeyPair.mutate(ctx, m)
+	case *OutboxEventMutation:
+		return c.OutboxEvent.mutate(ctx, m)
+	case *ResourceObservationMutation:
+		return c.ResourceObservation.mutate(ctx, m)
+	case *ResourceOperationMutation:
+		return c.ResourceOperation.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	default:
@@ -1039,6 +1065,405 @@ func (c *KeyPairClient) mutate(ctx context.Context, m *KeyPairMutation) (Value, 
 	}
 }
 
+// OutboxEventClient is a client for the OutboxEvent schema.
+type OutboxEventClient struct {
+	config
+}
+
+// NewOutboxEventClient returns a client for the OutboxEvent from the given config.
+func NewOutboxEventClient(c config) *OutboxEventClient {
+	return &OutboxEventClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `outboxevent.Hooks(f(g(h())))`.
+func (c *OutboxEventClient) Use(hooks ...Hook) {
+	c.hooks.OutboxEvent = append(c.hooks.OutboxEvent, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `outboxevent.Intercept(f(g(h())))`.
+func (c *OutboxEventClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OutboxEvent = append(c.inters.OutboxEvent, interceptors...)
+}
+
+// Create returns a builder for creating a OutboxEvent entity.
+func (c *OutboxEventClient) Create() *OutboxEventCreate {
+	mutation := newOutboxEventMutation(c.config, OpCreate)
+	return &OutboxEventCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OutboxEvent entities.
+func (c *OutboxEventClient) CreateBulk(builders ...*OutboxEventCreate) *OutboxEventCreateBulk {
+	return &OutboxEventCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OutboxEventClient) MapCreateBulk(slice any, setFunc func(*OutboxEventCreate, int)) *OutboxEventCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OutboxEventCreateBulk{err: fmt.Errorf("calling to OutboxEventClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OutboxEventCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OutboxEventCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OutboxEvent.
+func (c *OutboxEventClient) Update() *OutboxEventUpdate {
+	mutation := newOutboxEventMutation(c.config, OpUpdate)
+	return &OutboxEventUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OutboxEventClient) UpdateOne(_m *OutboxEvent) *OutboxEventUpdateOne {
+	mutation := newOutboxEventMutation(c.config, OpUpdateOne, withOutboxEvent(_m))
+	return &OutboxEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OutboxEventClient) UpdateOneID(id uuid.UUID) *OutboxEventUpdateOne {
+	mutation := newOutboxEventMutation(c.config, OpUpdateOne, withOutboxEventID(id))
+	return &OutboxEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OutboxEvent.
+func (c *OutboxEventClient) Delete() *OutboxEventDelete {
+	mutation := newOutboxEventMutation(c.config, OpDelete)
+	return &OutboxEventDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OutboxEventClient) DeleteOne(_m *OutboxEvent) *OutboxEventDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OutboxEventClient) DeleteOneID(id uuid.UUID) *OutboxEventDeleteOne {
+	builder := c.Delete().Where(outboxevent.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OutboxEventDeleteOne{builder}
+}
+
+// Query returns a query builder for OutboxEvent.
+func (c *OutboxEventClient) Query() *OutboxEventQuery {
+	return &OutboxEventQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOutboxEvent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OutboxEvent entity by its id.
+func (c *OutboxEventClient) Get(ctx context.Context, id uuid.UUID) (*OutboxEvent, error) {
+	return c.Query().Where(outboxevent.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OutboxEventClient) GetX(ctx context.Context, id uuid.UUID) *OutboxEvent {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OutboxEventClient) Hooks() []Hook {
+	return c.hooks.OutboxEvent
+}
+
+// Interceptors returns the client interceptors.
+func (c *OutboxEventClient) Interceptors() []Interceptor {
+	return c.inters.OutboxEvent
+}
+
+func (c *OutboxEventClient) mutate(ctx context.Context, m *OutboxEventMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OutboxEventCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OutboxEventUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OutboxEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OutboxEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OutboxEvent mutation op: %q", m.Op())
+	}
+}
+
+// ResourceObservationClient is a client for the ResourceObservation schema.
+type ResourceObservationClient struct {
+	config
+}
+
+// NewResourceObservationClient returns a client for the ResourceObservation from the given config.
+func NewResourceObservationClient(c config) *ResourceObservationClient {
+	return &ResourceObservationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourceobservation.Hooks(f(g(h())))`.
+func (c *ResourceObservationClient) Use(hooks ...Hook) {
+	c.hooks.ResourceObservation = append(c.hooks.ResourceObservation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourceobservation.Intercept(f(g(h())))`.
+func (c *ResourceObservationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceObservation = append(c.inters.ResourceObservation, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceObservation entity.
+func (c *ResourceObservationClient) Create() *ResourceObservationCreate {
+	mutation := newResourceObservationMutation(c.config, OpCreate)
+	return &ResourceObservationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceObservation entities.
+func (c *ResourceObservationClient) CreateBulk(builders ...*ResourceObservationCreate) *ResourceObservationCreateBulk {
+	return &ResourceObservationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceObservationClient) MapCreateBulk(slice any, setFunc func(*ResourceObservationCreate, int)) *ResourceObservationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceObservationCreateBulk{err: fmt.Errorf("calling to ResourceObservationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceObservationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceObservationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceObservation.
+func (c *ResourceObservationClient) Update() *ResourceObservationUpdate {
+	mutation := newResourceObservationMutation(c.config, OpUpdate)
+	return &ResourceObservationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceObservationClient) UpdateOne(_m *ResourceObservation) *ResourceObservationUpdateOne {
+	mutation := newResourceObservationMutation(c.config, OpUpdateOne, withResourceObservation(_m))
+	return &ResourceObservationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceObservationClient) UpdateOneID(id uuid.UUID) *ResourceObservationUpdateOne {
+	mutation := newResourceObservationMutation(c.config, OpUpdateOne, withResourceObservationID(id))
+	return &ResourceObservationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceObservation.
+func (c *ResourceObservationClient) Delete() *ResourceObservationDelete {
+	mutation := newResourceObservationMutation(c.config, OpDelete)
+	return &ResourceObservationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceObservationClient) DeleteOne(_m *ResourceObservation) *ResourceObservationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceObservationClient) DeleteOneID(id uuid.UUID) *ResourceObservationDeleteOne {
+	builder := c.Delete().Where(resourceobservation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceObservationDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceObservation.
+func (c *ResourceObservationClient) Query() *ResourceObservationQuery {
+	return &ResourceObservationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceObservation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceObservation entity by its id.
+func (c *ResourceObservationClient) Get(ctx context.Context, id uuid.UUID) (*ResourceObservation, error) {
+	return c.Query().Where(resourceobservation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceObservationClient) GetX(ctx context.Context, id uuid.UUID) *ResourceObservation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceObservationClient) Hooks() []Hook {
+	return c.hooks.ResourceObservation
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceObservationClient) Interceptors() []Interceptor {
+	return c.inters.ResourceObservation
+}
+
+func (c *ResourceObservationClient) mutate(ctx context.Context, m *ResourceObservationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceObservationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceObservationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceObservationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceObservationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceObservation mutation op: %q", m.Op())
+	}
+}
+
+// ResourceOperationClient is a client for the ResourceOperation schema.
+type ResourceOperationClient struct {
+	config
+}
+
+// NewResourceOperationClient returns a client for the ResourceOperation from the given config.
+func NewResourceOperationClient(c config) *ResourceOperationClient {
+	return &ResourceOperationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourceoperation.Hooks(f(g(h())))`.
+func (c *ResourceOperationClient) Use(hooks ...Hook) {
+	c.hooks.ResourceOperation = append(c.hooks.ResourceOperation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourceoperation.Intercept(f(g(h())))`.
+func (c *ResourceOperationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceOperation = append(c.inters.ResourceOperation, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceOperation entity.
+func (c *ResourceOperationClient) Create() *ResourceOperationCreate {
+	mutation := newResourceOperationMutation(c.config, OpCreate)
+	return &ResourceOperationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceOperation entities.
+func (c *ResourceOperationClient) CreateBulk(builders ...*ResourceOperationCreate) *ResourceOperationCreateBulk {
+	return &ResourceOperationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceOperationClient) MapCreateBulk(slice any, setFunc func(*ResourceOperationCreate, int)) *ResourceOperationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceOperationCreateBulk{err: fmt.Errorf("calling to ResourceOperationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceOperationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceOperationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceOperation.
+func (c *ResourceOperationClient) Update() *ResourceOperationUpdate {
+	mutation := newResourceOperationMutation(c.config, OpUpdate)
+	return &ResourceOperationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceOperationClient) UpdateOne(_m *ResourceOperation) *ResourceOperationUpdateOne {
+	mutation := newResourceOperationMutation(c.config, OpUpdateOne, withResourceOperation(_m))
+	return &ResourceOperationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceOperationClient) UpdateOneID(id uuid.UUID) *ResourceOperationUpdateOne {
+	mutation := newResourceOperationMutation(c.config, OpUpdateOne, withResourceOperationID(id))
+	return &ResourceOperationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceOperation.
+func (c *ResourceOperationClient) Delete() *ResourceOperationDelete {
+	mutation := newResourceOperationMutation(c.config, OpDelete)
+	return &ResourceOperationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceOperationClient) DeleteOne(_m *ResourceOperation) *ResourceOperationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceOperationClient) DeleteOneID(id uuid.UUID) *ResourceOperationDeleteOne {
+	builder := c.Delete().Where(resourceoperation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceOperationDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceOperation.
+func (c *ResourceOperationClient) Query() *ResourceOperationQuery {
+	return &ResourceOperationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceOperation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceOperation entity by its id.
+func (c *ResourceOperationClient) Get(ctx context.Context, id uuid.UUID) (*ResourceOperation, error) {
+	return c.Query().Where(resourceoperation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceOperationClient) GetX(ctx context.Context, id uuid.UUID) *ResourceOperation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceOperationClient) Hooks() []Hook {
+	return c.hooks.ResourceOperation
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceOperationClient) Interceptors() []Interceptor {
+	return c.inters.ResourceOperation
+}
+
+func (c *ResourceOperationClient) mutate(ctx context.Context, m *ResourceOperationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceOperationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceOperationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceOperationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceOperationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceOperation mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -1239,9 +1664,11 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		App, Container, Function, Instance, KeyPair, User []ent.Hook
+		App, Container, Function, Instance, KeyPair, OutboxEvent, ResourceObservation,
+		ResourceOperation, User []ent.Hook
 	}
 	inters struct {
-		App, Container, Function, Instance, KeyPair, User []ent.Interceptor
+		App, Container, Function, Instance, KeyPair, OutboxEvent, ResourceObservation,
+		ResourceOperation, User []ent.Interceptor
 	}
 )

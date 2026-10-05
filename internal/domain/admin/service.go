@@ -74,9 +74,12 @@ func (s *Service) Instance(ctx context.Context, id string) (InstanceResponse, er
 	if err != nil {
 		return InstanceResponse{}, err
 	}
+	res.StatusSource = "database"
 	if s.statusSource != nil {
 		if live, statusErr := s.statusSource.InstanceStatus(ctx, res.ID); statusErr == nil && live != "" {
 			res.Status = live
+			res.StatusSource = "openstack"
+			res.StatusVerified = true
 		}
 	}
 	return res, nil
@@ -106,8 +109,12 @@ func (s *Service) overlayLiveStatuses(ctx context.Context, items []InstanceRespo
 	}
 	statuses := s.liveStatuses(ctx)
 	for i := range items {
+		items[i].StatusSource = "database"
+		items[i].StatusVerified = false
 		if live, ok := statuses[items[i].ID]; ok && live != "" {
 			items[i].Status = live
+			items[i].StatusSource = "openstack"
+			items[i].StatusVerified = true
 		}
 	}
 }

@@ -10,6 +10,9 @@ import (
 	"github.com/KHU-RETURN/rcp-server/ent/function"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
+	"github.com/KHU-RETURN/rcp-server/ent/outboxevent"
+	"github.com/KHU-RETURN/rcp-server/ent/resourceobservation"
+	"github.com/KHU-RETURN/rcp-server/ent/resourceoperation"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
 	"github.com/KHU-RETURN/rcp-server/internal/schema"
 	"github.com/google/uuid"
@@ -123,6 +126,86 @@ func init() {
 	keypairDescID := keypairFields[0].Descriptor()
 	// keypair.DefaultID holds the default value on creation for the id field.
 	keypair.DefaultID = keypairDescID.Default.(func() uuid.UUID)
+	outboxeventFields := schema.OutboxEvent{}.Fields()
+	_ = outboxeventFields
+	// outboxeventDescPayload is the schema descriptor for payload field.
+	outboxeventDescPayload := outboxeventFields[3].Descriptor()
+	// outboxevent.DefaultPayload holds the default value on creation for the payload field.
+	outboxevent.DefaultPayload = outboxeventDescPayload.Default.(string)
+	// outboxeventDescAttempts is the schema descriptor for attempts field.
+	outboxeventDescAttempts := outboxeventFields[4].Descriptor()
+	// outboxevent.DefaultAttempts holds the default value on creation for the attempts field.
+	outboxevent.DefaultAttempts = outboxeventDescAttempts.Default.(int)
+	// outboxeventDescNextAttemptAt is the schema descriptor for next_attempt_at field.
+	outboxeventDescNextAttemptAt := outboxeventFields[5].Descriptor()
+	// outboxevent.DefaultNextAttemptAt holds the default value on creation for the next_attempt_at field.
+	outboxevent.DefaultNextAttemptAt = outboxeventDescNextAttemptAt.Default.(func() time.Time)
+	// outboxeventDescLeaseUntil is the schema descriptor for lease_until field.
+	outboxeventDescLeaseUntil := outboxeventFields[6].Descriptor()
+	// outboxevent.DefaultLeaseUntil holds the default value on creation for the lease_until field.
+	outboxevent.DefaultLeaseUntil = outboxeventDescLeaseUntil.Default.(func() time.Time)
+	// outboxeventDescLeaseToken is the schema descriptor for lease_token field.
+	outboxeventDescLeaseToken := outboxeventFields[7].Descriptor()
+	// outboxevent.DefaultLeaseToken holds the default value on creation for the lease_token field.
+	outboxevent.DefaultLeaseToken = outboxeventDescLeaseToken.Default.(string)
+	// outboxeventDescLastError is the schema descriptor for last_error field.
+	outboxeventDescLastError := outboxeventFields[9].Descriptor()
+	// outboxevent.DefaultLastError holds the default value on creation for the last_error field.
+	outboxevent.DefaultLastError = outboxeventDescLastError.Default.(string)
+	// outboxeventDescCreatedAt is the schema descriptor for created_at field.
+	outboxeventDescCreatedAt := outboxeventFields[10].Descriptor()
+	// outboxevent.DefaultCreatedAt holds the default value on creation for the created_at field.
+	outboxevent.DefaultCreatedAt = outboxeventDescCreatedAt.Default.(func() time.Time)
+	// outboxeventDescID is the schema descriptor for id field.
+	outboxeventDescID := outboxeventFields[0].Descriptor()
+	// outboxevent.DefaultID holds the default value on creation for the id field.
+	outboxevent.DefaultID = outboxeventDescID.Default.(func() uuid.UUID)
+	resourceobservationFields := schema.ResourceObservation{}.Fields()
+	_ = resourceobservationFields
+	// resourceobservationDescReason is the schema descriptor for reason field.
+	resourceobservationDescReason := resourceobservationFields[6].Descriptor()
+	// resourceobservation.DefaultReason holds the default value on creation for the reason field.
+	resourceobservation.DefaultReason = resourceobservationDescReason.Default.(string)
+	// resourceobservationDescObservedAt is the schema descriptor for observed_at field.
+	resourceobservationDescObservedAt := resourceobservationFields[7].Descriptor()
+	// resourceobservation.DefaultObservedAt holds the default value on creation for the observed_at field.
+	resourceobservation.DefaultObservedAt = resourceobservationDescObservedAt.Default.(func() time.Time)
+	// resourceobservationDescID is the schema descriptor for id field.
+	resourceobservationDescID := resourceobservationFields[0].Descriptor()
+	// resourceobservation.DefaultID holds the default value on creation for the id field.
+	resourceobservation.DefaultID = resourceobservationDescID.Default.(func() uuid.UUID)
+	resourceoperationFields := schema.ResourceOperation{}.Fields()
+	_ = resourceoperationFields
+	// resourceoperationDescResourceID is the schema descriptor for resource_id field.
+	resourceoperationDescResourceID := resourceoperationFields[5].Descriptor()
+	// resourceoperation.DefaultResourceID holds the default value on creation for the resource_id field.
+	resourceoperation.DefaultResourceID = resourceoperationDescResourceID.Default.(string)
+	// resourceoperationDescStatus is the schema descriptor for status field.
+	resourceoperationDescStatus := resourceoperationFields[7].Descriptor()
+	// resourceoperation.DefaultStatus holds the default value on creation for the status field.
+	resourceoperation.DefaultStatus = resourceoperationDescStatus.Default.(string)
+	// resourceoperationDescDispatched is the schema descriptor for dispatched field.
+	resourceoperationDescDispatched := resourceoperationFields[8].Descriptor()
+	// resourceoperation.DefaultDispatched holds the default value on creation for the dispatched field.
+	resourceoperation.DefaultDispatched = resourceoperationDescDispatched.Default.(bool)
+	// resourceoperationDescLastError is the schema descriptor for last_error field.
+	resourceoperationDescLastError := resourceoperationFields[10].Descriptor()
+	// resourceoperation.DefaultLastError holds the default value on creation for the last_error field.
+	resourceoperation.DefaultLastError = resourceoperationDescLastError.Default.(string)
+	// resourceoperationDescCreatedAt is the schema descriptor for created_at field.
+	resourceoperationDescCreatedAt := resourceoperationFields[11].Descriptor()
+	// resourceoperation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	resourceoperation.DefaultCreatedAt = resourceoperationDescCreatedAt.Default.(func() time.Time)
+	// resourceoperationDescUpdatedAt is the schema descriptor for updated_at field.
+	resourceoperationDescUpdatedAt := resourceoperationFields[12].Descriptor()
+	// resourceoperation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	resourceoperation.DefaultUpdatedAt = resourceoperationDescUpdatedAt.Default.(func() time.Time)
+	// resourceoperation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	resourceoperation.UpdateDefaultUpdatedAt = resourceoperationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// resourceoperationDescID is the schema descriptor for id field.
+	resourceoperationDescID := resourceoperationFields[0].Descriptor()
+	// resourceoperation.DefaultID holds the default value on creation for the id field.
+	resourceoperation.DefaultID = resourceoperationDescID.Default.(func() uuid.UUID)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescCreatedAt is the schema descriptor for created_at field.

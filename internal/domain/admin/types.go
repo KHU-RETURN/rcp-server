@@ -40,18 +40,20 @@ type PaginatedUsersResponse struct {
 }
 
 type InstanceResponse struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Status     string    `json:"status"`
-	OwnerID    string    `json:"owner_id"`
-	OwnerEmail string    `json:"owner_email"`
-	OwnerName  string    `json:"owner_name"`
-	FlavorID   string    `json:"flavor_id"`
-	FlavorName string    `json:"flavor_name"`
-	ImageID    string    `json:"image_id"`
-	FixedIP    string    `json:"fixed_ip"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Status         string    `json:"status"`
+	StatusSource   string    `json:"status_source"`
+	StatusVerified bool      `json:"status_verified"`
+	OwnerID        string    `json:"owner_id"`
+	OwnerEmail     string    `json:"owner_email"`
+	OwnerName      string    `json:"owner_name"`
+	FlavorID       string    `json:"flavor_id"`
+	FlavorName     string    `json:"flavor_name"`
+	ImageID        string    `json:"image_id"`
+	FixedIP        string    `json:"fixed_ip"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type PaginatedInstancesResponse struct {
