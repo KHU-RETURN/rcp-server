@@ -17,6 +17,9 @@ import (
 	"github.com/KHU-RETURN/rcp-server/ent/function"
 	"github.com/KHU-RETURN/rcp-server/ent/instance"
 	"github.com/KHU-RETURN/rcp-server/ent/keypair"
+	"github.com/KHU-RETURN/rcp-server/ent/outboxevent"
+	"github.com/KHU-RETURN/rcp-server/ent/resourceobservation"
+	"github.com/KHU-RETURN/rcp-server/ent/resourceoperation"
 	"github.com/KHU-RETURN/rcp-server/ent/user"
 )
 
@@ -78,12 +81,15 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			app.Table:       app.ValidColumn,
-			container.Table: container.ValidColumn,
-			function.Table:  function.ValidColumn,
-			instance.Table:  instance.ValidColumn,
-			keypair.Table:   keypair.ValidColumn,
-			user.Table:      user.ValidColumn,
+			app.Table:                 app.ValidColumn,
+			container.Table:           container.ValidColumn,
+			function.Table:            function.ValidColumn,
+			instance.Table:            instance.ValidColumn,
+			keypair.Table:             keypair.ValidColumn,
+			outboxevent.Table:         outboxevent.ValidColumn,
+			resourceobservation.Table: resourceobservation.ValidColumn,
+			resourceoperation.Table:   resourceoperation.ValidColumn,
+			user.Table:                user.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

@@ -22,6 +22,12 @@ type Tx struct {
 	Instance *InstanceClient
 	// KeyPair is the client for interacting with the KeyPair builders.
 	KeyPair *KeyPairClient
+	// OutboxEvent is the client for interacting with the OutboxEvent builders.
+	OutboxEvent *OutboxEventClient
+	// ResourceObservation is the client for interacting with the ResourceObservation builders.
+	ResourceObservation *ResourceObservationClient
+	// ResourceOperation is the client for interacting with the ResourceOperation builders.
+	ResourceOperation *ResourceOperationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -160,6 +166,9 @@ func (tx *Tx) init() {
 	tx.Function = NewFunctionClient(tx.config)
 	tx.Instance = NewInstanceClient(tx.config)
 	tx.KeyPair = NewKeyPairClient(tx.config)
+	tx.OutboxEvent = NewOutboxEventClient(tx.config)
+	tx.ResourceObservation = NewResourceObservationClient(tx.config)
+	tx.ResourceOperation = NewResourceOperationClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 
