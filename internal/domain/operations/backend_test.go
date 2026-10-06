@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/KHU-RETURN/rcp-server/ent"
-
+	"github.com/KHU-RETURN/rcp-server/ent/instance"
+	"github.com/KHU-RETURN/rcp-server/ent/resourceobservation"
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/google/uuid"
@@ -112,6 +113,45 @@ func TestSwiftRecoveryUsesAllocatedUUIDAndCanonicalMetadata(t *testing.T) {
 		t.Fatalf("duplicated: PUTs=%d", puts)
 	}
 }
+func TestExistingMismatchRepairAndOrphanRetention(t *testing.T) {
+	ctx := context.Background()
+	db := testDB(t)
+	owner := ownerRow(t, db)
+	db.Instance.Create().SetOwnerID(owner).SetOpenstackID("known").SetName("old").SetStatus("BUILD").SetImageID("image").SetFlavorID("flavor").SetNote("keep").SetProviderCreatedAt(time.Now()).ExecX(ctx)
+	db.Instance.Create().SetOwnerID(owner).SetOpenstackID("missing").SetName("gone").SetStatus("ACTIVE").SetImageID("image").SetFlavorID("flavor").SetProviderCreatedAt(time.Now()).ExecX(ctx)
+	b := liveTestBackend(t, db, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("destructive request: %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/servers/missing" {
+			w.WriteHeader(404)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"servers": []any{map[string]any{"id": "known", "name": "new", "status": "SHUTOFF"}, map[string]any{"id": "orphan", "name": "unknown", "status": "ACTIVE"}}})
+	})
+	if err := b.reconcileInstances(ctx); err != nil {
+		t.Fatal(err)
+	}
+	row := db.Instance.Query().Where(instance.OpenstackID("known")).OnlyX(ctx)
+	if row.Status != "SHUTOFF" || row.Name != "new" || row.Note != "keep" {
+		t.Fatalf("repair: %+v", row)
+	}
+	if db.Instance.Query().CountX(ctx) != 2 {
+		t.Fatal("missing resource deleted or unowned resource imported")
+	}
+	missing := db.ResourceObservation.Query().Where(resourceobservation.ResourceKey("instance:missing")).OnlyX(ctx)
+	if missing.Consistency != "missing_in_provider" {
+		t.Fatalf("missing: %+v", missing)
+	}
+	before := db.OutboxEvent.Query().CountX(ctx)
+	if err := b.reconcileInstances(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if db.OutboxEvent.Query().CountX(ctx) != before {
+		t.Fatal("same mismatch emitted duplicate notification")
+	}
+}
 func TestDeletionOwnershipCheckedBeforeQueueing(t *testing.T) {
 	ctx := context.Background()
 	db := testDB(t)
@@ -120,5 +160,34 @@ func TestDeletionOwnershipCheckedBeforeQueueing(t *testing.T) {
 	_, _, err := b.Prepare(ctx, owner, "instance.delete", "not-owned", json.RawMessage(`{}`))
 	if !errors.Is(err, api.ErrOperationNotFound) {
 		t.Fatalf("ownership: %v", err)
+	}
+}
+
+func TestLateVMCompletionRecoversFailedOperation(t *testing.T) {
+	ctx := context.Background()
+	db := testDB(t)
+	owner := ownerRow(t, db)
+	id := uuid.New()
+	payload, _ := json.Marshal(compute.CreateServerOpts{Name: "late", ImageRef: "image", FlavorRef: "flavor"})
+	db.ResourceOperation.Create().SetID(id).SetOwnerID(owner).SetRequestKey("key").SetFingerprint("f").SetKind("instance.create").SetResourceID(uuid.NewString()).SetPayload(string(payload)).SetDispatched(true).SetStatus("FAILED").SaveX(ctx)
+	b := liveTestBackend(t, db, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("recovery sent %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"servers": []any{map[string]any{"id": "late-vm", "name": "late", "status": "ACTIVE", "metadata": map[string]string{operationTag: id.String(), ownerTag: owner.String()}}}})
+	})
+	if err := b.recoverCompletedCreates(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if db.ResourceOperation.GetX(ctx, id).Status != "SUCCEEDED" || db.Instance.Query().CountX(ctx) != 1 {
+		t.Fatal("late completion not recovered")
+	}
+	before := db.OutboxEvent.Query().CountX(ctx)
+	if err := b.recoverCompletedCreates(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if db.OutboxEvent.Query().CountX(ctx) != before {
+		t.Fatal("late completion emitted twice")
 	}
 }

@@ -31,14 +31,17 @@ const operationTag = "rcp_operation_id"
 const ownerTag = "rcp_owner_id"
 
 type LiveBackend struct {
-	db             *ent.Client
-	provider       *gophercloud.ProviderClient
-	defaultNetwork string
-	reconcile      func(context.Context) error
+	InspectDatabases func(context.Context) ([]Observation, error)
+	db               *ent.Client
+	provider         *gophercloud.ProviderClient
+	defaultNetwork   string
+	reconcile        func(context.Context) error
 }
 
 func NewLiveBackend(db *ent.Client, p *gophercloud.ProviderClient, network string) *LiveBackend {
-	return &LiveBackend{db: db, provider: p, defaultNetwork: network}
+	b := &LiveBackend{db: db, provider: p, defaultNetwork: network}
+	b.reconcile = b.ReconcileResources
+	return b
 }
 func (b *LiveBackend) client(ctx context.Context, kind string) (*gophercloud.ServiceClient, error) {
 	if b.provider == nil {
@@ -429,8 +432,8 @@ func (b *LiveBackend) markDispatched(ctx context.Context, op *ent.ResourceOperat
 	return err
 }
 
-// Reconcile runs an optional inventory scanner; per-resource verification is
-// always performed by Execute. The scanner is introduced in the next PR.
+// Reconcile runs the configured inventory scanner; per-resource verification
+// is always performed by Execute.
 func (b *LiveBackend) Reconcile(ctx context.Context) error {
 	if b.reconcile != nil {
 		return b.reconcile(ctx)

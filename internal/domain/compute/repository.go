@@ -2,6 +2,7 @@ package compute
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/google/uuid"
@@ -34,7 +35,12 @@ func (r *Repository) SaveInstance(ctx context.Context, ownerID uuid.UUID, inst *
 }
 
 func (r *Repository) UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UUID, openstackID string, update UpdateInstanceRequest) error {
-	builder := r.client.Instance.Update().
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	builder := tx.Instance.Update().
 		Where(
 			entinstance.OpenstackID(openstackID),
 			entinstance.HasOwnerWith(entuser.ID(ownerID)),
@@ -46,8 +52,17 @@ func (r *Repository) UpdateInstanceMetadata(ctx context.Context, ownerID uuid.UU
 	builder.SetKeyName(update.KeyName)
 	builder.SetNote(update.Note)
 
-	_, err := builder.Save(ctx)
-	return err
+	n, err := builder.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		payload, _ := json.Marshal(map[string]string{"kind": "instance", "resource_id": openstackID, "reason": "metadata changed"})
+		if _, err = tx.OutboxEvent.Create().SetOperationID(uuid.Nil).SetKind("resource.recheck").SetPayload(string(payload)).Save(ctx); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) DeleteByOpenstackID(ctx context.Context, ownerID uuid.UUID, openstackID string) error {
