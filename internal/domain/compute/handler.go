@@ -10,7 +10,8 @@ import (
 )
 
 type Handler struct {
-	Svc *Service
+	Svc   *Service
+	Queue api.OperationQueue
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -175,6 +176,14 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 		return
 	}
 
+	if h.Queue != nil {
+		opts = normalizeCreateServerOpts(opts)
+		if len(opts.Networks) == 0 && h.Svc.defaultNetworkID != "" {
+			opts.Networks = []NetworkID{{UUID: h.Svc.defaultNetworkID}}
+		}
+		api.QueueOperation(c, h.Queue, id, "instance.create", "", opts)
+		return
+	}
 	server, err := h.Svc.CreateInstance(c.Request.Context(), id, opts)
 	if err != nil {
 		switch {
@@ -199,6 +208,10 @@ func (h *Handler) DeleteInstance(c *gin.Context) {
 	}
 
 	serverID := c.Param("id")
+	if h.Queue != nil {
+		api.QueueOperation(c, h.Queue, id, "instance.delete", serverID, struct{}{})
+		return
+	}
 	if err := h.Svc.DeleteInstance(c.Request.Context(), id, serverID); err != nil {
 		if errors.Is(err, ErrInstanceNotFound) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})

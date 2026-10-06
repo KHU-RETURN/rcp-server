@@ -14,7 +14,8 @@ import (
 )
 
 type Handler struct {
-	Svc *Service
+	Svc   *Service
+	Queue api.OperationQueue
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -63,6 +64,11 @@ func (h *Handler) CreateContainer(c *gin.Context) {
 		return
 	}
 
+	req.Name = strings.TrimSpace(req.Name)
+	if h.Queue != nil {
+		api.QueueOperation(c, h.Queue, id, "container.create", "", req)
+		return
+	}
 	res, err := h.Svc.CreateContainer(c.Request.Context(), id, req.Name)
 	if err != nil {
 		switch {
@@ -86,6 +92,12 @@ func (h *Handler) DeleteContainer(c *gin.Context) {
 	name := c.Param("name")
 	force, _ := strconv.ParseBool(c.Query("force"))
 
+	if h.Queue != nil {
+		api.QueueOperation(c, h.Queue, id, "container.delete", name, struct {
+			Force bool `json:"force"`
+		}{force})
+		return
+	}
 	if err := h.Svc.DeleteContainer(c.Request.Context(), id, name, force); err != nil {
 		switch {
 		case errors.Is(err, ErrContainerNotFound):
