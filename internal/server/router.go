@@ -37,6 +37,9 @@ func NewRouter(app *App) *gin.Engine {
 		app.BlockStorage.InitRoutes(protected)
 		app.Compute.InitRoutes(protected)
 		app.Storage.InitRoutes(protected)
+		if app.Operations != nil {
+			app.Operations.InitRoutes(protected)
+		}
 		if app.Functions != nil {
 			app.Functions.InitRoutes(protected)
 		}
@@ -45,6 +48,9 @@ func NewRouter(app *App) *gin.Engine {
 			adminGroup := v1.Group("/")
 			adminGroup.Use(app.Auth.AuthRequired(), auth.AdminRequired())
 			app.Admin.InitRoutes(adminGroup)
+			if app.Operations != nil {
+				app.Operations.InitAdminRoutes(adminGroup)
+			}
 		}
 	}
 

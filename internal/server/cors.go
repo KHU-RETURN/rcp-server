@@ -29,7 +29,8 @@ func corsMiddleware() gin.HandlerFunc {
 			header := c.Writer.Header()
 			header.Set("Access-Control-Allow-Origin", origin)
 			header.Set("Access-Control-Allow-Credentials", "true")
-			header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			header.Set("Access-Control-Expose-Headers", "Location")
+			header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key")
 			header.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			header.Add("Vary", "Origin")
 		}

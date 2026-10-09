@@ -15,6 +15,7 @@ import (
 	"github.com/KHU-RETURN/rcp-server/internal/domain/blockstorage"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/functions"
+	"github.com/KHU-RETURN/rcp-server/internal/domain/operations"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/storage"
 )
 
@@ -27,6 +28,7 @@ type App struct {
 	Auth         *auth.Handler
 	Storage      *storage.Handler
 	Functions    *functions.Handler
+	Operations   *operations.Handler
 }
 
 type AppDeps struct {
@@ -57,7 +59,9 @@ func NewApp(deps AppDeps) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize functions: %w", err)
 	}
-	return &App{
+	backend := operations.NewLiveBackend(deps.EntClient, deps.Provider, deps.DefaultNetworkID)
+	queue := operations.NewService(deps.EntClient, backend)
+	app := &App{
 		BlockStorage: blockstorage.Init(deps.Provider, deps.EntClient),
 		Compute:      compute.Init(deps.Provider, deps.EntClient, deps.OpenStackProject, deps.DefaultNetworkID),
 		Access:       access.Init(deps.Provider, deps.EntClient, deps.SSHGatewaySecret),
@@ -66,14 +70,24 @@ func NewApp(deps AppDeps) (*App, error) {
 			admin.WithLiveHealthChecker(deps.Provider, deps.SSHGatewaySock, deps.NSProxySock, deps.HTTPProxyAddress),
 			admin.WithLiveInstanceStatusSource(deps.Provider),
 		),
-		Apps:      apps.Init(deps.EntClient),
-		Auth:      authHandler,
-		Storage:   storage.Init(deps.Provider, deps.EntClient),
-		Functions: functionHandler,
-	}, nil
+		Apps:       apps.Init(deps.EntClient),
+		Auth:       authHandler,
+		Storage:    storage.Init(deps.Provider, deps.EntClient),
+		Functions:  functionHandler,
+		Operations: &operations.Handler{Svc: queue},
+	}
+	app.Compute.Queue = queue
+	app.Storage.Queue = queue
+	app.BlockStorage.Queue = queue
+	return app, nil
 }
 
 func (a *App) Close(ctx context.Context) error {
+	if a.Operations != nil {
+		if err := a.Operations.Svc.Close(ctx); err != nil {
+			return err
+		}
+	}
 	if a.Functions != nil {
 		return a.Functions.Svc.Close(ctx)
 	}

@@ -85,6 +85,15 @@ main.go → infrastructure 클라이언트 생성 → App 조립 → 라우터 �
 
 공통 에러 응답은 `internal/api/types.go`의 `ErrorResponse`를 사용합니다.
 
+#### 비동기 생성 작업과 할당량
+
+VM·볼륨·컨테이너 생성의 최종 할당량 검증은 OpenStack 프로젝트에 설정된 quota를 따릅니다. VM 생성 가능 수 조회는 CPU·RAM·인스턴스 수의 사용량과 예약량을 반영합니다. 이 경로에는 RCP 사용자별 개수·용량 제한은 추가되어 있지 않습니다.
+
+생성 API가 작업을 접수한 뒤 OpenStack이 할당량 초과를 명시한 HTTP 403/413 응답을 반환하면 워커는 작업을 즉시 `FAILED`로 완료하고 중복 방지 예약을 해제합니다. 작업 조회의 `last_error`는 `resource quota exceeded`입니다. 같은 요청 키를 다시 보내면 기존 실패 작업을 반환하며, 할당량 확보 후 재요청하려면 새 요청 키를 사용합니다. 일반 권한 오류, 일시적인 요청 속도 제한, 서버 오류는 할당량 초과로 분류하지 않습니다.
+
+`internal/domain/operations/backend_test.go`에서 인스턴스 수·CPU·RAM, 볼륨 수·용량, 컨테이너 수 초과 응답을 재현하여 실패 상태, 재시도 중단, 예약 해제와 요청 키 중복 방지를 검증합니다.
+
+
 ### 요청 / 응답
 
 - **바인딩**: `c.ShouldBindJSON()` + `binding:"required"` 태그

@@ -10,7 +10,8 @@ import (
 )
 
 type Handler struct {
-	Svc *Service
+	Svc   *Service
+	Queue api.OperationQueue
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -69,6 +70,15 @@ func (h *Handler) CreateVolume(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid request body"})
 		return
 	}
+	if h.Queue != nil {
+		req = normalizeCreateVolumeRequest(req)
+		if err := validateCreateVolumeRequest(req); err != nil {
+			writeError(c, err)
+			return
+		}
+		api.QueueOperation(c, h.Queue, ownerID, "volume.create", "", req)
+		return
+	}
 	volume, err := h.Svc.CreateVolume(c.Request.Context(), ownerID, req)
 	if err != nil {
 		writeError(c, err)
@@ -98,6 +108,10 @@ func (h *Handler) UpdateVolume(c *gin.Context) {
 func (h *Handler) DeleteVolume(c *gin.Context) {
 	ownerID, ok := api.MustOwnerID(c)
 	if !ok {
+		return
+	}
+	if h.Queue != nil {
+		api.QueueOperation(c, h.Queue, ownerID, "volume.delete", c.Param("id"), struct{}{})
 		return
 	}
 	if err := h.Svc.DeleteVolume(ownerID, c.Param("id")); err != nil {
