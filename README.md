@@ -1,8 +1,233 @@
-# RCP-Server (Return Cloud Platform)
+<div align="center">
 
-학술동아리 RETURN의 클라우드 관리 플랫폼 백엔드 서버입니다.
+# Return Cloud Platform
 
-프로젝트 구조, 개발 규칙, 코드 컨벤션, API 엔드포인트 등 상세한 내용은 [GUIDELINE.md](GUIDELINE.md)를 참고하세요.
+### 학생의 아이디어가 서비스가 되는 곳
+
+**VM 생성부터 터미널 접속, 파일 저장, 함수 실행까지.**
+경희대학교 학술동아리 **RETURN**이 만드는 학생을 위한 클라우드 플랫폼.
+
+[![Platform](https://img.shields.io/badge/EXPLORE-RCP-2456E8?style=for-the-badge)](https://khu-return.com)
+[![Backend](https://img.shields.io/badge/BACKEND-Go-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://github.com/KHU-RETURN/rcp-server)
+
+![Gin](https://img.shields.io/badge/Gin-008ECF?logo=gin&logoColor=white)
+![OpenStack](https://img.shields.io/badge/OpenStack-ED1944?logo=openstack&logoColor=white)
+![WebAssembly](https://img.shields.io/badge/WebAssembly-654FF0?logo=webassembly&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?logo=cloudflare&logoColor=white)
+
+[프로젝트 소개](#about) · [주요 기능](#features) · [아키텍처](#architecture) · [개발 시작](#development) · [운영 레퍼런스](#operations)
+
+</div>
+
+---
+
+<a id="about"></a>
+
+## 프로젝트를 위한 클라우드, 직접 만들고 운영합니다
+
+RCP는 학생이 수업과 팀 프로젝트에서 **컴퓨팅 자원을 만들고, 접속하고, 배포를 실습**할 수 있도록 돕는 플랫폼입니다. `rcp-server`는 웹 콘솔 뒤에서 인증, OpenStack 리소스 관리, VM 접속, WASM 함수 실행을 담당하는 **Go 백엔드**입니다.
+
+단순히 인프라 API를 연결하는 데서 끝나지 않고, 사용자 인증부터 tenant 네트워크 접속과 격리된 함수 실행까지 하나의 사용 흐름으로 연결합니다.
+
+| 리소스 준비 | 개발과 접속 | 실행과 데이터 |
+| :--- | :--- | :--- |
+| VM·볼륨·오브젝트 저장소 관리 | 브라우저 터미널·SSH 게이트웨이 | WASM Functions·SQLite 바인딩 |
+| 프로젝트에 필요한 인프라 마련 | 실행 중인 환경에 직접 접근 | 함수 호출과 데이터 저장 |
+
+> **이 저장소의 범위**
+> RCP의 API 서버 및 게이트웨이·함수 빌더를 포함합니다. 아래 기능은 현재 백엔드 구현 기준이며, 웹 콘솔의 메뉴 노출과 제공 범위는 배포 상태에 따라 다를 수 있습니다. 공개 랜딩의 Database·Network 항목은 구현 중으로 안내되며, 아래 SQLite 기능은 함수용 데이터 기능입니다.
+
+<a id="features"></a>
+
+## 하나의 플랫폼으로 연결되는 기능
+
+| 영역 | 구현된 기능 | 사용자 경험 |
+| :--- | :--- | :--- |
+| **Compute** | Flavor 조회, VM 생성·조회·수정·삭제, 일시정지·재개 | 프로젝트에 맞는 가상 머신 관리 |
+| **Access** | 키페어 관리, 웹 콘솔 세션, OAuth 기반 SSH 접속 | 브라우저 또는 터미널에서 내 VM에 접속 |
+| **Object Storage** | 컨테이너 관리, 파일 업로드·다운로드·삭제, ZIP 다운로드 | 프로젝트 파일을 저장하고 가져오기 |
+| **Block Storage** | 볼륨 생성·수정·삭제, VM 연결·해제, 스냅샷 관리 | VM 데이터 볼륨과 스냅샷 관리 |
+| **Apps** | 인스턴스별 앱 등록·삭제 | VM 앱 연결 정보 관리 |
+| **Functions** | 소스 빌드, WASM 등록·교체·실행, 외부 호출 키 관리 | 작은 프로그램을 HTTP로 호출 |
+| **Function Data** | 함수별 JSON 데이터, 독립 SQLite DB, 함수별 DB 바인딩 | 함수에 필요한 데이터 저장·조회 |
+| **Auth & Admin** | Google OAuth, 로그인 세션, 관리자 리소스 조회 | 사용자 인증과 운영 현황 확인 |
+
+### 01 / Compute & Access — 만들고, 바로 접속하기
+
+```mermaid
+flowchart LR
+    A[Google OAuth 로그인] --> B[Flavor 선택]
+    B --> C[VM 생성]
+    C --> D[브라우저 터미널]
+    C --> E[SSH 클라이언트]
+    D --> F[VM에서 개발 · 배포 실습]
+    E --> F
+    style A fill:#2456e8,color:#fff,stroke:#2456e8
+    style F fill:#eaf0ff,stroke:#2456e8
+```
+
+웹 콘솔 세션과 SSH 게이트웨이를 통해 VM 접속을 제공합니다. SSH 접속에서는 터미널에 표시된 인증 코드를 브라우저에서 확인하고 OAuth 로그인한 뒤 본인 VM을 선택합니다. 게이트웨이는 임시 SSH 키와 네트워크 프록시로 접속을 연결합니다.
+
+### 02 / Storage — 파일과 VM 데이터를 목적에 맞게
+
+| Object Storage | Block Storage |
+| :--- | :--- |
+| 컨테이너와 오브젝트 단위 관리 | 볼륨과 스냅샷 단위 관리 |
+| 파일 업로드·다운로드·삭제 | VM에 볼륨 연결·해제 |
+| prefix 기준 ZIP 다운로드 | 볼륨 스냅샷 생성·삭제 |
+
+### 03 / Functions — 소스 파일에서 호출 가능한 함수까지
+
+**Rust · Go · JavaScript · Python** 단일 파일 또는 미리 빌드한 **WASI Preview 1 `.wasm`** 모듈을 등록합니다. 각 호출은 새 WASM 인스턴스에서 실행됩니다.
+
+```mermaid
+flowchart LR
+    S[소스 파일] --> B[격리된 빌드 컨테이너]
+    B --> W[WASM 모듈]
+    U[직접 업로드한 WASM] --> W
+    W --> R[wazero 실행]
+    I[JSON 입력] --> R
+    R --> O[실행 결과 · stdout · stderr]
+    R <-->|플랫폼 데이터 프로토콜| D[(함수 데이터 · 바인딩 DB)]
+    style R fill:#654ff0,color:#fff,stroke:#654ff0
+```
+
+- **콘솔/API 호출:** 로그인 토큰으로 실행하고 결과와 종료 코드를 확인합니다.
+- **외부 HTTP 호출:** 함수별 만료 가능한 호출 키로 HTTP 엔드포인트를 사용합니다.
+- **데이터 연결:** 함수별 JSON 저장소 또는 명시적으로 바인딩한 SQLite DB를 사용합니다.
+- **실행 경계:** 게스트에 호스트 파일시스템과 네트워크를 제공하지 않습니다. Python 외부 패키지 설치는 지원하지 않습니다.
+
+| 항목 | 제한 |
+| :--- | :--- |
+| 사용자당 함수 | 20개 |
+| 소스 / WASM 크기 | 256 KiB / 32 MiB |
+| 실행 시간 / 게스트 메모리 | 10초 / 256 MiB |
+| 동시 실행 | 4개 |
+| 외부 HTTP 요청 본문 | 64 KiB |
+
+<a id="architecture"></a>
+
+## 플랫폼을 연결하는 다섯 개의 실행 구성 요소
+
+```mermaid
+flowchart TB
+    WEB[웹 콘솔] --> API[API Server · Gin]
+    API --> AUTH[Google OAuth]
+    API --> OS[OpenStack]
+    API --> META[(Ent 운영 DB)]
+    API --> WASM[WASM Runtime · wazero]
+    WASM --> DATA[(함수 데이터 · SQLite)]
+    API -->|Unix socket| BUILD[Function Builder]
+    BUILD --> BOX[격리된 Docker 빌드 컨테이너]
+    HTTP[앱 HTTP 요청] --> APP[App Gateway]
+    APP --> NS
+    CLI[SSH Client] --> TUNNEL[Cloudflare Tunnel]
+    TUNNEL --> GW[SSH Gateway]
+    GW -->|인증 연계| API
+    GW -->|Unix socket| NS[ns-proxy · SOCKS5]
+    NS --> NET[tenant network · VM]
+    style API fill:#2456e8,color:#fff,stroke:#2456e8
+    style GW fill:#eaf0ff,stroke:#2456e8
+    style BUILD fill:#f0edff,stroke:#654ff0
+```
+
+| 바이너리 | 역할 | 기본 접점 |
+| :--- | :--- | :--- |
+| `cmd/api` | REST API, 인증, 리소스 관리, 함수 실행 | `:8080` |
+| `cmd/app-gateway` | 호스트 이름으로 VM 앱을 찾아 HTTP 프록시 | `:18080` |
+| `cmd/ns-proxy` | tenant 네트워크로의 SOCKS5 게이트웨이 | `/run/rcp/ns-proxy.sock` |
+| `cmd/ssh-gateway` | OAuth 인증과 VM SSH 세션 연결 | `127.0.0.1:2222` |
+| `cmd/function-builder` | 별도 컨테이너에서 함수 소스를 WASM으로 빌드 | `/run/rcp-function-builder/builder.sock` |
+
+### 구현에서 중요하게 다루는 경계
+
+- **API와 빌드 분리:** API는 빌더의 Unix 소켓을 사용하고, 소스 빌드는 네트워크 없는 제한된 컨테이너에서 수행합니다.
+- **사용자와 데이터 분리:** 함수 데이터는 소유자·함수 ID로 범위를 제한하며 운영용 Ent DB와 분리합니다.
+- **명시적 DB 바인딩:** 함수는 연결된 DB만 사용하며 SQL 문장·시간·결과 크기에 제한을 둡니다.
+- **인증과 운영 가시성:** 로그인 인증과 관리자 권한을 구분하고 Sentry로 서버 오류를 수집합니다.
+
+### 기술 스택
+
+| 영역 | 사용 기술 |
+| :--- | :--- |
+| API | Go · Gin · JWT · Google OAuth |
+| Infrastructure | OpenStack · Gophercloud · Cloudflare |
+| Data | Ent · SQLite |
+| Functions | wazero · WASI · Docker |
+| Access | WebSocket · SSH · SOCKS5 · Linux network namespace |
+| Operations | systemd · GitHub Actions · Sentry |
+
+<a id="development"></a>
+
+## 개발 시작하기
+
+**Go 버전은 [`go.mod`](go.mod)를 기준으로 준비합니다.** API 실행에는 OpenStack, OAuth, DB 관련 환경 설정이 필요합니다. 자세한 필수 변수와 바이너리별 설정은 [개발 가이드](GUIDELINE.md#7-환경-변수)를 참고하세요.
+
+```bash
+git clone https://github.com/KHU-RETURN/rcp-server.git
+cd rcp-server
+
+# 로컬 .env에 필요한 환경 변수를 설정한 뒤 실행
+go run ./cmd/api
+```
+
+API 기본 주소는 `http://localhost:8080`입니다. 네트워크 프록시·SSH 게이트웨이·소스 빌더는 역할에 맞는 호스트와 설정에서 별도로 실행합니다.
+
+### 코드 구조
+
+```text
+cmd/                         실행 진입점
+  api/                       REST API 서버
+  app-gateway/               VM 앱 HTTP 게이트웨이
+  ns-proxy/                  tenant 네트워크 프록시
+  ssh-gateway/               VM SSH 게이트웨이
+  function-builder/          WASM 소스 빌드 서비스
+internal/
+  domain/                    도메인별 handler · service · repository
+  infrastructure/            DB · HTTP · OpenStack 연동
+  server/                    의존성 조립 · 라우팅 · 미들웨어
+ent/                         스키마와 생성된 데이터 접근 코드
+examples/                    WASM 함수와 데이터 사용 예제
+deploy/                      systemd와 빌더 설치 구성
+docs/                        운영·사용자 가이드
+```
+
+### 검사와 API 문서
+
+```bash
+go test ./...
+go generate ./cmd/api
+go run entc.go
+```
+
+Swagger 산출물은 `docs/generated/swagger.yaml`입니다. 서버 실행 후 [`/docs`](http://localhost:8080/docs)와 [`/openapi.yaml`](http://localhost:8080/openapi.yaml)에서 확인할 수 있습니다. PR CI는 Swagger·Ent 코드를 재생성해 커밋 누락을 검사합니다.
+
+| 문서 | 내용 |
+| :--- | :--- |
+| [개발 가이드](GUIDELINE.md) | 구조, 코드 규칙, API, 환경 변수 |
+| [SSH 사용자 가이드](docs/ssh-gateway-user-guide.md) | 클라이언트 설정과 접속 과정 |
+| [SSH 운영 가이드](docs/ssh-gateway-operations.md) | 게이트웨이 설치와 운영 |
+| [함수 예제](examples/) | 소스 업로드·HTTP 응답·데이터 활용 |
+
+## 함께 만드는 사람들
+
+학술동아리 **RETURN**이 함께 개발하고 운영합니다.
+
+| [@jisung-02](https://github.com/jisung-02) | [@haramj](https://github.com/haramj) | [@qixiangme](https://github.com/qixiangme) | [@Choi-Eunseok](https://github.com/Choi-Eunseok) |
+| :---: | :---: | :---: | :---: |
+| Contributor | Contributor | Contributor | Contributor |
+
+---
+
+<a id="operations"></a>
+
+## 실행과 운영 레퍼런스
+
+기존 실행 명령, 함수 프로토콜, 배포 주의사항과 장애 확인 절차는 아래에서 확인할 수 있습니다.
+
+<details>
+<summary><strong>실행 · Functions · SSH · 배포 상세 펼치기</strong></summary>
 
 ## Run
 
@@ -175,3 +400,12 @@ sudo journalctl -u rcp-server -n 80 --no-pager
 표준 systemd unit과 다른 소켓 경로를 사용하면 API의 `RCP_FUNCTION_BUILDER_SOCKET`도 맞춰야 합니다. `.wasm` 직접 업로드는 소스 빌더를 사용하지 않습니다.
 
 데이터베이스 API의 500 응답은 내부 오류를 공개하지 않습니다. 원인은 API 서버 로그에서 확인합니다. 함수 데이터 경로는 시작 시 절대 경로로 고정되므로 기본 상대 경로 `function-data`도 사용할 수 있습니다.
+
+</details>
+
+<div align="center">
+
+**Build. Connect. Deploy.**
+[Return Cloud Platform ↗](https://khu-return.com)
+
+</div>
