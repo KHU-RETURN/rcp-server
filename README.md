@@ -108,7 +108,7 @@ flowchart LR
 
 <a id="architecture"></a>
 
-## 플랫폼을 연결하는 네 개의 실행 구성 요소
+## 플랫폼을 연결하는 다섯 개의 실행 구성 요소
 
 ```mermaid
 flowchart TB
@@ -120,6 +120,8 @@ flowchart TB
     WASM --> DATA[(함수 데이터 · SQLite)]
     API -->|Unix socket| BUILD[Function Builder]
     BUILD --> BOX[격리된 Docker 빌드 컨테이너]
+    HTTP[앱 HTTP 요청] --> APP[App Gateway]
+    APP --> NS
     CLI[SSH Client] --> TUNNEL[Cloudflare Tunnel]
     TUNNEL --> GW[SSH Gateway]
     GW -->|인증 연계| API
@@ -133,6 +135,7 @@ flowchart TB
 | 바이너리 | 역할 | 기본 접점 |
 | :--- | :--- | :--- |
 | `cmd/api` | REST API, 인증, 리소스 관리, 함수 실행 | `:8080` |
+| `cmd/app-gateway` | 호스트 이름으로 VM 앱을 찾아 HTTP 프록시 | `:18080` |
 | `cmd/ns-proxy` | tenant 네트워크로의 SOCKS5 게이트웨이 | `/run/rcp/ns-proxy.sock` |
 | `cmd/ssh-gateway` | OAuth 인증과 VM SSH 세션 연결 | `127.0.0.1:2222` |
 | `cmd/function-builder` | 별도 컨테이너에서 함수 소스를 WASM으로 빌드 | `/run/rcp-function-builder/builder.sock` |
@@ -176,6 +179,7 @@ API 기본 주소는 `http://localhost:8080`입니다. 네트워크 프록시·S
 ```text
 cmd/                         실행 진입점
   api/                       REST API 서버
+  app-gateway/               VM 앱 HTTP 게이트웨이
   ns-proxy/                  tenant 네트워크 프록시
   ssh-gateway/               VM SSH 게이트웨이
   function-builder/          WASM 소스 빌드 서비스
