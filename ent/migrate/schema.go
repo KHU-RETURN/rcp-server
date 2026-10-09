@@ -157,6 +157,79 @@ var (
 			},
 		},
 	}
+	// OutboxEventsColumns holds the columns for the "outbox_events" table.
+	OutboxEventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "operation_id", Type: field.TypeUUID},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "payload", Type: field.TypeString, Default: ""},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "next_attempt_at", Type: field.TypeTime},
+		{Name: "lease_until", Type: field.TypeTime},
+		{Name: "lease_token", Type: field.TypeString, Default: ""},
+		{Name: "processed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// OutboxEventsTable holds the schema information for the "outbox_events" table.
+	OutboxEventsTable = &schema.Table{
+		Name:       "outbox_events",
+		Columns:    OutboxEventsColumns,
+		PrimaryKey: []*schema.Column{OutboxEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "outboxevent_processed_at_next_attempt_at",
+				Unique:  false,
+				Columns: []*schema.Column{OutboxEventsColumns[8], OutboxEventsColumns[5]},
+			},
+		},
+	}
+	// ResourceObservationsColumns holds the columns for the "resource_observations" table.
+	ResourceObservationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "resource_key", Type: field.TypeString, Unique: true},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "resource_id", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString},
+		{Name: "consistency", Type: field.TypeString},
+		{Name: "reason", Type: field.TypeString, Default: ""},
+		{Name: "observed_at", Type: field.TypeTime},
+	}
+	// ResourceObservationsTable holds the schema information for the "resource_observations" table.
+	ResourceObservationsTable = &schema.Table{
+		Name:       "resource_observations",
+		Columns:    ResourceObservationsColumns,
+		PrimaryKey: []*schema.Column{ResourceObservationsColumns[0]},
+	}
+	// ResourceOperationsColumns holds the columns for the "resource_operations" table.
+	ResourceOperationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "owner_id", Type: field.TypeUUID},
+		{Name: "request_key", Type: field.TypeString},
+		{Name: "fingerprint", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "resource_id", Type: field.TypeString, Default: ""},
+		{Name: "payload", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString, Default: "PENDING"},
+		{Name: "dispatched", Type: field.TypeBool, Default: false},
+		{Name: "active_key", Type: field.TypeString, Unique: true, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ResourceOperationsTable holds the schema information for the "resource_operations" table.
+	ResourceOperationsTable = &schema.Table{
+		Name:       "resource_operations",
+		Columns:    ResourceOperationsColumns,
+		PrimaryKey: []*schema.Column{ResourceOperationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "resourceoperation_owner_id_request_key",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceOperationsColumns[1], ResourceOperationsColumns[2]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -183,6 +256,9 @@ var (
 		FunctionsTable,
 		InstancesTable,
 		KeyPairsTable,
+		OutboxEventsTable,
+		ResourceObservationsTable,
+		ResourceOperationsTable,
 		UsersTable,
 	}
 )

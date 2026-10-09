@@ -69,6 +69,42 @@ func (f KeyPairFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KeyPairMutation", m)
 }
 
+// The OutboxEventFunc type is an adapter to allow the use of ordinary
+// function as OutboxEvent mutator.
+type OutboxEventFunc func(context.Context, *ent.OutboxEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OutboxEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OutboxEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OutboxEventMutation", m)
+}
+
+// The ResourceObservationFunc type is an adapter to allow the use of ordinary
+// function as ResourceObservation mutator.
+type ResourceObservationFunc func(context.Context, *ent.ResourceObservationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceObservationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceObservationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceObservationMutation", m)
+}
+
+// The ResourceOperationFunc type is an adapter to allow the use of ordinary
+// function as ResourceOperation mutator.
+type ResourceOperationFunc func(context.Context, *ent.ResourceOperationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceOperationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceOperationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceOperationMutation", m)
+}
+
 // The UserFunc type is an adapter to allow the use of ordinary
 // function as User mutator.
 type UserFunc func(context.Context, *ent.UserMutation) (ent.Value, error)
