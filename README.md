@@ -139,6 +139,10 @@ ssh rcp-gw
 운영 가이드: [docs/ssh-gateway-operations.md](docs/ssh-gateway-operations.md)
 사용자 가이드: [docs/ssh-gateway-user-guide.md](docs/ssh-gateway-user-guide.md)
 
+## Durable resource operations
+
+VM, Swift container, and Cinder volume creation/deletion use a database-backed outbox and return `202 Accepted` with an `operation_id`. Poll `/api/v1/operations/:id` for completion. Existing resources are reconciled at startup and periodically. See [operation and recovery guide](docs/resource-outbox-operations.md) for client migration, idempotency, notifications, and safe repair behavior.
+
 ## Deployment
 
 `main` 브랜치 머지 시 `compute-1` 호스트로 자동 배포됩니다.

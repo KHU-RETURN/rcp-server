@@ -60,6 +60,7 @@ func NewApp(deps AppDeps) (*App, error) {
 		return nil, fmt.Errorf("failed to initialize functions: %w", err)
 	}
 	backend := operations.NewLiveBackend(deps.EntClient, deps.Provider, deps.DefaultNetworkID)
+	backend.InspectDatabases = functionHandler.Svc.InspectDatabases
 	queue := operations.NewService(deps.EntClient, backend)
 	app := &App{
 		BlockStorage: blockstorage.Init(deps.Provider, deps.EntClient),
