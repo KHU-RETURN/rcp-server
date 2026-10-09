@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/KHU-RETURN/rcp-server/ent"
+	"github.com/KHU-RETURN/rcp-server/ent/outboxevent"
 
 	"github.com/KHU-RETURN/rcp-server/internal/api"
 	"github.com/KHU-RETURN/rcp-server/internal/domain/compute"
@@ -120,5 +121,98 @@ func TestDeletionOwnershipCheckedBeforeQueueing(t *testing.T) {
 	_, _, err := b.Prepare(ctx, owner, "instance.delete", "not-owned", json.RawMessage(`{}`))
 	if !errors.Is(err, api.ErrOperationNotFound) {
 		t.Fatalf("ownership: %v", err)
+	}
+}
+
+func TestQuotaRejectionFinishesOperationWithoutRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, payload, body string
+		code                      int
+	}{
+		{"instance count", "instance.create", `{"Name":"vm","ImageRef":"image","FlavorRef":"flavor"}`, `{"forbidden":{"message":"Quota exceeded for instances: Requested 1, but already used 10 of 10 instances","code":403}}`, 403},
+		{"CPU", "instance.create", `{"Name":"vm","ImageRef":"image","FlavorRef":"flavor"}`, `{"forbidden":{"message":"Quota exceeded for cores","code":403}}`, 403},
+		{"RAM", "instance.create", `{"Name":"vm","ImageRef":"image","FlavorRef":"flavor"}`, `{"overLimit":{"message":"Quota exceeded for ram","code":413}}`, 413},
+		{"volume count", "volume.create", `{"name":"volume","sizeGiB":1}`, `{"overLimit":{"message":"Maximum number of volumes allowed (10) exceeded for quota 'volumes'.","code":413}}`, 413},
+		{"volume capacity", "volume.create", `{"name":"volume","sizeGiB":1}`, `{"overLimit":{"message":"Quota exceeded for gigabytes","code":403}}`, 403},
+		{"container count", "container.create", `{"Name":"data"}`, "Reached container limit of 10", 403},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db := testDB(t)
+			owner := ownerRow(t, db)
+			creates := 0
+			b := liveTestBackend(t, db, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == http.MethodPost || r.Method == http.MethodPut {
+					creates++
+					w.WriteHeader(tc.code)
+					_, _ = w.Write([]byte(tc.body))
+					return
+				}
+				switch r.URL.Path {
+				case "/servers/detail":
+					_, _ = w.Write([]byte(`{"servers":[]}`))
+				case "/volumes/detail":
+					_, _ = w.Write([]byte(`{"volumes":[]}`))
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+			svc := NewService(db, b)
+			accepted, err := svc.Submit(ctx, owner, tc.kind, "", json.RawMessage(tc.payload), "quota-key")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if did, err := svc.ProcessOne(ctx); err != nil || !did {
+				t.Fatalf("process: %v %v", did, err)
+			}
+			op := db.ResourceOperation.GetX(ctx, accepted.OperationID)
+			if op.Status != "FAILED" || op.ActiveKey != nil || op.Dispatched || op.LastError != ErrQuotaExceeded.Error() {
+				t.Fatalf("quota rejection not terminal: %+v", op)
+			}
+			if view(op).LastError != "resource quota exceeded" {
+				t.Fatal("quota reason missing from response")
+			}
+			event := db.OutboxEvent.Query().Where(outboxevent.OperationID(op.ID)).OnlyX(ctx)
+			if event.ProcessedAt == nil || event.Attempts != 1 {
+				t.Fatalf("event: %+v", event)
+			}
+			if did, err := svc.ProcessOne(ctx); err != nil || did {
+				t.Fatalf("rejected request retried: %v %v", did, err)
+			}
+			duplicate, err := svc.Submit(ctx, owner, tc.kind, "", json.RawMessage(tc.payload), "quota-key")
+			if err != nil || duplicate.OperationID != op.ID || duplicate.Status != "FAILED" {
+				t.Fatalf("idempotency: %+v %v", duplicate, err)
+			}
+			if creates != 1 || db.Instance.Query().CountX(ctx) != 0 || db.Container.Query().CountX(ctx) != 0 {
+				t.Fatal("rejected create allocated a resource or was repeated")
+			}
+			// A new request key is required after quota has been freed. In particular,
+			// the rejected Swift name must no longer be held by the old operation.
+			if _, err := svc.Submit(ctx, owner, tc.kind, "", json.RawMessage(tc.payload), "new-key"); err != nil {
+				t.Fatalf("reservation was not released: %v", err)
+			}
+		})
+	}
+}
+
+func TestCreateFailureKeepsUncertainAndRateLimitErrorsRetryable(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		code       int
+	}{
+		{"provider failure", `{"message":"quota service unavailable"}`, 500},
+		{"rate limit", `{"overLimit":{"message":"Rate limit exceeded"}}`, 413},
+		{"forbidden", `{"forbidden":{"message":"Not authorized to read quota"}}`, 403},
+		{"large payload", "Request Entity Too Large", 413},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := gophercloud.ErrUnexpectedResponseCode{Actual: tc.code, Body: []byte(tc.body)}
+			err := createFailure(original)
+			var preserved gophercloud.ErrUnexpectedResponseCode
+			if errors.Is(err, ErrPermanent) || errors.Is(err, ErrQuotaExceeded) || !errors.As(err, &preserved) || preserved.Actual != tc.code || string(preserved.Body) != tc.body {
+				t.Fatalf("misclassified: %v", err)
+			}
+		})
 	}
 }

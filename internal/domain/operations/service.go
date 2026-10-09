@@ -19,6 +19,7 @@ import (
 )
 
 var ErrUnknown = errors.New("provider result is ambiguous; creation will not be repeated")
+var ErrQuotaExceeded = errors.New("resource quota exceeded")
 var ErrPermanent = errors.New("operation cannot be completed")
 
 type Outcome struct {
@@ -232,16 +233,21 @@ func (s *Service) ProcessOne(parent context.Context) (did bool, retErr error) {
 		terminal := errors.Is(err, ErrPermanent) || event.Attempts+1 >= 20
 		if terminal {
 			status = "FAILED"
-			if !op.Dispatched || strings.HasSuffix(op.Kind, ".delete") {
+			if !op.Dispatched || strings.HasSuffix(op.Kind, ".delete") || errors.Is(err, ErrQuotaExceeded) {
 				update.ClearActiveKey()
 			}
 		}
+		reason := err.Error()
+		if errors.Is(err, ErrQuotaExceeded) {
+			reason = ErrQuotaExceeded.Error()
+			update.SetDispatched(false)
+		}
 		if event.Kind == "execute" {
-			if _, txErr = update.SetStatus(status).SetLastError(err.Error()).Save(parent); txErr != nil {
+			if _, txErr = update.SetStatus(status).SetLastError(reason).Save(parent); txErr != nil {
 				return true, txErr
 			}
 		}
-		retry := tx.OutboxEvent.UpdateOneID(event.ID).SetLastError(err.Error())
+		retry := tx.OutboxEvent.UpdateOneID(event.ID).SetLastError(reason)
 		if terminal {
 			retry.SetProcessedAt(time.Now())
 		} else {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
@@ -209,7 +210,7 @@ func (b *LiveBackend) createInstance(ctx context.Context, op *ent.ResourceOperat
 		}
 		created, err := servers.Create(sc, keypairs.CreateOptsExt{CreateOptsBuilder: servers.CreateOpts{Name: opts.Name, ImageRef: opts.ImageRef, FlavorRef: opts.FlavorRef, SecurityGroups: opts.SecurityGroups, Networks: networks, Metadata: map[string]string{operationTag: op.ID.String(), ownerTag: op.OwnerID.String()}}, KeyName: opts.KeyName}).Extract()
 		if err != nil {
-			return Outcome{}, err
+			return Outcome{}, createFailure(err)
 		}
 		found, err = servers.Get(sc, created.ID).Extract()
 		if err != nil {
@@ -252,7 +253,7 @@ func (b *LiveBackend) createContainer(ctx context.Context, op *ent.ResourceOpera
 	if notFound(err) {
 		// Swift PUT at the preallocated UUID is idempotent.
 		if err = containers.Create(sc, op.ResourceID, containers.CreateOpts{Metadata: map[string]string{operationTag: op.ID.String(), ownerTag: op.OwnerID.String()}}).Err; err != nil {
-			return Outcome{}, err
+			return Outcome{}, createFailure(err)
 		}
 		h, err = containers.Get(sc, op.ResourceID, nil).ExtractMetadata()
 	}
@@ -315,7 +316,7 @@ func (b *LiveBackend) createVolume(ctx context.Context, op *ent.ResourceOperatio
 		}
 		found, err = volumes.Create(sc, volumes.CreateOpts{Name: strings.TrimSpace(req.Name), Description: req.Description, Size: req.SizeGiB, VolumeType: req.VolumeType, AvailabilityZone: req.AvailabilityZone, SnapshotID: req.SnapshotID, Metadata: map[string]string{operationTag: op.ID.String(), ownerTag: op.OwnerID.String()}}).Extract()
 		if err != nil {
-			return Outcome{}, err
+			return Outcome{}, createFailure(err)
 		}
 	}
 	if strings.HasPrefix(found.Status, "error") {
@@ -436,4 +437,18 @@ func (b *LiveBackend) Reconcile(ctx context.Context) error {
 		return b.reconcile(ctx)
 	}
 	return nil
+}
+
+// A quota rejection is definitive: the provider did not allocate a resource.
+// Status alone is insufficient because 403 also covers authorization failures
+// and legacy 413 responses may represent a temporary rate limit.
+func createFailure(err error) error {
+	var response gophercloud.ErrUnexpectedResponseCode
+	if errors.As(err, &response) && (response.Actual == http.StatusForbidden || response.Actual == http.StatusRequestEntityTooLarge) {
+		body := strings.ToLower(string(response.Body))
+		if (strings.Contains(body, "quota") && (strings.Contains(body, "exceed") || strings.Contains(body, "insufficient"))) || strings.HasPrefix(body, "reached container limit of ") {
+			return fmt.Errorf("%w: %w", ErrPermanent, ErrQuotaExceeded)
+		}
+	}
+	return err
 }
