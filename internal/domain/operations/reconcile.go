@@ -358,7 +358,7 @@ func (b *LiveBackend) observeAbsent(ctx context.Context, kind string, seen map[s
 // A late provider completion can outlive the execute event's retry budget.
 // Recover only confirmed existing resources; this scan never issues a new create.
 func (b *LiveBackend) recoverCompletedCreates(ctx context.Context) error {
-	ops, err := b.db.ResourceOperation.Query().Where(resourceoperation.Status("FAILED"), resourceoperation.KindIn("instance.create", "volume.create", "container.create")).Limit(100).All(ctx)
+	ops, err := b.db.ResourceOperation.Query().Where(resourceoperation.Status("FAILED"), resourceoperation.LastErrorNEQ(ErrQuotaExceeded.Error()), resourceoperation.KindIn("instance.create", "volume.create", "container.create")).Limit(100).All(ctx)
 	if err != nil {
 		return err
 	}

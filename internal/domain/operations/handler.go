@@ -39,6 +39,9 @@ func view(op *ent.ResourceOperation) operationResponse {
 	reason := ""
 	if op.LastError != "" {
 		reason = "operation requires retry or review"
+		if op.LastError == ErrQuotaExceeded.Error() {
+			reason = ErrQuotaExceeded.Error()
+		}
 	}
 	return operationResponse{op.ID, op.Kind, op.ResourceID, op.Status, op.CreatedAt, op.UpdatedAt, reason}
 }
